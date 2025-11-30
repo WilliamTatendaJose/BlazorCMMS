@@ -1,0 +1,99 @@
+@* Simple CSS-based Line Chart Component *@
+<div class="simple-line-chart">
+    @if (DataPoints != null && DataPoints.Any())
+    {
+        <div style="padding: 20px;">
+            <div style="font-weight: 600; margin-bottom: 16px; color: var(--rbm-text);">@Title</div>
+            
+            <!-- Chart Area -->
+            <div style="position: relative;">
+                <svg viewBox="0 0 600 250" style="width: 100%; height: 250px; border: 1px solid var(--rbm-border); border-radius: 8px; background: white;">
+                    <!-- Grid lines -->
+                    @for (int i = 0; i <= 5; i++)
+                    {
+                        var y = 25 + (i * 40);
+                        <line x1="50" y1="@y" x2="580" y2="@y" stroke="#e0e0e0" stroke-width="1" />
+                    }
+                    
+                    <!-- Line path -->
+                    @{
+                        var points = DataPoints.Select((dp, index) => 
+                        {
+                            var x = 50 + (index * (530.0 / (DataPoints.Count - 1)));
+                            var y = 225 - ((dp.Value / MaxValue) * 200);
+                            return $"{x},{y}";
+                        });
+                        var pathData = "M " + string.Join(" L ", points);
+                    }
+                    
+                    <path d="@pathData" 
+                          fill="none" 
+                          stroke="@LineColor" 
+                          stroke-width="3" 
+                          stroke-linecap="round" 
+                          stroke-linejoin="round"/>
+                    
+                    <!-- Data points -->
+                    @foreach (var (dp, index) in DataPoints.Select((dp, i) => (dp, i)))
+                    {
+                        var x = 50 + (index * (530.0 / (DataPoints.Count - 1)));
+                        var y = 225 - ((dp.Value / MaxValue) * 200);
+                        
+                        <circle cx="@x" cy="@y" r="4" fill="@LineColor" stroke="white" stroke-width="2"/>
+                    }
+                </svg>
+                
+                <!-- Labels overlay -->
+                <div style="position: absolute; top: 0; left: 0; width: 100%; height: 250px; pointer-events: none;">
+                    <!-- Y-axis labels -->
+                    @for (int i = 0; i <= 5; i++)
+                    {
+                        var yPercent = (25 + (i * 40)) / 250.0 * 100;
+                        var value = MaxValue - (i * (MaxValue / 5));
+                        <div style="position: absolute; left: 5px; top: @(yPercent)%; transform: translateY(-50%); font-size: 12px; color: #78909c;">
+                            @value.ToString("F0")
+                        </div>
+                    }
+                    
+                    <!-- X-axis labels -->
+                    @foreach (var (dp, index) in DataPoints.Select((dp, i) => (dp, i)))
+                    {
+                        if (index % Math.Max(1, DataPoints.Count / 10) == 0)
+                        {
+                            var xPercent = (50 + (index * (530.0 / (DataPoints.Count - 1)))) / 600.0 * 100;
+                            <div style="position: absolute; left: @(xPercent)%; top: 245px; transform: translateX(-50%); font-size: 11px; color: #78909c;">
+                                @dp.Label
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+            
+            <div style="margin-top: 20px; text-align: center; font-size: 13px; color: var(--rbm-text-light);">
+                @Subtitle
+            </div>
+        </div>
+    }
+    else
+    {
+        <div style="text-align: center; padding: 60px; color: var(--rbm-text-light);">
+            <div style="font-size: 48px; margin-bottom: 12px; opacity: 0.3;">??</div>
+            <div>No data available for @Title</div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Subtitle { get; set; } = "";
+    [Parameter] public List<ChartDataPoint> DataPoints { get; set; } = new();
+    [Parameter] public string LineColor { get; set; } = "#2196f3";
+    
+    private double MaxValue => DataPoints.Any() ? DataPoints.Max(dp => dp.Value) * 1.1 : 100;
+    
+    public class ChartDataPoint
+    {
+        public string Label { get; set; } = "";
+        public double Value { get; set; }
+    }
+}

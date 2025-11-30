@@ -1,0 +1,415 @@
+﻿@page "/rbm/assets"
+@page "/rbm/assets/{AssetId:int}"
+@rendermode InteractiveServer
+@layout RBMLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject BlazorApp1.Services.DataService DataService
+@inject BlazorApp1.Services.CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+@using BlazorApp1.Models
+
+@if (!isInitialized)
+{
+    <div style="text-align: center; padding: 40px;">
+        <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
+        <div>Loading permissions...</div>
+    </div>
+}
+else if (AssetId == null)
+{
+    <!-- Assets List View -->
+    <div class="rbm-page-header">
+        <h1 class="rbm-page-title">Assets</h1>
+        <p class="rbm-page-subtitle">Manage and monitor all equipment assets</p>
+    </div>
+
+    <div class="rbm-action-bar">
+        <div class="rbm-action-buttons">
+            @if (CurrentUser.CanEdit)
+            {
+                <button class="rbm-btn rbm-btn-primary" @onclick="ShowAddAssetModal">
+                    <span style="font-size: 1.2em;">➕</span> Add Asset
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="rbm-card">
+        <div class="rbm-table-container">
+            <table class="rbm-table">
+                <thead>
+                    <tr>
+                        <th>Asset ID</th>
+                        <th>Name</th>
+                        <th>Location</th>
+                        <th>Criticality</th>
+                        <th>Health Score</th>
+                        <th>Last Maintenance</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var asset in assets)
+                    {
+                        <tr>
+                            <td><strong>@asset.AssetId</strong></td>
+                            <td>@asset.Name</td>
+                            <td>@asset.Location</td>
+                            <td><span class="rbm-badge-pill rbm-badge-@asset.Criticality.ToLower()">@asset.Criticality</span></td>
+                            <td>
+                                <span class="rbm-health-score @(asset.HealthScore >= 80 ? "healthy" : asset.HealthScore >= 60 ? "warning" : "critical")">
+                                    <span class="rbm-health-dot"></span>
+                                    @asset.HealthScore
+                                </span>
+                            </td>
+                            <td>@(asset.LastMaintenance?.ToString("dd MM, yyyy") ?? "N/A")</td>
+                            <td><span class="rbm-badge-pill rbm-badge-@asset.Status.ToLower()">@asset.Status</span></td>
+                            <td>
+                                <div style="display: flex; gap: 4px;">
+                                    <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => ViewAssetDetails(asset.Id)">
+                                        <span style="font-size: 1.1em;">👁️</span> View
+                                    </button>
+                                    @if (CurrentUser.CanEdit)
+                                    {
+                                        <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => EditAsset(asset)">
+                                            <span style="font-size: 1.1em;">✏️</span>
+                                        </button>
+                                    }
+                                    @if (CurrentUser.CanDelete)
+                                    {
+                                        <button class="rbm-btn rbm-btn-danger rbm-btn-sm" @onclick="() => DeleteAsset(asset.Id)">
+                                            <span style="font-size: 1.1em;">🗑️</span>
+                                        </button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+else
+{
+    <!-- Asset Details View -->
+    @if (selectedAsset != null)
+    {
+        <div class="rbm-page-header">
+            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="BackToList" style="margin-bottom: 16px;">
+                ← Back to Assets
+            </button>
+            <h1 class="rbm-page-title">@selectedAsset.Name</h1>
+            <p class="rbm-page-subtitle">@selectedAsset.AssetId - @selectedAsset.Location</p>
+        </div>
+
+        <!-- Asset Overview -->
+        <div class="rbm-grid rbm-grid-4">
+            <div class="rbm-stat-card">
+                <div class="rbm-stat-label">Health Score</div>
+                <div class="rbm-stat-value">@selectedAsset.HealthScore</div>
+                <div class="rbm-stat-trend">@selectedAsset.Status</div>
+            </div>
+            
+            <div class="rbm-stat-card">
+                <div class="rbm-stat-label">Uptime (%)</div>
+                <div class="rbm-stat-value">@selectedAsset.Uptime.ToString("F1")</div>
+            </div>
+            
+            <div class="rbm-stat-card">
+                <div class="rbm-stat-label">Downtime (%)</div>
+                <div class="rbm-stat-value">@selectedAsset.Downtime.ToString("F1")</div>
+            </div>
+            
+            <div class="rbm-stat-card">
+                <div class="rbm-stat-label">Criticality</div>
+                <div class="rbm-stat-value" style="font-size: 20px;">
+                    <span class="rbm-badge-pill rbm-badge-@selectedAsset.Criticality.ToLower()">@selectedAsset.Criticality</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Condition History -->
+        <div class="rbm-card mt-3">
+            <div class="rbm-card-header">
+                <h3 class="rbm-card-title">Condition History</h3>
+            </div>
+            <div class="rbm-chart">
+                <div style="text-align: center;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📊</div>
+                    <div>Temperature, Vibration & Pressure Trends</div>
+                    <div style="margin-top: 8px; color: var(--rbm-text-light);">
+                        @conditionReadings.Count readings recorded
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Linked Work Orders -->
+        <div class="rbm-card mt-3">
+            <div class="rbm-card-header">
+                <h3 class="rbm-card-title">Linked Work Orders</h3>
+            </div>
+            <div class="rbm-table-container">
+                <table class="rbm-table">
+                    <thead>
+                        <tr>
+                            <th>Work Order</th>
+                            <th>Type</th>
+                            <th>Priority</th>
+                            <th>Status</th>
+                            <th>Due Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var wo in assetWorkOrders)
+                        {
+                            <tr>
+                                <td><strong>@wo.WorkOrderId</strong></td>
+                                <td>@wo.Type</td>
+                                <td><span class="rbm-badge-pill rbm-badge-@wo.Priority.ToLower()">@wo.Priority</span></td>
+                                <td>@wo.Status</td>
+                                <td>@wo.DueDate.ToString("MMM dd, yyyy")</td>
+                            </tr>
+                        }
+                        @if (!assetWorkOrders.Any())
+                        {
+                            <tr>
+                                <td colspan="5" class="text-center">No work orders found for this asset</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- FMEA Summary -->
+        <div class="rbm-card mt-3">
+            <div class="rbm-card-header">
+                <h3 class="rbm-card-title">FMEA Summary</h3>
+            </div>
+            <div class="rbm-table-container">
+                <table class="rbm-table">
+                    <thead>
+                        <tr>
+                            <th>Failure Mode</th>
+                            <th>Severity</th>
+                            <th>Occurrence</th>
+                            <th>Detection</th>
+                            <th>RPN</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var fm in assetFailureModes)
+                        {
+                            <tr>
+                                <td><strong>@fm.Mode</strong></td>
+                                <td>@fm.Severity</td>
+                                <td>@fm.Occurrence</td>
+                                <td>@fm.Detection</td>
+                                <td><strong>@fm.RPN</strong></td>
+                            </tr>
+                        }
+                        @if (!assetFailureModes.Any())
+                        {
+                            <tr>
+                                <td colspan="5" class="text-center">No failure modes defined for this asset</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+
+@if (showAddModal || showEditModal)
+{
+    <div class="rbm-modal-backdrop" @onclick="CloseAddAssetModal">
+        <div class="rbm-modal" @onclick:stopPropagation="true">
+            <div class="rbm-modal-header">
+                <h3 class="rbm-modal-title">@(showEditModal ? "Edit Asset" : "Add New Asset")</h3>
+                <button class="rbm-modal-close" @onclick="CloseAddAssetModal">&times;</button>
+            </div>
+            <div class="rbm-modal-body">
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Asset ID</label>
+                    <input type="text" class="rbm-form-input" @bind="newAsset.AssetId" placeholder="e.g., PMP-011">
+                </div>
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Name</label>
+                    <input type="text" class="rbm-form-input" @bind="newAsset.Name" placeholder="e.g., Hydraulic Pump K">
+                </div>
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Location</label>
+                    <input type="text" class="rbm-form-input" @bind="newAsset.Location" placeholder="e.g., Building 1, Floor 2">
+                </div>
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Criticality</label>
+                    <select class="rbm-form-select" @bind="newAsset.Criticality">
+                        <option value="Low">Low</option>
+                        <option value="Medium">Medium</option>
+                        <option value="High">High</option>
+                        <option value="Critical">Critical</option>
+                    </select>
+                </div>
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Health Score</label>
+                    <input type="number" class="rbm-form-input" @bind="newAsset.HealthScore" min="0" max="100">
+                </div>
+            </div>
+            <div class="rbm-modal-footer">
+                <button class="rbm-btn rbm-btn-outline" @onclick="CloseAddAssetModal">Cancel</button>
+                <button class="rbm-btn rbm-btn-primary" @onclick="SaveNewAsset">
+                    @(showEditModal ? "Update Asset" : "Save Asset")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showSuccessMessage)
+{
+    <div style="position: fixed; top: 80px; right: 20px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; border-left: 4px solid var(--rbm-success);">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 24px;">✓</span>
+            <div>
+                <div style="font-weight: 600; color: var(--rbm-success);">Success!</div>
+                <div style="font-size: 14px; color: var(--rbm-text-light);">@successMessage</div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int? AssetId { get; set; }
+
+    private List<Asset> assets = new();
+    private Asset? selectedAsset;
+    private List<ConditionReading> conditionReadings = new();
+    private List<WorkOrder> assetWorkOrders = new();
+    private List<FailureMode> assetFailureModes = new();
+    
+    private bool showAddModal = false;
+    private bool showEditModal = false;
+    private Asset newAsset = new();
+    private bool showSuccessMessage = false;
+    private string successMessage = "";
+    private bool isInitialized = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CurrentUser.InitializeAsync();
+        LoadData();
+        isInitialized = true;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await CurrentUser.InitializeAsync();
+        LoadData();
+    }
+
+    private void LoadData()
+    {
+        assets = DataService.GetAssets();
+        
+        if (AssetId.HasValue)
+        {
+            selectedAsset = DataService.GetAsset(AssetId.Value);
+            if (selectedAsset != null)
+            {
+                conditionReadings = DataService.GetConditionReadings(selectedAsset.Id);
+                assetWorkOrders = DataService.GetWorkOrders().Where(wo => wo.AssetId == selectedAsset.Id).ToList();
+                assetFailureModes = DataService.GetFailureModes(selectedAsset.Id);
+            }
+        }
+    }
+
+    private void ViewAssetDetails(int id)
+    {
+        Navigation.NavigateTo($"/rbm/assets/{id}");
+    }
+
+    private void BackToList()
+    {
+        Navigation.NavigateTo("/rbm/assets");
+    }
+
+    private void ShowAddAssetModal()
+    {
+        newAsset = new Asset { HealthScore = 100, Criticality = "Medium", Status = "Healthy", Uptime = 98.0, Downtime = 2.0 };
+        showAddModal = true;
+        showEditModal = false;
+    }
+
+    private void EditAsset(Asset asset)
+    {
+        newAsset = new Asset
+        {
+            Id = asset.Id,
+            AssetId = asset.AssetId,
+            Name = asset.Name,
+            Location = asset.Location,
+            Criticality = asset.Criticality,
+            HealthScore = asset.HealthScore,
+            Status = asset.Status,
+            Uptime = asset.Uptime,
+            Downtime = asset.Downtime,
+            LastMaintenance = asset.LastMaintenance
+        };
+        showEditModal = true;
+        showAddModal = false;
+    }
+
+    private void CloseAddAssetModal()
+    {
+        showAddModal = false;
+        showEditModal = false;
+    }
+
+    private void SaveNewAsset()
+    {
+        if (showEditModal)
+        {
+            DataService.UpdateAsset(newAsset);
+            ShowSuccess($"Asset {newAsset.AssetId} updated successfully");
+        }
+        else
+        {
+            // Auto-set status based on health score
+            newAsset.Status = newAsset.HealthScore >= 80 ? "Healthy" : newAsset.HealthScore >= 60 ? "Warning" : "Critical";
+            DataService.AddAsset(newAsset);
+            ShowSuccess($"Asset {newAsset.AssetId} created successfully");
+        }
+        assets = DataService.GetAssets();
+        CloseAddAssetModal();
+    }
+
+    private void DeleteAsset(int id)
+    {
+        var asset = assets.FirstOrDefault(a => a.Id == id);
+        if (asset != null)
+        {
+            DataService.DeleteAsset(id);
+            assets = DataService.GetAssets();
+            ShowSuccess($"Asset {asset.AssetId} deleted successfully");
+        }
+    }
+
+    private void ShowSuccess(string message)
+    {
+        successMessage = message;
+        showSuccessMessage = true;
+        StateHasChanged();
+        
+        Task.Delay(3000).ContinueWith(_ =>
+        {
+            showSuccessMessage = false;
+            InvokeAsync(StateHasChanged);
+        });
+    }
+}

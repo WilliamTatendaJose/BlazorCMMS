@@ -1,0 +1,71 @@
+@using Microsoft.AspNetCore.Authorization
+
+@* 
+    Wrapper component for role-based authorization in RBM CMMS
+    Usage: <AuthorizeRole Roles="Admin,Reliability Engineer">...</AuthorizeRole>
+*@
+
+@if (IsAuthorized)
+{
+    @ChildContent
+}
+else if (ShowMessage)
+{
+    <div class="rbm-card" style="background: rgba(229, 57, 53, 0.1); border-left: 4px solid var(--rbm-danger); padding: 20px;">
+        <h3 style="color: var(--rbm-danger); margin-bottom: 12px;">?? Access Denied</h3>
+        <p style="margin: 0; color: var(--rbm-text);">
+            You don't have permission to access this feature. 
+            Required role(s): <strong>@Roles</strong>
+        </p>
+        <p style="margin-top: 8px; font-size: 14px; color: var(--rbm-text-light);">
+            Your current role: <strong>@CurrentRole</strong>
+        </p>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string Roles { get; set; } = "";
+    
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+    
+    [Parameter]
+    public bool ShowMessage { get; set; } = true;
+    
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationState { get; set; }
+    
+    private bool IsAuthorized { get; set; }
+    private string CurrentRole { get; set; } = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (AuthenticationState is not null)
+        {
+            var authState = await AuthenticationState;
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                var userRoles = user.Claims
+                    .Where(c => c.Type == System.Security.Claims.ClaimTypes.Role)
+                    .Select(c => c.Value)
+                    .ToList();
+
+                CurrentRole = userRoles.FirstOrDefault() ?? "None";
+
+                var requiredRoles = Roles.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(r => r.Trim())
+                    .ToList();
+
+                IsAuthorized = requiredRoles.Any(role => userRoles.Contains(role));
+            }
+            else
+            {
+                IsAuthorized = false;
+                CurrentRole = "Not authenticated";
+            }
+        }
+    }
+}

@@ -1,0 +1,322 @@
+﻿@page "/rbm/maintenance-planning"
+@rendermode InteractiveServer
+@layout RBMLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject BlazorApp1.Services.DataService DataService
+@inject BlazorApp1.Services.CurrentUserService CurrentUser
+@using BlazorApp1.Models
+
+<div class="rbm-page-header">
+    <h1 class="rbm-page-title">Maintenance Planning</h1>
+    <p class="rbm-page-subtitle">Schedule and optimize maintenance activities</p>
+</div>
+
+<div class="rbm-action-bar">
+    <div style="display: flex; gap: 12px;">
+        <button class="rbm-btn @(viewMode == "calendar" ? "rbm-btn-primary" : "rbm-btn-outline")" @onclick='() => viewMode = "calendar"'>
+            📅 Calendar View
+        </button>
+        <button class="rbm-btn @(viewMode == "gantt" ? "rbm-btn-primary" : "rbm-btn-outline")" @onclick='() => viewMode = "gantt"'>
+            📊 Gantt View
+        </button>
+    </div>
+    <div class="rbm-action-buttons">
+        <button class="rbm-btn rbm-btn-secondary">
+            🤖 Auto-Schedule by Risk
+        </button>
+        @if(CurrentUser.CanCreateWork){
+            <button class="rbm-btn rbm-btn-primary" @onclick="ShowAddScheduleModal">
+                ➕ Add Schedule
+            </button>
+
+        }
+               
+    </div>
+</div>
+
+@if (viewMode == "calendar")
+{
+    <!-- Calendar View -->
+    <div class="rbm-card">
+        <div class="rbm-card-header">
+            <h3 class="rbm-card-title">@currentMonth.ToString("MMMM yyyy")</h3>
+            <div style="display: flex; gap: 8px;">
+                <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="PreviousMonth">← Previous</button>
+                <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="NextMonth">Next →</button>
+            </div>
+        </div>
+        <div style="padding: 20px;">
+            <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px;">
+                <!-- Days of week header -->
+                @foreach (var day in new[] { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" })
+                {
+                    <div style="padding: 12px; text-align: center; font-weight: 600; background: var(--rbm-bg); border-radius: 8px;">
+                        @day
+                    </div>
+                }
+                
+                <!-- Calendar days -->
+                @for (int i = 0; i < firstDayOffset; i++)
+                {
+                    <div style="padding: 12px; background: var(--rbm-bg); border-radius: 8px; opacity: 0.3;"></div>
+                }
+                
+                @for (int day = 1; day <= daysInMonth; day++)
+                {
+                    var date = new DateTime(currentMonth.Year, currentMonth.Month, day);
+                    var daySchedules = schedules.Where(s => s.ScheduledDate.Date == date.Date).ToList();
+                    var isToday = date.Date == DateTime.Today;
+                    
+                    <div style="padding: 12px; background: @(isToday ? "rgba(2, 136, 209, 0.1)" : "white"); border: @(isToday ? "2px solid var(--rbm-accent)" : "1px solid var(--rbm-border)"); border-radius: 8px; min-height: 100px;">
+                        <div style="font-weight: 600; margin-bottom: 8px; @(isToday ? "color: var(--rbm-accent);" : "")">@day</div>
+                        @foreach (var schedule in daySchedules)
+                        {
+                            <div style="padding: 4px 8px; background: var(--rbm-accent); color: white; border-radius: 4px; font-size: 11px; margin-bottom: 4px; cursor: pointer;">
+                                @schedule.AssetName.Substring(0, Math.Min(15, schedule.AssetName.Length))
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <!-- Gantt View -->
+    <div class="rbm-card">
+        <div class="rbm-card-header">
+            <h3 class="rbm-card-title">Gantt Chart - Next 30 Days</h3>
+        </div>
+        <div style="padding: 20px; overflow-x: auto;">
+            <div style="display: grid; grid-template-columns: 200px repeat(30, 40px); gap: 1px; background: var(--rbm-border);">
+                <!-- Header row -->
+                <div style="background: var(--rbm-bg); padding: 12px; font-weight: 600; position: sticky; left: 0; z-index: 1;">
+                    Asset
+                </div>
+                @for (int i = 0; i < 30; i++)
+                {
+                    var date = DateTime.Today.AddDays(i);
+                    <div style="background: var(--rbm-bg); padding: 8px 4px; text-align: center; font-size: 10px;">
+                        <div style="font-weight: 600;">@date.Day</div>
+                        <div>@date.ToString("MMM")</div>
+                    </div>
+                }
+                
+                <!-- Schedule rows -->
+                @foreach (var schedule in schedules.OrderBy(s => s.AssetName))
+                {
+                    <div style="background: white; padding: 12px; font-size: 13px; position: sticky; left: 0; z-index: 1;">
+                        <strong>@schedule.AssetName</strong>
+                        <div style="font-size: 11px; color: var(--rbm-text-light);">@schedule.AssignedTechnician</div>
+                    </div>
+                    
+                    @for (int i = 0; i < 30; i++)
+                    {
+                        var date = DateTime.Today.AddDays(i);
+                        var isScheduled = date.Date >= schedule.ScheduledDate.Date && 
+                                        schedule.EndDate.HasValue && 
+                                        date.Date <= schedule.EndDate.Value.Date;
+                        
+                        <div style="background: @(isScheduled ? "var(--rbm-accent)" : "white"); padding: 8px;"></div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Technician Allocation -->
+<div class="rbm-card mt-3">
+    <div class="rbm-card-header">
+        <h3 class="rbm-card-title">Technician Allocation</h3>
+    </div>
+    <div class="rbm-grid rbm-grid-4" style="padding: 20px;">
+        @foreach (var tech in DataService.GetUsers().Where(u => u.Role == "Technician"))
+        {
+            var techSchedules = schedules.Where(s => s.AssignedTechnician == tech.Name).ToList();
+            <div class="rbm-stat-card">
+                <div class="rbm-stat-label">@tech.Name</div>
+                <div class="rbm-stat-value">@techSchedules.Count</div>
+                <div class="rbm-stat-trend">Assigned Tasks</div>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Upcoming Schedules -->
+<div class="rbm-card mt-3">
+    <div class="rbm-card-header">
+        <h3 class="rbm-card-title">Upcoming Maintenance (Next 30 Days)</h3>
+    </div>
+    <div class="rbm-table-container">
+        <table class="rbm-table">
+            <thead>
+                <tr>
+                    <th>Asset</th>
+                    <th>Scheduled Date</th>
+                    <th>End Date</th>
+                    <th>Type</th>
+                    <th>Technician</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var schedule in schedules.Where(s => s.ScheduledDate >= DateTime.Today && s.ScheduledDate <= DateTime.Today.AddDays(30)).OrderBy(s => s.ScheduledDate))
+                {
+                    <tr>
+                        <td><strong>@schedule.AssetName</strong></td>
+                        <td>@schedule.ScheduledDate.ToString("MMM dd, yyyy HH:mm")</td>
+                        <td>
+                            @if (schedule.EndDate.HasValue)
+                            {
+                                @schedule.EndDate.Value.ToString("MMM dd, yyyy HH:mm")
+                            }
+                            else
+                            {
+                                <span style="color: var(--rbm-text-light);">Not set</span>
+                            }
+                        </td>
+                        <td>@schedule.Type</td>
+                        <td>@schedule.AssignedTechnician</td>
+                        <td><span class="rbm-badge-pill" style="background: rgba(2, 136, 209, 0.1); color: var(--rbm-accent);">@schedule.Status</span></td>
+                        <td>
+                            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => RescheduleItem(schedule)">
+                                📝 Reschedule
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@if (showAddModal)
+{
+    <div class="rbm-modal-backdrop" @onclick="CloseAddModal">
+        <div class="rbm-modal" @onclick:stopPropagation="true">
+            <div class="rbm-modal-header">
+                <h3 class="rbm-modal-title">Schedule Maintenance</h3>
+                <button class="rbm-modal-close" @onclick="CloseAddModal">&times;</button>
+            </div>
+            <div class="rbm-modal-body">
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Asset</label>
+                    <select class="rbm-form-select" @bind="newSchedule.AssetId" @bind:after="OnAssetSelectedForSchedule">
+                        <option value="0">-- Select Asset --</option>
+                        @foreach (var asset in DataService.GetAssets())
+                        {
+                            <option value="@asset.Id">@asset.AssetId - @asset.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Type</label>
+                    <select class="rbm-form-select" @bind="newSchedule.Type">
+                        <option value="Preventive">Preventive</option>
+                        <option value="Corrective">Corrective</option>
+                        <option value="Inspection">Inspection</option>
+                    </select>
+                </div>
+                <div class="rbm-grid rbm-grid-2">
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Start Date & Time</label>
+                        <input type="datetime-local" class="rbm-form-input" @bind="newSchedule.ScheduledDate">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">End Date & Time</label>
+                        <input type="datetime-local" class="rbm-form-input" @bind="newSchedule.EndDate">
+                    </div>
+                </div>
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Assign Technician</label>
+                    <select class="rbm-form-select" @bind="newSchedule.AssignedTechnician">
+                        <option value="">-- Select Technician --</option>
+                        @foreach (var user in DataService.GetUsers().Where(u => u.Role == "Technician"))
+                        {
+                            <option value="@user.Name">@user.Name</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <div class="rbm-modal-footer">
+                <button class="rbm-btn rbm-btn-outline" @onclick="CloseAddModal">Cancel</button>
+                <button class="rbm-btn rbm-btn-primary" @onclick="SaveSchedule" disabled="@(newSchedule.AssetId == 0)">
+                    Save Schedule
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<MaintenanceSchedule> schedules = new();
+    private MaintenanceSchedule newSchedule = new();
+    private bool showAddModal = false;
+    private string viewMode = "calendar";
+    private DateTime currentMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private int daysInMonth => DateTime.DaysInMonth(currentMonth.Year, currentMonth.Month);
+    private int firstDayOffset => (int)new DateTime(currentMonth.Year, currentMonth.Month, 1).DayOfWeek;
+
+    protected override void OnInitialized()
+    {
+        schedules = DataService.GetSchedules();
+    }
+
+    private void ShowAddScheduleModal()
+    {
+        newSchedule = new MaintenanceSchedule
+        {
+            ScheduledDate = DateTime.Today.AddDays(7).AddHours(8),
+            EndDate = DateTime.Today.AddDays(7).AddHours(10),
+            Type = "Preventive",
+            Status = "Scheduled",
+            CreatedDate = DateTime.Now,
+            CreatedBy = "System"
+        };
+        showAddModal = true;
+    }
+
+    private void CloseAddModal()
+    {
+        showAddModal = false;
+    }
+
+    private void OnAssetSelectedForSchedule()
+    {
+        var asset = DataService.GetAsset(newSchedule.AssetId);
+        if (asset != null)
+        {
+            newSchedule.AssetName = asset.Name;
+        }
+    }
+
+    private void SaveSchedule()
+    {
+        if (newSchedule.AssetId > 0 && !string.IsNullOrEmpty(newSchedule.AssignedTechnician))
+        {
+            DataService.AddSchedule(newSchedule);
+            schedules = DataService.GetSchedules();
+            CloseAddModal();
+        }
+    }
+
+    private void RescheduleItem(MaintenanceSchedule schedule)
+    {
+        // TODO: Implement reschedule functionality
+        // For now, just open edit modal with the schedule
+    }
+
+    private void PreviousMonth()
+    {
+        currentMonth = currentMonth.AddMonths(-1);
+    }
+
+    private void NextMonth()
+    {
+        currentMonth = currentMonth.AddMonths(1);
+    }
+}

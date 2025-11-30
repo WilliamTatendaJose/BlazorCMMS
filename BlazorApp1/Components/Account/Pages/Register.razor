@@ -1,0 +1,251 @@
+﻿@page "/Account/Register"
+@layout BlazorApp1.Components.Account.Shared.AccountLayout
+
+@using System.ComponentModel.DataAnnotations
+@using System.Text
+@using System.Text.Encodings.Web
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+@using BlazorApp1.Data
+
+@inject UserManager<ApplicationUser> UserManager
+@inject IUserStore<ApplicationUser> UserStore
+@inject SignInManager<ApplicationUser> SignInManager
+@inject IEmailSender<ApplicationUser> EmailSender
+@inject ILogger<Register> Logger
+@inject NavigationManager NavigationManager
+@inject IdentityRedirectManager RedirectManager
+
+<PageTitle>Register - RBM CMMS</PageTitle>
+
+<div class="login-container">
+    <div class="login-card">
+        <div class="login-header">
+            <div class="login-logo">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="#0288d1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 17L12 22L22 17" stroke="#0288d1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 12L12 17L22 12" stroke="#0288d1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            <h1 class="login-title">Create Account</h1>
+            <p class="login-subtitle">Join RBM CMMS</p>
+        </div>
+
+        <StatusMessage Message="@Message" />
+
+        <EditForm Model="Input" method="post" OnValidSubmit="RegisterUser" FormName="register" class="login-form">
+            <DataAnnotationsValidator />
+
+            <div class="rbm-form-group">
+                <label for="Input.Email" class="rbm-form-label">Email Address</label>
+                <InputText @bind-Value="Input.Email" id="Input.Email" class="rbm-form-input" autocomplete="username" aria-required="true" placeholder="your.email@company.com" />
+                <ValidationMessage For="() => Input.Email" class="validation-error" />
+            </div>
+
+            <div class="rbm-form-group">
+                <label for="Input.Password" class="rbm-form-label">Password</label>
+                <InputText type="password" @bind-Value="Input.Password" id="Input.Password" class="rbm-form-input" autocomplete="new-password" aria-required="true" placeholder="••••••••" />
+                <ValidationMessage For="() => Input.Password" class="validation-error" />
+            </div>
+
+            <div class="rbm-form-group">
+                <label for="Input.ConfirmPassword" class="rbm-form-label">Confirm Password</label>
+                <InputText type="password" @bind-Value="Input.ConfirmPassword" id="Input.ConfirmPassword" class="rbm-form-input" autocomplete="new-password" aria-required="true" placeholder="••••••••" />
+                <ValidationMessage For="() => Input.ConfirmPassword" class="validation-error" />
+            </div>
+
+            <button type="submit" class="rbm-btn rbm-btn-primary rbm-btn-block">
+                Create Account
+            </button>
+
+            <div class="login-links">
+                <span>Already have an account?</span>
+                <a href="/Account/Login" class="login-link">Sign in</a>
+            </div>
+        </EditForm>
+    </div>
+</div>
+
+<style>
+    .login-container {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #37474f 0%, #607d8b 100%);
+        padding: 20px;
+    }
+
+    .login-card {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        max-width: 480px;
+        width: 100%;
+        overflow: hidden;
+    }
+
+    .login-header {
+        background: linear-gradient(135deg, #0288d1 0%, #37474f 100%);
+        color: white;
+        padding: 40px 40px 32px;
+        text-align: center;
+    }
+
+    .login-logo {
+        margin-bottom: 16px;
+    }
+
+    .login-title {
+        font-size: 28px;
+        font-weight: 700;
+        margin: 0 0 8px 0;
+    }
+
+    .login-subtitle {
+        font-size: 14px;
+        opacity: 0.9;
+        margin: 0;
+    }
+
+    .login-form {
+        padding: 40px;
+    }
+
+    .rbm-btn-block {
+        width: 100%;
+        margin-top: 8px;
+    }
+
+    .login-links {
+        text-align: center;
+        margin-top: 24px;
+        font-size: 14px;
+    }
+
+    .login-link {
+        color: var(--rbm-accent);
+        text-decoration: none;
+        transition: color 0.2s;
+        margin-left: 8px;
+    }
+
+    .login-link:hover {
+        color: var(--rbm-accent-light);
+        text-decoration: underline;
+    }
+
+    .validation-error {
+        color: var(--rbm-danger);
+        font-size: 13px;
+        margin-top: 4px;
+    }
+
+    @@media (max-width: 600px) {
+        .login-header {
+            padding: 32px 24px 24px;
+        }
+
+        .login-form {
+            padding: 24px;
+        }
+    }
+</style>
+
+@code {
+    private IEnumerable<IdentityError>? identityErrors;
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    private string? Message => identityErrors is null ? null : $"Error: {string.Join(", ", identityErrors.Select(error => error.Description))}";
+
+    protected override void OnInitialized()
+    {
+        Input ??= new();
+    }
+
+    public async Task RegisterUser(EditContext editContext)
+    {
+        var user = CreateUser();
+
+        await UserStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
+        var emailStore = GetEmailStore();
+        await emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
+        var result = await UserManager.CreateAsync(user, Input.Password);
+
+        if (!result.Succeeded)
+        {
+            identityErrors = result.Errors;
+            return;
+        }
+
+        Logger.LogInformation("User created a new account with password.");
+
+        var userId = await UserManager.GetUserIdAsync(user);
+        var code = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+        code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+        var callbackUrl = NavigationManager.GetUriWithQueryParameters(
+            NavigationManager.ToAbsoluteUri("Account/ConfirmEmail").AbsoluteUri,
+            new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code, ["returnUrl"] = ReturnUrl });
+
+        await EmailSender.SendConfirmationLinkAsync(user, Input.Email, HtmlEncoder.Default.Encode(callbackUrl));
+
+        if (UserManager.Options.SignIn.RequireConfirmedAccount)
+        {
+            RedirectManager.RedirectTo(
+                "Account/RegisterConfirmation",
+                new() { ["email"] = Input.Email, ["returnUrl"] = ReturnUrl });
+        }
+        else
+        {
+            await SignInManager.SignInAsync(user, isPersistent: false);
+            RedirectManager.RedirectTo(ReturnUrl ?? "/rbm");
+        }
+    }
+
+    private ApplicationUser CreateUser()
+    {
+        try
+        {
+            return Activator.CreateInstance<ApplicationUser>();
+        }
+        catch
+        {
+            throw new InvalidOperationException($"Can't create an instance of '{nameof(ApplicationUser)}'. " +
+                $"Ensure that '{nameof(ApplicationUser)}' is not an abstract class and has a parameterless constructor.");
+        }
+    }
+
+    private IUserEmailStore<ApplicationUser> GetEmailStore()
+    {
+        if (!UserManager.SupportsUserEmail)
+        {
+            throw new NotSupportedException("The default UI requires a user store with email support.");
+        }
+        return (IUserEmailStore<ApplicationUser>)UserStore;
+    }
+
+    private sealed class InputModel
+    {
+        [Required]
+        [EmailAddress]
+        [Display(Name = "Email")]
+        public string Email { get; set; } = "";
+
+        [Required]
+        [StringLength(100, ErrorMessage = "The {0} must be at least {2} and at max {1} characters long.", MinimumLength = 6)]
+        [DataType(DataType.Password)]
+        [Display(Name = "Password")]
+        public string Password { get; set; } = "";
+
+        [DataType(DataType.Password)]
+        [Display(Name = "Confirm password")]
+        [Compare("Password", ErrorMessage = "The password and confirmation password do not match.")]
+        public string ConfirmPassword { get; set; } = "";
+    }
+}

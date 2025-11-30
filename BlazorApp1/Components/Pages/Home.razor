@@ -1,0 +1,132 @@
+﻿@page "/"
+@layout BlazorApp1.Components.Layout.SimpleLayout
+@using Microsoft.AspNetCore.Authorization
+
+<PageTitle>Home</PageTitle>
+
+<div style="max-width: 1200px; margin: 0 auto; padding: 40px 20px;">
+    <div style="text-align: center; margin-bottom: 60px;">
+        <h1 style="font-size: 48px; font-weight: 700; color: #37474f; margin-bottom: 16px;">
+            Welcome to RBM CMMS
+        </h1>
+        <p style="font-size: 20px; color: #607d8b; max-width: 700px; margin: 0 auto;">
+            Reliability-Based Maintenance Computerized Maintenance Management System
+        </p>
+    </div>
+
+    <AuthorizeView>
+        <Authorized>
+            <div style="background: linear-gradient(135deg, #0288d1 0%, #37474f 100%); color: white; padding: 60px 40px; border-radius: 16px; text-align: center; margin-bottom: 40px;">
+                <h2 style="font-size: 32px; margin-bottom: 16px;">Welcome back, @context.User.Identity?.Name! 👋</h2>
+                <p style="font-size: 18px; margin-bottom: 32px; opacity: 0.9;">
+                    You're logged in and ready to manage your assets.
+                </p>
+                <a href="/rbm" style="display: inline-block; background: white; color: #37474f; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px; transition: transform 0.2s;">
+                    Go to Dashboard →
+                </a>
+            </div>
+        </Authorized>
+        <NotAuthorized>
+            <div style="background: linear-gradient(135deg, #37474f 0%, #607d8b 100%); color: white; padding: 60px 40px; border-radius: 16px; text-align: center; margin-bottom: 40px;">
+                <div style="font-size: 64px; margin-bottom: 24px;">🔒</div>
+                <h2 style="font-size: 32px; margin-bottom: 16px;">Login Required</h2>
+                <p style="font-size: 18px; margin-bottom: 32px; opacity: 0.9;">
+                    Please log in to access the RBM CMMS system and manage your assets.
+                </p>
+                <div style="display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;">
+                    <a href="/Account/Login" style="display: inline-block; background: #0288d1; color: white; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px; transition: background 0.2s;">
+                        Login
+                    </a>
+                    <a href="/Account/Register" style="display: inline-block; background: transparent; border: 2px solid white; color: white; padding: 14px 30px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px; transition: background 0.2s;">
+                        Register
+                    </a>
+                </div>
+            </div>
+        </NotAuthorized>
+    </AuthorizeView>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-bottom: 40px;">
+        <div style="background: white; padding: 32px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div style="font-size: 40px; margin-bottom: 16px;">⚙️</div>
+            <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 12px; color: #37474f;">Asset Management</h3>
+            <p style="color: #607d8b; line-height: 1.6;">
+                Track and monitor all your equipment assets with real-time health scores and status updates.
+            </p>
+        </div>
+
+        <div style="background: white; padding: 32px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div style="font-size: 40px; margin-bottom: 16px;">📊</div>
+            <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 12px; color: #37474f;">Reliability Analytics</h3>
+            <p style="color: #607d8b; line-height: 1.6;">
+                Monitor MTBF, MTTR, and OEE metrics to optimize your maintenance strategy.
+            </p>
+        </div>
+
+        <div style="background: white; padding: 32px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div style="font-size: 40px; margin-bottom: 16px;">📋</div>
+            <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 12px; color: #37474f;">Work Orders</h3>
+            <p style="color: #607d8b; line-height: 1.6;">
+                Create, assign, and track maintenance work orders with detailed task management.
+            </p>
+        </div>
+
+        <div style="background: white; padding: 32px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div style="font-size: 40px; margin-bottom: 16px;">⚠️</div>
+            <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 12px; color: #37474f;">FMEA Analysis</h3>
+            <p style="color: #607d8b; line-height: 1.6;">
+                Perform Failure Mode and Effects Analysis to identify and mitigate risks.
+            </p>
+        </div>
+
+        <div style="background: white; padding: 32px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div style="font-size: 40px; margin-bottom: 16px;">📅</div>
+            <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 12px; color: #37474f;">Maintenance Planning</h3>
+            <p style="color: #607d8b; line-height: 1.6;">
+                Schedule preventive maintenance and optimize technician allocation.
+            </p>
+        </div>
+
+        <div style="background: white; padding: 32px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div style="font-size: 40px; margin-bottom: 16px;">📈</div>
+            <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 12px; color: #37474f;">Condition Monitoring</h3>
+            <p style="color: #607d8b; line-height: 1.6;">
+                Record and analyze sensor data including temperature, vibration, and pressure.
+            </p>
+        </div>
+    </div>
+
+    <AuthorizeView>
+        <NotAuthorized>
+            <div style="background: #eceff1; padding: 32px; border-radius: 12px; text-align: center;">
+                <h3 style="font-size: 24px; font-weight: 600; margin-bottom: 16px; color: #37474f;">
+                    Demo Credentials
+                </h3>
+                <p style="color: #607d8b; margin-bottom: 24px;">
+                    Use these credentials to explore the system:
+                </p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; max-width: 800px; margin: 0 auto;">
+                    <div style="background: white; padding: 16px; border-radius: 8px;">
+                        <div style="font-weight: 600; color: #e53935; margin-bottom: 8px;">👑 Admin</div>
+                        <div style="font-size: 13px; color: #607d8b;">admin@company.com</div>
+                        <div style="font-size: 13px; color: #607d8b;">Admin123!</div>
+                    </div>
+                    <div style="background: white; padding: 16px; border-radius: 8px;">
+                        <div style="font-weight: 600; color: #0288d1; margin-bottom: 8px;">🔧 Engineer</div>
+                        <div style="font-size: 13px; color: #607d8b;">sarah.johnson@company.com</div>
+                        <div style="font-size: 13px; color: #607d8b;">Sarah123!</div>
+                    </div>
+                    <div style="background: white; padding: 16px; border-radius: 8px;">
+                        <div style="font-weight: 600; color: #fb8c00; margin-bottom: 8px;">📋 Planner</div>
+                        <div style="font-size: 13px; color: #607d8b;">emily.brown@company.com</div>
+                        <div style="font-size: 13px; color: #607d8b;">Emily123!</div>
+                    </div>
+                    <div style="background: white; padding: 16px; border-radius: 8px;">
+                        <div style="font-weight: 600; color: #43a047; margin-bottom: 8px;">👷 Technician</div>
+                        <div style="font-size: 13px; color: #607d8b;">john.smith@company.com</div>
+                        <div style="font-size: 13px; color: #607d8b;">John123!</div>
+                    </div>
+                </div>
+            </div>
+        </NotAuthorized>
+    </AuthorizeView>
+</div>

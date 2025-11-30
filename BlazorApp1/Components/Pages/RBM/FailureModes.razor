@@ -1,0 +1,287 @@
+﻿@page "/rbm/failure-modes"
+@rendermode InteractiveServer
+@layout RBMLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject BlazorApp1.Services.DataService DataService
+@inject BlazorApp1.Services.CurrentUserService CurrentUser
+@using BlazorApp1.Models
+
+<div class="rbm-page-header">
+    <h1 class="rbm-page-title">Failure Modes (FMEA)</h1>
+    <p class="rbm-page-subtitle">Failure Mode and Effects Analysis - Risk-based prioritization</p>
+</div>
+
+<div class="rbm-action-bar">
+    <div class="rbm-action-buttons">
+        <button class="rbm-btn rbm-btn-primary" @onclick="ShowAddModal">
+            ➕ Add Failure Mode
+        </button>
+        <button class="rbm-btn rbm-btn-secondary">
+            📊 View Risk Matrix
+        </button>
+    </div>
+</div>
+
+<!-- FMEA Table -->
+<div class="rbm-card">
+    <div class="rbm-table-container">
+        <table class="rbm-table">
+            <thead>
+                <tr>
+                    <th>Asset</th>
+                    <th>Failure Mode</th>
+                    <th>Cause</th>
+                    <th>Effect</th>
+                    <th>Severity (S)</th>
+                    <th>Occurrence (O)</th>
+                    <th>Detection (D)</th>
+                    <th>RPN (S×O×D)</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var fm in failureModes.OrderByDescending(f => f.RPN))
+                {
+                    var asset = assets.FirstOrDefault(a => a.Id == fm.AssetId);
+                    <tr>
+                        <td>
+                            @if (asset != null)
+                            {
+                                <div><strong>@asset.AssetId</strong></div>
+                                <div style="font-size: 12px; color: var(--rbm-text-light);">@asset.Name</div>
+                            }
+                        </td>
+                        <td><strong>@fm.Mode</strong></td>
+                        <td>@fm.Cause</td>
+                        <td>@fm.Effect</td>
+                        <td class="text-center">@fm.Severity</td>
+                        <td class="text-center">@fm.Occurrence</td>
+                        <td class="text-center">@fm.Detection</td>
+                        <td class="text-center">
+                            <strong style="color: @GetRPNColor(fm.RPN); font-size: 16px;">@fm.RPN</strong>
+                        </td>
+                        <td>
+                            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => EditFailureMode(fm)">
+                                ✏️ Edit
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Risk Matrix Heatmap -->
+<div class="rbm-card mt-3">
+    <div class="rbm-card-header">
+        <h3 class="rbm-card-title">Risk Matrix Heatmap</h3>
+        <p class="rbm-card-subtitle">Visual representation of failure mode severity and occurrence</p>
+    </div>
+    <div style="padding: 20px;">
+        <div style="display: grid; grid-template-columns: 60px repeat(10, 1fr); gap: 4px;">
+            <!-- Header row -->
+            <div></div>
+            @for (int i = 1; i <= 10; i++)
+            {
+                <div style="text-align: center; font-size: 12px; font-weight: 600; padding: 8px;">@i</div>
+            }
+            
+            <!-- Severity rows -->
+            @for (int s = 10; s >= 1; s--)
+            {
+                <div style="display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600;">S:@s</div>
+                @for (int o = 1; o <= 10; o++)
+                {
+                    var rpn = s * o * 5; // Assuming average detection of 5
+                    var count = failureModes.Count(fm => 
+                        fm.Severity == s && 
+                        fm.Occurrence == o);
+                    
+                    <div style="background: @GetHeatmapColor(rpn); 
+                                padding: 16px; 
+                                border-radius: 4px; 
+                                text-align: center;
+                                font-size: 11px;
+                                font-weight: 600;
+                                color: @(rpn > 200 ? "white" : "var(--rbm-text)");">
+                        @if (count > 0)
+                        {
+                            <text>@count</text>
+                        }
+                    </div>
+                }
+            }
+        </div>
+        <div style="margin-top: 20px; display: flex; align-items: center; gap: 20px; justify-content: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 24px; height: 24px; background: rgba(67, 160, 71, 0.3); border-radius: 4px;"></div>
+                <span style="font-size: 13px;">Low Risk (RPN &lt; 100)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 24px; height: 24px; background: rgba(251, 140, 0, 0.3); border-radius: 4px;"></div>
+                <span style="font-size: 13px;">Medium Risk (100-200)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 24px; height: 24px; background: rgba(229, 57, 53, 0.3); border-radius: 4px;"></div>
+                <span style="font-size: 13px;">High Risk (RPN &gt; 200)</span>
+            </div>
+        </div>
+        <div style="margin-top: 12px; text-align: center; font-size: 12px; color: var(--rbm-text-light);">
+            Occurrence (O) →
+        </div>
+    </div>
+</div>
+
+<!-- Generate Maintenance Plan -->
+<div class="rbm-card mt-3">
+    <div class="rbm-card-header">
+        <h3 class="rbm-card-title">Maintenance Plan Generation</h3>
+    </div>
+    <div style="padding: 20px;">
+        <p>Generate a risk-based maintenance plan prioritizing high RPN failure modes.</p>
+        <button class="rbm-btn rbm-btn-success">
+            🤖 Generate Maintenance Plan from FMEA
+        </button>
+        <div style="margin-top: 16px; padding: 16px; background: var(--rbm-bg); border-radius: 8px;">
+            <strong>Plan Preview:</strong>
+            <ul style="margin-top: 12px;">
+                <li>@failureModes.Count(f => f.RPN > 200) critical failure modes require immediate attention</li>
+                <li>@failureModes.Count(f => f.RPN >= 100 && f.RPN <= 200) medium-risk items for preventive scheduling</li>
+                <li>Estimated @(failureModes.Count(f => f.RPN > 200) * 4) hours of corrective work needed</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+@if (showModal)
+{
+    <div class="rbm-modal-backdrop" @onclick="CloseModal">
+        <div class="rbm-modal" @onclick:stopPropagation="true">
+            <div class="rbm-modal-header">
+                <h3 class="rbm-modal-title">@(editMode ? "Edit" : "Add") Failure Mode</h3>
+                <button class="rbm-modal-close" @onclick="CloseModal">&times;</button>
+            </div>
+            <div class="rbm-modal-body">
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Asset</label>
+                    <select class="rbm-form-select" @bind="currentFailureMode.AssetId">
+                        <option value="0">-- Select Asset --</option>
+                        @foreach (var asset in assets)
+                        {
+                            <option value="@asset.Id">@asset.AssetId - @asset.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Failure Mode</label>
+                    <input type="text" class="rbm-form-input" @bind="currentFailureMode.Mode" placeholder="e.g., Bearing seizure">
+                </div>
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Cause</label>
+                    <input type="text" class="rbm-form-input" @bind="currentFailureMode.Cause" placeholder="e.g., Insufficient lubrication">
+                </div>
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Effect</label>
+                    <input type="text" class="rbm-form-input" @bind="currentFailureMode.Effect" placeholder="e.g., Complete equipment shutdown">
+                </div>
+                <div class="rbm-grid rbm-grid-3">
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Severity (1-10)</label>
+                        <input type="number" class="rbm-form-input" @bind="currentFailureMode.Severity" min="1" max="10">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Occurrence (1-10)</label>
+                        <input type="number" class="rbm-form-input" @bind="currentFailureMode.Occurrence" min="1" max="10">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Detection (1-10)</label>
+                        <input type="number" class="rbm-form-input" @bind="currentFailureMode.Detection" min="1" max="10">
+                    </div>
+                </div>
+                <div style="padding: 12px; background: var(--rbm-bg); border-radius: 8px; margin-top: 12px;">
+                    <strong>Calculated RPN:</strong> 
+                    <span style="font-size: 24px; color: @GetRPNColor(currentFailureMode.RPN); font-weight: 700; margin-left: 12px;">
+                        @currentFailureMode.RPN
+                    </span>
+                </div>
+            </div>
+            <div class="rbm-modal-footer">
+                <button class="rbm-btn rbm-btn-outline" @onclick="CloseModal">Cancel</button>
+                <button class="rbm-btn rbm-btn-primary" @onclick="SaveFailureMode">Save</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Asset> assets = new();
+    private List<FailureMode> failureModes = new();
+    private FailureMode currentFailureMode = new();
+    private bool showModal = false;
+    private bool editMode = false;
+
+    protected override void OnInitialized()
+    {
+        assets = DataService.GetAssets();
+        failureModes = DataService.GetFailureModes();
+    }
+
+    private void ShowAddModal()
+    {
+        currentFailureMode = new FailureMode { Severity = 5, Occurrence = 5, Detection = 5 };
+        editMode = false;
+        showModal = true;
+    }
+
+    private void EditFailureMode(FailureMode fm)
+    {
+        currentFailureMode = new FailureMode
+        {
+            Id = fm.Id,
+            AssetId = fm.AssetId,
+            Mode = fm.Mode,
+            Cause = fm.Cause,
+            Effect = fm.Effect,
+            Severity = fm.Severity,
+            Occurrence = fm.Occurrence,
+            Detection = fm.Detection
+        };
+        editMode = true;
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+    }
+
+    private void SaveFailureMode()
+    {
+        if (editMode)
+        {
+            DataService.UpdateFailureMode(currentFailureMode);
+        }
+        else
+        {
+            DataService.AddFailureMode(currentFailureMode);
+        }
+        failureModes = DataService.GetFailureModes();
+        CloseModal();
+    }
+
+    private string GetRPNColor(int rpn)
+    {
+        if (rpn > 200) return "var(--rbm-danger)";
+        if (rpn >= 100) return "var(--rbm-warning)";
+        return "var(--rbm-success)";
+    }
+
+    private string GetHeatmapColor(int rpn)
+    {
+        if (rpn > 200) return "rgba(229, 57, 53, 0.3)";
+        if (rpn >= 100) return "rgba(251, 140, 0, 0.3)";
+        return "rgba(67, 160, 71, 0.3)";
+    }
+}

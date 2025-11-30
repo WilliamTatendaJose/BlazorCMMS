@@ -1,0 +1,219 @@
+@page "/rbm/technicians"
+@rendermode InteractiveServer
+@layout RBMLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject BlazorApp1.Services.DataService DataService
+@using BlazorApp1.Models
+
+<div class="rbm-page-header">
+    <h1 class="rbm-page-title">Technicians Portal</h1>
+    <p class="rbm-page-subtitle">Mobile-friendly work order management</p>
+</div>
+
+<div style="max-width: 800px; margin: 0 auto;">
+    <!-- Quick Actions -->
+    <div class="rbm-grid rbm-grid-2" style="margin-bottom: 24px;">
+        <button class="rbm-stat-card" style="border: none; cursor: pointer; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 12px;">??</div>
+            <div style="font-size: 16px; font-weight: 600;">Scan QR Code</div>
+            <div style="font-size: 13px; color: var(--rbm-text-light); margin-top: 8px;">Check-in to asset</div>
+        </button>
+        
+        <button class="rbm-stat-card" style="border: none; cursor: pointer; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 12px;">
+                @if (isOnline)
+                {
+                    <span>??</span>
+                }
+                else
+                {
+                    <span>??</span>
+                }
+            </div>
+            <div style="font-size: 16px; font-weight: 600;">@(isOnline ? "Online" : "Offline")</div>
+            <div style="font-size: 13px; color: var(--rbm-text-light); margin-top: 8px;">Sync Status</div>
+        </button>
+    </div>
+
+    <!-- My Assigned Work Orders -->
+    <div class="rbm-card">
+        <div class="rbm-card-header">
+            <h3 class="rbm-card-title">My Assigned Work Orders</h3>
+            <select class="rbm-form-select" @bind="selectedTechnician" style="width: 200px;">
+                @foreach (var tech in DataService.GetUsers().Where(u => u.Role == "Technician"))
+                {
+                    <option value="@tech.Name">@tech.Name</option>
+                }
+            </select>
+        </div>
+        
+        @foreach (var wo in GetTechnicianWorkOrders().Where(w => w.Status != "Completed"))
+        {
+            <div style="padding: 20px; border-bottom: 1px solid var(--rbm-border);">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                    <div>
+                        <div style="font-size: 18px; font-weight: 600; margin-bottom: 4px;">@wo.WorkOrderId</div>
+                        <div style="font-size: 14px; color: var(--rbm-text-light);">@wo.AssetName</div>
+                    </div>
+                    <span class="rbm-badge-pill rbm-badge-@wo.Priority.ToLower()">@wo.Priority</span>
+                </div>
+                
+                <div style="margin-bottom: 12px;">
+                    <p style="margin: 0; font-size: 14px;">@wo.Description</p>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px; font-size: 13px;">
+                    <div>
+                        <strong>Type:</strong> @wo.Type
+                    </div>
+                    <div>
+                        <strong>Due:</strong> @wo.DueDate.ToString("MMM dd, yyyy")
+                    </div>
+                    <div>
+                        <strong>Est. Downtime:</strong> @wo.EstimatedDowntime hrs
+                    </div>
+                    <div>
+                        <strong>Status:</strong> 
+                        <span class="rbm-badge-pill" style="@GetStatusStyle(wo.Status); padding: 2px 8px;">@wo.Status</span>
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    @if (wo.Status == "Open")
+                    {
+                        <button class="rbm-btn rbm-btn-success" @onclick="() => StartWork(wo)">
+                            ?? Start Work
+                        </button>
+                    }
+                    @if (wo.Status == "In Progress")
+                    {
+                        <button class="rbm-btn rbm-btn-warning" @onclick="() => PauseWork(wo)">
+                            ?? Pause
+                        </button>
+                        <button class="rbm-btn rbm-btn-primary" @onclick="() => CompleteWork(wo)">
+                            ? Complete
+                        </button>
+                    }
+                    <button class="rbm-btn rbm-btn-outline">
+                        ?? Add Photo
+                    </button>
+                    <button class="rbm-btn rbm-btn-outline">
+                        ?? Add Note
+                    </button>
+                </div>
+            </div>
+        }
+        
+        @if (!GetTechnicianWorkOrders().Any(w => w.Status != "Completed"))
+        {
+            <div style="padding: 60px 20px; text-align: center; color: var(--rbm-text-light);">
+                <div style="font-size: 48px; margin-bottom: 16px;">?</div>
+                <div style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">All Caught Up!</div>
+                <div>No pending work orders assigned to you.</div>
+            </div>
+        }
+    </div>
+
+    <!-- Completed Today -->
+    <div class="rbm-card mt-3">
+        <div class="rbm-card-header">
+            <h3 class="rbm-card-title">Completed Today</h3>
+        </div>
+        @{
+            var completedToday = GetTechnicianWorkOrders()
+                .Where(w => w.Status == "Completed" && w.CompletedDate?.Date == DateTime.Today)
+                .ToList();
+        }
+        
+        @if (completedToday.Any())
+        {
+            @foreach (var wo in completedToday)
+            {
+                <div style="padding: 16px; border-bottom: 1px solid var(--rbm-border); display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-weight: 600;">@wo.WorkOrderId - @wo.AssetName</div>
+                        <div style="font-size: 13px; color: var(--rbm-text-light);">
+                            Completed at @wo.CompletedDate?.ToString("HH:mm")
+                        </div>
+                    </div>
+                    <span style="color: var(--rbm-success); font-size: 24px;">?</span>
+                </div>
+            }
+        }
+        else
+        {
+            <div style="padding: 40px 20px; text-align: center; color: var(--rbm-text-light);">
+                No work orders completed today
+            </div>
+        }
+    </div>
+
+    <!-- Performance Stats -->
+    <div class="rbm-grid rbm-grid-3 mt-3">
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-label">This Week</div>
+            <div class="rbm-stat-value">@completedToday.Count</div>
+            <div class="rbm-stat-trend">Completed</div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-label">Avg Time</div>
+            <div class="rbm-stat-value">3.2h</div>
+            <div class="rbm-stat-trend">Per Work Order</div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-label">Pending</div>
+            <div class="rbm-stat-value">@GetTechnicianWorkOrders().Count(w => w.Status != "Completed")</div>
+            <div class="rbm-stat-trend">To Complete</div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<WorkOrder> workOrders = new();
+    private string selectedTechnician = "";
+    private bool isOnline = true;
+
+    protected override void OnInitialized()
+    {
+        workOrders = DataService.GetWorkOrders();
+    }
+
+    private List<WorkOrder> GetTechnicianWorkOrders()
+    {
+        return workOrders.Where(w => w.AssignedTo == selectedTechnician).ToList();
+    }
+
+    private void StartWork(WorkOrder wo)
+    {
+        wo.Status = "In Progress";
+        DataService.UpdateWorkOrder(wo);
+        workOrders = DataService.GetWorkOrders();
+    }
+
+    private void PauseWork(WorkOrder wo)
+    {
+        wo.Status = "Open";
+        DataService.UpdateWorkOrder(wo);
+        workOrders = DataService.GetWorkOrders();
+    }
+
+    private void CompleteWork(WorkOrder wo)
+    {
+        wo.Status = "Completed";
+        wo.CompletedDate = DateTime.Now;
+        DataService.UpdateWorkOrder(wo);
+        workOrders = DataService.GetWorkOrders();
+    }
+
+    private string GetStatusStyle(string status)
+    {
+        return status switch
+        {
+            "Open" => "background: rgba(2, 136, 209, 0.1); color: var(--rbm-accent);",
+            "In Progress" => "background: rgba(251, 140, 0, 0.1); color: var(--rbm-warning);",
+            "Completed" => "background: rgba(67, 160, 71, 0.1); color: var(--rbm-success);",
+            _ => ""
+        };
+    }
+}

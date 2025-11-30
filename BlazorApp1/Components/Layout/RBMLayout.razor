@@ -1,0 +1,267 @@
+﻿@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject BlazorApp1.Services.CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<div class="rbm-layout @(isMobileMenuOpen ? "mobile-menu-open" : "")">
+    <!-- Mobile Header -->
+    <div class="rbm-mobile-header">
+        <button class="rbm-mobile-menu-toggle" @onclick="ToggleMobileMenu" aria-label="Toggle menu">
+            @if (isMobileMenuOpen)
+            {
+                <span>✕</span>
+            }
+            else
+            {
+                <span>☰</span>
+            }
+        </button>
+        <div class="rbm-mobile-logo">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>RBM CMMS</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <form action="Account/Logout" method="post" style="margin: 0;">
+                <AntiforgeryToken />
+                <input type="hidden" name="ReturnUrl" value="~/" />
+                <button type="submit" class="rbm-mobile-logout-btn" title="Sign out" aria-label="Sign out">
+                    <span class="logout-icon">🚪</span>
+                </button>
+            </form>
+            <button class="rbm-mobile-profile-btn" @onclick="ToggleRoleMenu" aria-label="User profile">
+                <img src="https://ui-avatars.com/api/?name=@CurrentUser.UserName.Replace(" ", "+")&background=607d8b&color=fff" alt="User" class="rbm-avatar-sm">
+            </button>
+        </div>
+    </div>
+
+    <!-- Sidebar Navigation -->
+    <div class="rbm-sidebar">
+        <div class="rbm-sidebar-header">
+            <div class="rbm-logo">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span class="rbm-logo-text">RBM CMMS</span>
+            </div>
+        </div>
+        
+        <nav class="rbm-nav">
+            <NavLink class="rbm-nav-item" href="/rbm" Match="NavLinkMatch.All" @onclick="CloseMobileMenu">
+                <span class="rbm-nav-icon">📊</span>
+                <span class="rbm-nav-label">Dashboard</span>
+            </NavLink>
+            
+            <NavLink class="rbm-nav-item" href="/rbm/assets" @onclick="CloseMobileMenu">
+                <span class="rbm-nav-icon">⚙️</span>
+                <span class="rbm-nav-label">Assets</span>
+            </NavLink>
+            
+            <NavLink class="rbm-nav-item" href="/rbm/condition-monitoring" @onclick="CloseMobileMenu">
+                <span class="rbm-nav-icon">📈</span>
+                <span class="rbm-nav-label">Condition Monitoring</span>
+            </NavLink>
+            
+            <NavLink class="rbm-nav-item" href="/rbm/failure-modes" @onclick="CloseMobileMenu">
+                <span class="rbm-nav-icon">⚠️</span>
+                <span class="rbm-nav-label">Failure Modes (FMEA)</span>
+            </NavLink>
+            
+            <NavLink class="rbm-nav-item" href="/rbm/work-orders" @onclick="CloseMobileMenu">
+                <span class="rbm-nav-icon">📋</span>
+                <span class="rbm-nav-label">Work Orders</span>
+            </NavLink>
+            
+            <NavLink class="rbm-nav-item" href="/rbm/maintenance-planning" @onclick="CloseMobileMenu">
+                <span class="rbm-nav-icon">📅</span>
+                <span class="rbm-nav-label">Maintenance Planning</span>
+            </NavLink>
+            
+            <NavLink class="rbm-nav-item" href="/rbm/analytics" @onclick="CloseMobileMenu">
+                <span class="rbm-nav-icon">📉</span>
+                <span class="rbm-nav-label">Reliability Analytics</span>
+            </NavLink>
+            
+            <NavLink class="rbm-nav-item" href="/rbm/technicians" @onclick="CloseMobileMenu">
+                <span class="rbm-nav-icon">👷</span>
+                <span class="rbm-nav-label">Technicians Portal</span>
+            </NavLink>
+            
+            @if (CurrentUser.IsAdmin)
+            {
+                <NavLink class="rbm-nav-item" href="/rbm/users" @onclick="CloseMobileMenu">
+                    <span class="rbm-nav-icon">👥</span>
+                    <span class="rbm-nav-label">User Management</span>
+                </NavLink>
+                
+                <NavLink class="rbm-nav-item" href="/rbm/settings" @onclick="CloseMobileMenu">
+                    <span class="rbm-nav-icon">⚙️</span>
+                    <span class="rbm-nav-label">Settings</span>
+                </NavLink>
+            }
+        </nav>
+    </div>
+
+    <div class="rbm-main">
+        <div class="rbm-topbar">
+            <div class="rbm-search">
+                <input type="text" placeholder="Search assets, work orders..." class="rbm-search-input">
+                <span class="rbm-search-icon">🔍</span>
+            </div>
+            
+            <div class="rbm-topbar-actions">
+                <button class="rbm-icon-button" title="Notifications" @onclick="ShowNotifications">
+                    <span class="rbm-badge">3</span>
+                    <span class="notification-icon">🔔</span>
+                </button>
+                <button class="rbm-user-menu" @onclick="ToggleRoleMenu">
+                    <img src="https://ui-avatars.com/api/?name=@CurrentUser.UserName.Replace(" ", "+")&background=607d8b&color=fff" alt="User" class="rbm-avatar">
+                    <div class="rbm-user-info">
+                        <div class="rbm-user-name">@CurrentUser.UserName</div>
+                        <div class="rbm-user-role">@CurrentUser.Role</div>
+                    </div>
+                </button>
+                <form action="Account/Logout" method="post" style="margin: 0;">
+                    <AntiforgeryToken />
+                    <input type="hidden" name="ReturnUrl" value="~/" />
+                    <button type="submit" class="rbm-btn rbm-btn-outline rbm-btn-sm" title="Sign out" style="border-color: var(--rbm-danger); color: var(--rbm-danger);">
+                        <span class="logout-icon">🚪</span> Logout
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="rbm-content">
+            @Body
+        </div>
+    </div>
+</div>
+
+<!-- Mobile Menu Overlay -->
+@if (isMobileMenuOpen)
+{
+    <div class="rbm-mobile-overlay" @onclick="CloseMobileMenu"></div>
+}
+
+<!-- User Profile Modal -->
+@if (showRoleMenu)
+{
+    <div class="rbm-modal-backdrop" @onclick="ToggleRoleMenu">
+        <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 400px;">
+            <div class="rbm-modal-header">
+                <h3 class="rbm-modal-title">User Profile</h3>
+                <button class="rbm-modal-close" @onclick="ToggleRoleMenu">&times;</button>
+            </div>
+            <div class="rbm-modal-body">
+                <div style="margin-bottom: 20px;">
+                    <div style="font-weight: 600; margin-bottom: 8px;">@CurrentUser.UserName</div>
+                    <div style="color: var(--rbm-text-light); font-size: 14px;">@CurrentUser.Email</div>
+                    <div style="color: var(--rbm-text-light); font-size: 14px; margin-top: 4px;">
+                        Role: <strong>@CurrentUser.Role</strong>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--rbm-border);">
+                    <p style="font-size: 14px; color: var(--rbm-text-light); margin-bottom: 12px;">
+                        <strong>Demo Mode:</strong> Switch roles to see different permissions
+                    </p>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <button class="rbm-btn @(CurrentUser.Role == "Admin" ? "rbm-btn-primary" : "rbm-btn-outline")" 
+                                @onclick='() => SwitchRole("Admin User", "Admin", "admin@company.com", "Management")'>
+                            <span class="role-icon">👑</span> Admin (Full Access)
+                        </button>
+                        <button class="rbm-btn @(CurrentUser.Role == "Reliability Engineer" ? "rbm-btn-primary" : "rbm-btn-outline")" 
+                                @onclick='() => SwitchRole("Sarah Johnson", "Reliability Engineer", "sarah.johnson@company.com", "Engineering")'>
+                            <span class="role-icon">🔧</span> Reliability Engineer
+                        </button>
+                        <button class="rbm-btn @(CurrentUser.Role == "Planner" ? "rbm-btn-primary" : "rbm-btn-outline")" 
+                                @onclick='() => SwitchRole("Emily Brown", "Planner", "emily.brown@company.com", "Planning")'>
+                            <span class="role-icon">📋</span> Planner
+                        </button>
+                        <button class="rbm-btn @(CurrentUser.Role == "Technician" ? "rbm-btn-primary" : "rbm-btn-outline")" 
+                                @onclick='() => SwitchRole("John Smith", "Technician", "john.smith@company.com", "Maintenance")'>
+                            <span class="role-icon">👷</span> Technician (Limited Access)
+                        </button>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <a href="/Account/Manage" class="rbm-btn rbm-btn-outline" style="width: 100%; text-align: center; display: inline-block; text-decoration: none;">
+                        <span class="settings-icon">⚙️</span> Account Settings
+                    </a>
+                    <form action="/Account/Logout" method="post" style="margin-top: 8px;">
+                        <button type="submit" class="rbm-btn rbm-btn-outline" style="width: 100%; color: var(--rbm-danger);">
+                            <span class="logout-icon">🚪</span> Logout
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private bool showRoleMenu = false;
+    private bool isMobileMenuOpen = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CurrentUser.InitializeAsync();
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        CloseMobileMenu();
+        StateHasChanged();
+    }
+
+    private void ToggleMobileMenu()
+    {
+        isMobileMenuOpen = !isMobileMenuOpen;
+    }
+
+    private void CloseMobileMenu()
+    {
+        isMobileMenuOpen = false;
+    }
+
+    private void ToggleRoleMenu()
+    {
+        showRoleMenu = !showRoleMenu;
+        if (showRoleMenu)
+        {
+            CloseMobileMenu();
+        }
+    }
+
+    private void ShowNotifications()
+    {
+        // TODO: Implement notifications
+    }
+
+    private void SwitchRole(string userName, string role, string email, string department)
+    {
+        CurrentUser.SetUser(userName, role, email, department);
+        showRoleMenu = false;
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}

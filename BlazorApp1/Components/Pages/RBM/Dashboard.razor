@@ -1,0 +1,171 @@
+﻿@page "/rbm"
+@rendermode InteractiveServer
+@layout RBMLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject BlazorApp1.Services.DataService DataService
+@using BlazorApp1.Models
+@using BlazorApp1.Components.Shared
+
+<div class="rbm-page-header">
+    <h1 class="rbm-page-title">Dashboard</h1>
+    <p class="rbm-page-subtitle">Real-time overview of asset health and maintenance activities</p>
+</div>
+
+<!-- KPI Cards -->
+<div class="rbm-grid rbm-grid-4">
+    <div class="rbm-stat-card">
+        <div class="rbm-stat-label">Total Assets</div>
+        <div class="rbm-stat-value">@assets.Count</div>
+        <div class="rbm-stat-trend positive">↑ 5% from last month</div>
+    </div>
+    
+    <div class="rbm-stat-card">
+        <div class="rbm-stat-label">MTBF (Hours)</div>
+        <div class="rbm-stat-value">1,248</div>
+        <div class="rbm-stat-trend positive">↑ 12% improvement</div>
+    </div>
+    
+    <div class="rbm-stat-card">
+        <div class="rbm-stat-label">MTTR (Hours)</div>
+        <div class="rbm-stat-value">4.2</div>
+        <div class="rbm-stat-trend negative">↓ 8% increase</div>
+    </div>
+    
+    <div class="rbm-stat-card">
+        <div class="rbm-stat-label">Open Work Orders</div>
+        <div class="rbm-stat-value">@workOrders.Count(w => w.Status != "Completed")</div>
+        <div class="rbm-stat-trend">@workOrders.Count(w => w.Priority == "Critical") critical</div>
+    </div>
+</div>
+
+<!-- Asset Health Overview & Risk Priority List -->
+<div class="rbm-grid rbm-grid-2 mt-3">
+    <div class="rbm-card">
+        <div class="rbm-card-header">
+            <h3 class="rbm-card-title">Asset Health Overview</h3>
+        </div>
+        <div class="rbm-chart">
+            <SimplePieChart HealthyCount="@healthyCount" 
+                          WarningCount="@warningCount" 
+                          CriticalCount="@criticalCount" />
+        </div>
+    </div>
+    
+    <div class="rbm-card">
+        <div class="rbm-card-header">
+            <h3 class="rbm-card-title">Top 10 Critical Assets (by Health Score)</h3>
+        </div>
+        <div class="rbm-table-container">
+            <table class="rbm-table">
+                <thead>
+                    <tr>
+                        <th>Asset ID</th>
+                        <th>Name</th>
+                        <th>Health Score</th>
+                        <th>Criticality</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var asset in criticalAssets)
+                    {
+                        <tr>
+                            <td>@asset.AssetId</td>
+                            <td>@asset.Name</td>
+                            <td>
+                                <span class="rbm-health-score @(asset.HealthScore >= 80 ? "healthy" : asset.HealthScore >= 60 ? "warning" : "critical")">
+                                    <span class="rbm-health-dot"></span>
+                                    @asset.HealthScore
+                                </span>
+                            </td>
+                            <td><span class="rbm-badge-pill rbm-badge-@asset.Criticality.ToLower()">@asset.Criticality</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Upcoming Maintenance Tasks -->
+<div class="rbm-card mt-3">
+    <div class="rbm-card-header">
+        <h3 class="rbm-card-title">Upcoming Maintenance Tasks</h3>
+        <a href="/rbm/work-orders" class="rbm-btn rbm-btn-outline rbm-btn-sm">View All</a>
+    </div>
+    <div class="rbm-table-container">
+        <table class="rbm-table">
+            <thead>
+                <tr>
+                    <th>Work Order</th>
+                    <th>Asset</th>
+                    <th>Type</th>
+                    <th>Priority</th>
+                    <th>Due Date</th>
+                    <th>Assigned To</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var wo in upcomingWorkOrders)
+                {
+                    <tr>
+                        <td><strong>@wo.WorkOrderId</strong></td>
+                        <td>@wo.AssetName</td>
+                        <td>@wo.Type</td>
+                        <td><span class="rbm-badge-pill rbm-badge-@wo.Priority.ToLower()">@wo.Priority</span></td>
+                        <td>@wo.DueDate.ToString("MMM dd, yyyy")</td>
+                        <td>@wo.AssignedTo</td>
+                        <td>@wo.Status</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Condition Trend -->
+<div class="rbm-card mt-3">
+    <div class="rbm-card-header">
+        <h3 class="rbm-card-title">Condition Trends (Last 7 Days)</h3>
+    </div>
+    <div class="rbm-chart">
+        <div style="text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 16px;">📈</div>
+            <div>Temperature, Vibration & Pressure Monitoring</div>
+            <div style="margin-top: 8px; color: var(--rbm-text-light);">Chart visualization would appear here</div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<Asset> assets = new();
+    private List<WorkOrder> workOrders = new();
+    private List<Asset> criticalAssets = new();
+    private List<WorkOrder> upcomingWorkOrders = new();
+    
+    private int healthyCount = 0;
+    private int warningCount = 0;
+    private int criticalCount = 0;
+    private int healthyPercent = 0;
+    private int warningPercent = 0;
+    private int criticalPercent = 0;
+
+    protected override void OnInitialized()
+    {
+        assets = DataService.GetAssets();
+        workOrders = DataService.GetWorkOrders();
+        
+        criticalAssets = assets.OrderBy(a => a.HealthScore).Take(10).ToList();
+        upcomingWorkOrders = workOrders.Where(w => w.Status != "Completed").OrderBy(w => w.DueDate).Take(5).ToList();
+        
+        healthyCount = assets.Count(a => a.Status == "Healthy");
+        warningCount = assets.Count(a => a.Status == "Warning");
+        criticalCount = assets.Count(a => a.Status == "Critical");
+        
+        var total = assets.Count;
+        healthyPercent = total > 0 ? (int)((double)healthyCount / total * 100) : 0;
+        warningPercent = total > 0 ? (int)((double)warningCount / total * 100) : 0;
+        criticalPercent = total > 0 ? (int)((double)criticalCount / total * 100) : 0;
+    }
+}

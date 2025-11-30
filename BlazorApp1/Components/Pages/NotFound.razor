@@ -1,0 +1,239 @@
+﻿@page "/not-found"
+@layout BlazorApp1.Components.Layout.SimpleLayout
+@inject NavigationManager Navigation
+
+<PageTitle>404 - Page Not Found | RBM CMMS</PageTitle>
+
+<div class="not-found-container">
+    <div class="not-found-card">
+        <div class="not-found-icon">
+            <svg width="120" height="120" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" stroke="#607d8b" stroke-width="1.5" fill="none"/>
+                <path d="M9 9l6 6M15 9l-6 6" stroke="#607d8b" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+        </div>
+        
+        <h1 class="not-found-title">404</h1>
+        <h2 class="not-found-subtitle">Page Not Found</h2>
+        <p class="not-found-message">
+            Oops! The page you're looking for doesn't exist or has been moved.
+        </p>
+
+        <div class="not-found-actions">
+            <button class="rbm-btn rbm-btn-primary" @onclick="GoHome">
+                🏠 Go to Home
+            </button>
+            <button class="rbm-btn rbm-btn-outline" @onclick="GoBack">
+                ← Go Back
+            </button>
+        </div>
+
+        <div class="not-found-links">
+            <h3>Quick Links</h3>
+            <div class="quick-links-grid">
+                <a href="/rbm" class="quick-link">
+                    <span class="quick-link-icon">📊</span>
+                    <span class="quick-link-text">Dashboard</span>
+                </a>
+                <a href="/rbm/assets" class="quick-link">
+                    <span class="quick-link-icon">⚙️</span>
+                    <span class="quick-link-text">Assets</span>
+                </a>
+                <a href="/rbm/work-orders" class="quick-link">
+                    <span class="quick-link-icon">📋</span>
+                    <span class="quick-link-text">Work Orders</span>
+                </a>
+                <a href="/rbm/analytics" class="quick-link">
+                    <span class="quick-link-icon">📈</span>
+                    <span class="quick-link-text">Analytics</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .not-found-container {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #37474f 0%, #607d8b 100%);
+        padding: 20px;
+    }
+
+    .not-found-card {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        max-width: 600px;
+        width: 100%;
+        padding: 60px 40px;
+        text-align: center;
+    }
+
+    .not-found-icon {
+        margin-bottom: 24px;
+        display: flex;
+        justify-content: center;
+    }
+
+    .not-found-title {
+        font-size: 96px;
+        font-weight: 700;
+        color: #37474f;
+        margin: 0;
+        line-height: 1;
+        background: linear-gradient(135deg, #0288d1 0%, #37474f 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .not-found-subtitle {
+        font-size: 28px;
+        font-weight: 600;
+        color: #37474f;
+        margin: 16px 0;
+    }
+
+    .not-found-message {
+        font-size: 16px;
+        color: #607d8b;
+        line-height: 1.6;
+        margin: 0 0 32px 0;
+        max-width: 400px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .not-found-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        margin-bottom: 40px;
+        flex-wrap: wrap;
+    }
+
+    .not-found-links {
+        border-top: 1px solid #eceff1;
+        padding-top: 32px;
+        margin-top: 32px;
+    }
+
+    .not-found-links h3 {
+        font-size: 18px;
+        color: #37474f;
+        margin: 0 0 20px 0;
+    }
+
+    .quick-links-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+
+    .quick-link {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 20px;
+        background: #eceff1;
+        border-radius: 12px;
+        text-decoration: none;
+        color: #37474f;
+        transition: all 0.2s;
+    }
+
+    .quick-link:hover {
+        background: linear-gradient(135deg, #0288d1 0%, #37474f 100%);
+        color: white;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .quick-link-icon {
+        font-size: 32px;
+    }
+
+    .quick-link-text {
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    /* RBM Button Styles */
+    .rbm-btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        text-decoration: none;
+    }
+
+    .rbm-btn-primary {
+        background: #0288d1;
+        color: white;
+    }
+
+    .rbm-btn-primary:hover {
+        background: #0277bd;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(2, 136, 209, 0.3);
+    }
+
+    .rbm-btn-outline {
+        background: transparent;
+        border: 1px solid #cfd8dc;
+        color: #37474f;
+    }
+
+    .rbm-btn-outline:hover {
+        background: #eceff1;
+    }
+
+    @@media (max-width: 600px) {
+        .not-found-card {
+            padding: 40px 24px;
+        }
+
+        .not-found-title {
+            font-size: 72px;
+        }
+
+        .not-found-subtitle {
+            font-size: 24px;
+        }
+
+        .not-found-actions {
+            flex-direction: column;
+        }
+
+        .rbm-btn {
+            width: 100%;
+            justify-content: center;
+        }
+
+        .quick-links-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+@code {
+    private void GoHome()
+    {
+        Navigation.NavigateTo("/");
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo(Navigation.Uri.Contains("/rbm") ? "/rbm" : "/");
+    }
+}

@@ -1,0 +1,37 @@
+@inherits LayoutComponentBase
+
+<div class="simple-layout">
+    @Body
+</div>
+
+<style>
+    .simple-layout {
+        min-height: 100vh;
+        background: var(--rbm-bg);
+    }
+
+    :root {
+        --rbm-primary: #37474f;
+        --rbm-accent: #0288d1;
+        --rbm-accent-light: #03a9f4;
+        --rbm-success: #43a047;
+        --rbm-warning: #fb8c00;
+        --rbm-danger: #e53935;
+        --rbm-bg: #eceff1;
+        --rbm-card-bg: #ffffff;
+        --rbm-border: #cfd8dc;
+        --rbm-text: #263238;
+        --rbm-text-light: #607d8b;
+    }
+
+    * {
+        box-sizing: border-box;
+    }
+
+    body {
+        margin: 0;
+        font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: var(--rbm-bg);
+        color: var(--rbm-text);
+    }
+</style>

@@ -1,0 +1,385 @@
+﻿@page "/rbm/analytics"
+@rendermode InteractiveServer
+@layout RBMLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject BlazorApp1.Services.DataService DataService
+@inject BlazorApp1.Services.CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+@using BlazorApp1.Models
+@using BlazorApp1.Components.Shared
+
+<div class="rbm-page-header">
+    <h1 class="rbm-page-title">Reliability Analytics</h1>
+    <p class="rbm-page-subtitle">Performance metrics and predictive insights</p>
+</div>
+
+<div class="rbm-action-bar">
+    <div></div>
+    @if (CurrentUser.CanEdit)
+    {
+        <button class="rbm-btn rbm-btn-primary" @onclick="ExportReport">
+            📥 Export Report
+        </button>
+    }
+</div>
+
+<!-- KPIs -->
+<div class="rbm-grid rbm-grid-4">
+    <div class="rbm-stat-card">
+        <div class="rbm-stat-label">Overall MTBF</div>
+        <div class="rbm-stat-value">1,248</div>
+        <div class="rbm-stat-trend positive">↑ 12% vs last month</div>
+    </div>
+    <div class="rbm-stat-card">
+        <div class="rbm-stat-label">Overall MTTR</div>
+        <div class="rbm-stat-value">4.2</div>
+        <div class="rbm-stat-trend negative">↑ 8% vs last month</div>
+    </div>
+    <div class="rbm-stat-card">
+        <div class="rbm-stat-label">Equipment Availability</div>
+        <div class="rbm-stat-value">96.5%</div>
+        <div class="rbm-stat-trend positive">↑ 2.1% improvement</div>
+    </div>
+    <div class="rbm-stat-card">
+        <div class="rbm-stat-label">Reliability Score</div>
+        <div class="rbm-stat-value">94.2%</div>
+        <div class="rbm-stat-trend positive">↑ 1.5% improvement</div>
+    </div>
+</div>
+
+<!-- Trend Charts -->
+<div class="rbm-grid rbm-grid-2 mt-3">
+    <div class="rbm-card">
+        <div class="rbm-card-header">
+            <h3 class="rbm-card-title">MTBF Trend (Last 12 Months)</h3>
+        </div>
+        <div class="rbm-chart">
+            <SimpleLineChart Title="Mean Time Between Failures" 
+                           Subtitle="Trending upward - reliability improving"
+                           DataPoints="@mtbfTrendData"
+                           LineColor="#43a047" />
+        </div>
+    </div>
+    
+    <div class="rbm-card">
+        <div class="rbm-card-header">
+            <h3 class="rbm-card-title">MTTR Trend (Last 12 Months)</h3>
+        </div>
+        <div class="rbm-chart">
+            <SimpleLineChart Title="Mean Time To Repair (Hours)" 
+                           Subtitle="Minor increase - review maintenance procedures"
+                           DataPoints="@mttrTrendData"
+                           LineColor="#fb8c00" />
+        </div>
+    </div>
+</div>
+
+<!-- Pareto Analysis -->
+<div class="rbm-card mt-3">
+    <div class="rbm-card-header">
+        <h3 class="rbm-card-title">Pareto Analysis - Top Failure Causes</h3>
+        <p class="rbm-card-subtitle">80/20 rule: Focus on top causes for maximum impact</p>
+    </div>
+    <div class="rbm-table-container">
+        <table class="rbm-table">
+            <thead>
+                <tr>
+                    <th>Failure Cause</th>
+                    <th>Occurrences</th>
+                    <th>Percentage</th>
+                    <th>Cumulative %</th>
+                    <th>Impact</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Lack of Lubrication</strong></td>
+                    <td>45</td>
+                    <td>35%</td>
+                    <td>35%</td>
+                    <td><span class="rbm-badge-pill rbm-badge-critical">Critical</span></td>
+                </tr>
+                <tr>
+                    <td><strong>Wear and Tear</strong></td>
+                    <td>32</td>
+                    <td>25%</td>
+                    <td>60%</td>
+                    <td><span class="rbm-badge-pill rbm-badge-high">High</span></td>
+                </tr>
+                <tr>
+                    <td><strong>Overheating</strong></td>
+                    <td>18</td>
+                    <td>14%</td>
+                    <td>74%</td>
+                    <td><span class="rbm-badge-pill rbm-badge-high">High</span></td>
+                </tr>
+                <tr>
+                    <td><strong>Corrosion</strong></td>
+                    <td>15</td>
+                    <td>12%</td>
+                    <td>86%</td>
+                    <td><span class="rbm-badge-pill rbm-badge-medium">Medium</span></td>
+                </tr>
+                <tr>
+                    <td><strong>Other</strong></td>
+                    <td>18</td>
+                    <td>14%</td>
+                    <td>100%</td>
+                    <td><span class="rbm-badge-pill rbm-badge-low">Low</span></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Predictive Maintenance Recommendations -->
+<div class="rbm-card mt-3">
+    <div class="rbm-card-header">
+        <h3 class="rbm-card-title">🤖 AI-Powered Predictive Maintenance Recommendations</h3>
+    </div>
+    <div style="padding: 20px;">
+        <div style="padding: 16px; background: rgba(229, 57, 53, 0.1); border-left: 4px solid var(--rbm-danger); border-radius: 8px; margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div>
+                    <strong style="color: var(--rbm-danger);">🚨 Air Compressor C - High Failure Risk</strong>
+                    <p style="margin: 8px 0 0 0;">Predicted failure probability: 85% within next 7 days</p>
+                    <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--rbm-text-light);">
+                        Based on vibration trend analysis and historical failure patterns
+                    </p>
+                </div>
+                @if (CurrentUser.CanEdit)
+                {
+                    <button class="rbm-btn rbm-btn-danger rbm-btn-sm" @onclick="() => CreateWorkOrderForAsset(3, true)">Create WO</button>
+                }
+            </div>
+        </div>
+        
+        <div style="padding: 16px; background: rgba(251, 140, 0, 0.1); border-left: 4px solid var(--rbm-warning); border-radius: 8px; margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div>
+                    <strong style="color: var(--rbm-warning);">⚠️ Electric Motor B - Preventive Action Recommended</strong>
+                    <p style="margin: 8px 0 0 0;">Temperature trending above normal operating range</p>
+                    <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--rbm-text-light);">
+                        Schedule inspection within 14 days to prevent potential failure
+                    </p>
+                </div>
+                @if (CurrentUser.CanEdit)
+                {
+                    <button class="rbm-btn rbm-btn-warning rbm-btn-sm" @onclick="() => CreateScheduleForAsset(2)">Schedule</button>
+                }
+            </div>
+        </div>
+        
+        <div style="padding: 16px; background: rgba(2, 136, 209, 0.1); border-left: 4px solid var(--rbm-accent); border-radius: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div>
+                    <strong style="color: var(--rbm-accent);">ℹ️ Gearbox I - Optimal Maintenance Window</strong>
+                    <p style="margin: 8px 0 0 0;">Ideal time for scheduled maintenance: Next week</p>
+                    <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--rbm-text-light);">
+                        Production schedule analysis shows minimal impact during this period
+                    </p>
+                </div>
+                <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => ViewAssetDetails(9)">View Details</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Equipment Performance by Location -->
+<div class="rbm-card mt-3">
+    <div class="rbm-card-header">
+        <h3 class="rbm-card-title">Equipment Availability by Location</h3>
+    </div>
+    <div class="rbm-table-container">
+        <table class="rbm-table">
+            <thead>
+                <tr>
+                    <th>Location</th>
+                    <th>Total Assets</th>
+                    <th>Availability %</th>
+                    <th>Avg Health Score</th>
+                    <th>Open Work Orders</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var location in GetLocationStats())
+                {
+                    <tr>
+                        <td><strong>@location.Name</strong></td>
+                        <td>@location.AssetCount</td>
+                        <td>
+                            <span style="color: @(location.Availability >= 95 ? "var(--rbm-success)" : location.Availability >= 90 ? "var(--rbm-warning)" : "var(--rbm-danger)");">
+                                @location.Availability.ToString("F1")%
+                            </span>
+                        </td>
+                        <td>@location.AvgHealth.ToString("F1")</td>
+                        <td>@location.OpenWorkOrders</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@if (showSuccessMessage)
+{
+    <div style="position: fixed; top: 80px; right: 20px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; border-left: 4px solid var(--rbm-success);">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 24px;">✓</span>
+            <div>
+                <div style="font-weight: 600; color: var(--rbm-success);">Success!</div>
+                <div style="font-size: 14px; color: var(--rbm-text-light);">@successMessage</div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Asset> assets = new();
+    private List<WorkOrder> workOrders = new();
+    private bool showSuccessMessage = false;
+    private string successMessage = "";
+    
+    private List<SimpleLineChart.ChartDataPoint> mtbfTrendData = new();
+    private List<SimpleLineChart.ChartDataPoint> mttrTrendData = new();
+
+    protected override void OnInitialized()
+    {
+        assets = DataService.GetAssets();
+        workOrders = DataService.GetWorkOrders();
+        
+        // Generate sample MTBF trend data (12 months)
+        mtbfTrendData = new List<SimpleLineChart.ChartDataPoint>
+        {
+            new() { Label = "Jan", Value = 1050 },
+            new() { Label = "Feb", Value = 1080 },
+            new() { Label = "Mar", Value = 1100 },
+            new() { Label = "Apr", Value = 1120 },
+            new() { Label = "May", Value = 1110 },
+            new() { Label = "Jun", Value = 1150 },
+            new() { Label = "Jul", Value = 1180 },
+            new() { Label = "Aug", Value = 1190 },
+            new() { Label = "Sep", Value = 1210 },
+            new() { Label = "Oct", Value = 1220 },
+            new() { Label = "Nov", Value = 1240 },
+            new() { Label = "Dec", Value = 1248 }
+        };
+        
+        // Generate sample MTTR trend data (12 months)
+        mttrTrendData = new List<SimpleLineChart.ChartDataPoint>
+        {
+            new() { Label = "Jan", Value = 3.8 },
+            new() { Label = "Feb", Value = 3.9 },
+            new() { Label = "Mar", Value = 3.7 },
+            new() { Label = "Apr", Value = 3.8 },
+            new() { Label = "May", Value = 4.0 },
+            new() { Label = "Jun", Value = 3.9 },
+            new() { Label = "Jul", Value = 4.1 },
+            new() { Label = "Aug", Value = 4.0 },
+            new() { Label = "Sep", Value = 4.1 },
+            new() { Label = "Oct", Value = 4.2 },
+            new() { Label = "Nov", Value = 4.3 },
+            new() { Label = "Dec", Value = 4.2 }
+        };
+    }
+
+    private void ExportReport()
+    {
+        ShowSuccess("Report exported successfully!");
+    }
+
+    private void CreateWorkOrderForAsset(int assetId, bool isCritical = false)
+    {
+        var asset = assets.FirstOrDefault(a => a.Id == assetId);
+        if (asset != null)
+        {
+            var newWorkOrder = new WorkOrder
+            {
+                AssetId = asset.Id,
+                AssetName = asset.Name,
+                Priority = isCritical ? "Critical" : "High",
+                Type = isCritical ? "Corrective" : "Predictive",
+                Status = "Open",
+                DueDate = DateTime.Now.AddDays(isCritical ? 1 : 7),
+                AssignedTo = "John Smith",
+                Description = $"AI-generated work order based on {(isCritical ? "critical condition analysis" : "predictive analytics")}",
+                EstimatedDowntime = isCritical ? 6 : 3
+            };
+            
+            DataService.AddWorkOrder(newWorkOrder);
+            ShowSuccess($"Work order {newWorkOrder.WorkOrderId} created for {asset.Name}");
+        }
+    }
+
+    private void CreateScheduleForAsset(int assetId)
+    {
+        var asset = assets.FirstOrDefault(a => a.Id == assetId);
+        if (asset != null)
+        {
+            var newSchedule = new MaintenanceSchedule
+            {
+                AssetId = asset.Id,
+                AssetName = asset.Name,
+                ScheduledDate = DateTime.Now.AddDays(14).AddHours(8),
+                EndDate = DateTime.Now.AddDays(14).AddHours(11),
+                Type = "Preventive",
+                AssignedTechnician = "Mike Davis",
+                Status = "Scheduled"
+            };
+            
+            DataService.AddSchedule(newSchedule);
+            ShowSuccess($"Maintenance scheduled for {asset.Name} on {newSchedule.ScheduledDate:MMM dd}");
+        }
+    }
+
+    private void ViewAssetDetails(int assetId)
+    {
+        Navigation.NavigateTo($"/rbm/assets/{assetId}");
+    }
+
+    private void ShowSuccess(string message)
+    {
+        successMessage = message;
+        showSuccessMessage = true;
+        StateHasChanged();
+        
+        Task.Delay(3000).ContinueWith(_ =>
+        {
+            showSuccessMessage = false;
+            InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private class LocationStats
+    {
+        public string Name { get; set; } = "";
+        public int AssetCount { get; set; }
+        public double Availability { get; set; }
+        public double AvgHealth { get; set; }
+        public int OpenWorkOrders { get; set; }
+    }
+
+    private List<LocationStats> GetLocationStats()
+    {
+        var locations = assets.Select(a => a.Location.Split(',')[0]).Distinct().ToList();
+        var stats = new List<LocationStats>();
+
+        foreach (var location in locations)
+        {
+            var locationAssets = assets.Where(a => a.Location.StartsWith(location)).ToList();
+            stats.Add(new LocationStats
+            {
+                Name = location,
+                AssetCount = locationAssets.Count,
+                Availability = locationAssets.Average(a => a.Uptime),
+                AvgHealth = locationAssets.Average(a => a.HealthScore),
+                OpenWorkOrders = workOrders.Count(w => 
+                    locationAssets.Any(a => a.Id == w.AssetId) && 
+                    w.Status != "Completed")
+            });
+        }
+
+        return stats.OrderByDescending(s => s.AssetCount).ToList();
+    }
+}

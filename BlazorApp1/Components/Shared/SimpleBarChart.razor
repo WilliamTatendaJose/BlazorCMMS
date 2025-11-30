@@ -1,0 +1,73 @@
+@* Simple CSS-based Bar Chart Component *@
+<div class="simple-bar-chart">
+    @if (DataPoints != null && DataPoints.Any())
+    {
+        <div style="padding: 20px;">
+            <div style="font-weight: 600; margin-bottom: 20px; color: var(--rbm-text);">@Title</div>
+            
+            <!-- Chart Bars -->
+            <div style="display: flex; align-items: flex-end; gap: 12px; height: 200px; padding: 0 0 10px 0; border-bottom: 2px solid var(--rbm-border);">
+                @foreach (var dataPoint in DataPoints)
+                {
+                    var heightPercent = MaxValue > 0 ? (dataPoint.Value / MaxValue * 100) : 0;
+                    
+                    <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 40px;">
+                        <!-- Value label -->
+                        <div style="font-size: 12px; font-weight: 600; color: var(--rbm-text);">
+                            @dataPoint.Value.ToString("F1")
+                        </div>
+                        
+                        <!-- Bar -->
+                        <div style="width: 100%; 
+                                   background: @dataPoint.Color; 
+                                   height: @(heightPercent)%; 
+                                   min-height: 4px; 
+                                   border-radius: 4px 4px 0 0;
+                                   transition: all 0.3s ease;
+                                   box-shadow: 0 2px 4px rgba(0,0,0,0.1);"
+                             title="@dataPoint.Label: @dataPoint.Value.ToString("F1")">
+                        </div>
+                        
+                        <!-- Label -->
+                        <div style="font-size: 11px; 
+                                   color: var(--rbm-text-light); 
+                                   text-align: center; 
+                                   word-wrap: break-word;
+                                   max-width: 100%;">
+                            @dataPoint.Label
+                        </div>
+                    </div>
+                }
+            </div>
+            
+            @if (!string.IsNullOrEmpty(Subtitle))
+            {
+                <div style="margin-top: 16px; text-align: center; font-size: 13px; color: var(--rbm-text-light);">
+                    @Subtitle
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div style="text-align: center; padding: 60px; color: var(--rbm-text-light);">
+            <div style="font-size: 48px; margin-bottom: 12px; opacity: 0.3;">??</div>
+            <div>No data available</div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Subtitle { get; set; } = "";
+    [Parameter] public List<BarDataPoint> DataPoints { get; set; } = new();
+    
+    private double MaxValue => DataPoints.Any() ? DataPoints.Max(dp => dp.Value) * 1.1 : 100;
+    
+    public class BarDataPoint
+    {
+        public string Label { get; set; } = "";
+        public double Value { get; set; }
+        public string Color { get; set; } = "#2196f3";
+    }
+}

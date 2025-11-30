@@ -1,0 +1,292 @@
+﻿@page "/rbm/settings"
+@rendermode InteractiveServer
+@layout RBMLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Admin")]
+@inject BlazorApp1.Services.DataService DataService
+
+<div class="rbm-page-header">
+    <h1 class="rbm-page-title">Settings & Integrations</h1>
+    <p class="rbm-page-subtitle">Configure system preferences and external connections</p>
+</div>
+
+<!-- Condition Thresholds -->
+<div class="rbm-card">
+    <div class="rbm-card-header">
+        <h3 class="rbm-card-title">Condition Monitoring Thresholds</h3>
+        <p class="rbm-card-subtitle">Set alert thresholds for equipment parameters</p>
+    </div>
+    <div style="padding: 20px;">
+        <div class="rbm-grid rbm-grid-2">
+            <div class="rbm-form-group">
+                <label class="rbm-form-label">Temperature Warning (°F)</label>
+                <input type="number" class="rbm-form-input" @bind="tempWarning" placeholder="180">
+            </div>
+            <div class="rbm-form-group">
+                <label class="rbm-form-label">Temperature Critical (°F)</label>
+                <input type="number" class="rbm-form-input" @bind="tempCritical" placeholder="200">
+            </div>
+            <div class="rbm-form-group">
+                <label class="rbm-form-label">Vibration Warning (mm/s)</label>
+                <input type="number" step="0.1" class="rbm-form-input" @bind="vibrationWarning" placeholder="4.5">
+            </div>
+            <div class="rbm-form-group">
+                <label class="rbm-form-label">Vibration Critical (mm/s)</label>
+                <input type="number" step="0.1" class="rbm-form-input" @bind="vibrationCritical" placeholder="7.0">
+            </div>
+            <div class="rbm-form-group">
+                <label class="rbm-form-label">Pressure Warning (PSI)</label>
+                <input type="number" class="rbm-form-input" @bind="pressureWarning" placeholder="150">
+            </div>
+            <div class="rbm-form-group">
+                <label class="rbm-form-label">Pressure Critical (PSI)</label>
+                <input type="number" class="rbm-form-input" @bind="pressureCritical" placeholder="180">
+            </div>
+        </div>
+        <button class="rbm-btn rbm-btn-primary mt-2">Save Thresholds</button>
+    </div>
+</div>
+
+<!-- Notification Preferences -->
+<div class="rbm-card mt-3">
+    <div class="rbm-card-header">
+        <h3 class="rbm-card-title">Notification Preferences</h3>
+        <p class="rbm-card-subtitle">Choose how you want to receive alerts</p>
+    </div>
+    <div style="padding: 20px;">
+        <div style="margin-bottom: 20px;">
+            <h4 style="font-size: 16px; margin-bottom: 16px;">Email Notifications</h4>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <label style="display: flex; align-items: center; gap: 12px;">
+                    <input type="checkbox" @bind="emailCriticalAlerts" style="width: 18px; height: 18px;">
+                    <span>Critical health score alerts</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 12px;">
+                    <input type="checkbox" @bind="emailWorkOrderDue" style="width: 18px; height: 18px;">
+                    <span>Work order due date reminders</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 12px;">
+                    <input type="checkbox" @bind="emailMaintenanceSchedule" style="width: 18px; height: 18px;">
+                    <span>Upcoming maintenance schedule</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 12px;">
+                    <input type="checkbox" @bind="emailWeeklyReport" style="width: 18px; height: 18px;">
+                    <span>Weekly reliability report</span>
+                </label>
+            </div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <h4 style="font-size: 16px; margin-bottom: 16px;">SMS Notifications</h4>
+            <div class="rbm-form-group">
+                <label class="rbm-form-label">Phone Number</label>
+                <input type="tel" class="rbm-form-input" @bind="phoneNumber" placeholder="+1 (555) 123-4567">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <label style="display: flex; align-items: center; gap: 12px;">
+                    <input type="checkbox" @bind="smsCriticalOnly" style="width: 18px; height: 18px;">
+                    <span>Only critical alerts via SMS</span>
+                </label>
+            </div>
+        </div>
+        
+        <button class="rbm-btn rbm-btn-primary">Save Preferences</button>
+    </div>
+</div>
+
+<!-- Integrations -->
+<div class="rbm-card mt-3">
+    <div class="rbm-card-header">
+        <h3 class="rbm-card-title">External Integrations</h3>
+        <p class="rbm-card-subtitle">Connect to IoT sensors and SCADA systems</p>
+    </div>
+    <div style="padding: 20px;">
+        <div class="rbm-grid rbm-grid-2">
+            <div style="padding: 20px; border: 1px solid var(--rbm-border); border-radius: 12px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="width: 48px; height: 48px; background: var(--rbm-accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px;">
+                            🌐
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; font-size: 16px;">IoT Platform</div>
+                            <div style="font-size: 13px; color: var(--rbm-text-light);">Real-time sensor data</div>
+                        </div>
+                    </div>
+                    <button class="rbm-btn rbm-btn-success rbm-btn-sm">Connected</button>
+                </div>
+                <p style="font-size: 13px; color: var(--rbm-text-light); margin-bottom: 12px;">
+                    Automatically sync temperature, vibration, and pressure readings from IoT sensors.
+                </p>
+                <button class="rbm-btn rbm-btn-outline rbm-btn-sm">Configure</button>
+            </div>
+            
+            <div style="padding: 20px; border: 1px solid var(--rbm-border); border-radius: 12px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="width: 48px; height: 48px; background: var(--rbm-primary); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px;">
+                            📊
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; font-size: 16px;">SCADA System</div>
+                            <div style="font-size: 13px; color: var(--rbm-text-light);">Industrial automation</div>
+                        </div>
+                    </div>
+                    <button class="rbm-btn rbm-btn-outline rbm-btn-sm">Not Connected</button>
+                </div>
+                <p style="font-size: 13px; color: var(--rbm-text-light); margin-bottom: 12px;">
+                    Integrate with SCADA for automated data collection and equipment status monitoring.
+                </p>
+                <button class="rbm-btn rbm-btn-primary rbm-btn-sm">Connect</button>
+            </div>
+            
+            <div style="padding: 20px; border: 1px solid var(--rbm-border); border-radius: 12px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="width: 48px; height: 48px; background: var(--rbm-warning); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px;">
+                            📧
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; font-size: 16px;">Email Service</div>
+                            <div style="font-size: 13px; color: var(--rbm-text-light);">SMTP integration</div>
+                        </div>
+                    </div>
+                    <button class="rbm-btn rbm-btn-success rbm-btn-sm">Connected</button>
+                </div>
+                <p style="font-size: 13px; color: var(--rbm-text-light); margin-bottom: 12px;">
+                    Send automated notifications and reports via email.
+                </p>
+                <button class="rbm-btn rbm-btn-outline rbm-btn-sm">Configure</button>
+            </div>
+            
+            <div style="padding: 20px; border: 1px solid var(--rbm-border); border-radius: 12px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="width: 48px; height: 48px; background: var(--rbm-success); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px;">
+                            💾
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; font-size: 16px;">Cloud Backup</div>
+                            <div style="font-size: 13px; color: var(--rbm-text-light);">Azure Blob Storage</div>
+                        </div>
+                    </div>
+                    <button class="rbm-btn rbm-btn-success rbm-btn-sm">Connected</button>
+                </div>
+                <p style="font-size: 13px; color: var(--rbm-text-light); margin-bottom: 12px;">
+                    Automatic daily backups to secure cloud storage.
+                </p>
+                <button class="rbm-btn rbm-btn-outline rbm-btn-sm">Configure</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Theme Selector -->
+<div class="rbm-card mt-3">
+    <div class="rbm-card-header">
+        <h3 class="rbm-card-title">Appearance</h3>
+    </div>
+    <div style="padding: 20px;">
+        <div class="rbm-form-group">
+            <label class="rbm-form-label">Theme</label>
+            <select class="rbm-form-select" @bind="selectedTheme" style="max-width: 300px;">
+                <option value="light">Light (Industrial Blue-Grey)</option>
+                <option value="dark">Dark (Coming Soon)</option>
+            </select>
+        </div>
+        <button class="rbm-btn rbm-btn-primary">Apply Theme</button>
+    </div>
+</div>
+
+<!-- Data Management -->
+<div class="rbm-card mt-3">
+    <div class="rbm-card-header">
+        <h3 class="rbm-card-title">Data Management</h3>
+    </div>
+    <div style="padding: 20px;">
+        <div class="rbm-grid rbm-grid-2">
+            <div>
+                <h4 style="font-size: 16px; margin-bottom: 12px;">Backup & Restore</h4>
+                <p style="font-size: 14px; color: var(--rbm-text-light); margin-bottom: 16px;">
+                    Last backup: <strong>@lastBackup.ToString("MMM dd, yyyy HH:mm")</strong>
+                </p>
+                <div style="display: flex; gap: 12px;">
+                    <button class="rbm-btn rbm-btn-primary">
+                        💾 Backup Now
+                    </button>
+                    <button class="rbm-btn rbm-btn-outline">
+                        📥 Restore from Backup
+                    </button>
+                </div>
+            </div>
+            
+            <div>
+                <h4 style="font-size: 16px; margin-bottom: 12px;">Data Export</h4>
+                <p style="font-size: 14px; color: var(--rbm-text-light); margin-bottom: 16px;">
+                    Export system data for external analysis
+                </p>
+                <div style="display: flex; gap: 12px;">
+                    <button class="rbm-btn rbm-btn-secondary">
+                        📊 Export to Excel
+                    </button>
+                    <button class="rbm-btn rbm-btn-outline">
+                        📄 Export to CSV
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div style="margin-top: 24px; padding: 16px; background: rgba(229, 57, 53, 0.1); border-left: 4px solid var(--rbm-danger); border-radius: 8px;">
+            <strong style="color: var(--rbm-danger);">⚠️ Danger Zone</strong>
+            <p style="margin: 8px 0 12px 0; font-size: 14px;">
+                Permanently delete all system data. This action cannot be undone.
+            </p>
+            <button class="rbm-btn rbm-btn-danger rbm-btn-sm">
+                🗑️ Delete All Data
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- System Information -->
+<div class="rbm-card mt-3">
+    <div class="rbm-card-header">
+        <h3 class="rbm-card-title">System Information</h3>
+    </div>
+    <div style="padding: 20px;">
+        <div class="rbm-grid rbm-grid-3">
+            <div>
+                <div style="font-size: 13px; color: var(--rbm-text-light); margin-bottom: 4px;">Version</div>
+                <div style="font-weight: 600;">v2.4.1</div>
+            </div>
+            <div>
+                <div style="font-size: 13px; color: var(--rbm-text-light); margin-bottom: 4px;">Database</div>
+                <div style="font-weight: 600;">SQL Server 2022</div>
+            </div>
+            <div>
+                <div style="font-size: 13px; color: var(--rbm-text-light); margin-bottom: 4px;">License</div>
+                <div style="font-weight: 600;">Enterprise</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private double tempWarning = 180;
+    private double tempCritical = 200;
+    private double vibrationWarning = 4.5;
+    private double vibrationCritical = 7.0;
+    private double pressureWarning = 150;
+    private double pressureCritical = 180;
+
+    private bool emailCriticalAlerts = true;
+    private bool emailWorkOrderDue = true;
+    private bool emailMaintenanceSchedule = true;
+    private bool emailWeeklyReport = false;
+
+    private string phoneNumber = "";
+    private bool smsCriticalOnly = true;
+
+    private string selectedTheme = "light";
+    private DateTime lastBackup = DateTime.Now.AddDays(-1);
+}

@@ -1,0 +1,413 @@
+﻿@page "/rbm/work-orders"
+@rendermode InteractiveServer
+@layout RBMLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject BlazorApp1.Services.DataService DataService
+@inject BlazorApp1.Services.CurrentUserService CurrentUser
+@using BlazorApp1.Models
+
+<div class="rbm-page-header">
+    <h1 class="rbm-page-title">Work Orders</h1>
+    <p class="rbm-page-subtitle">Manage and track maintenance work orders</p>
+</div>
+
+<div class="rbm-action-bar">
+    <div style="display: flex; gap: 12px;">
+        <select class="rbm-form-select" @bind="statusFilter" @bind:after="FilterChanged" style="width: 200px;">
+            <option value="">All Statuses</option>
+            <option value="Open">Open</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Completed">Completed</option>
+            <option value="Cancelled">Cancelled</option>
+        </select>
+        <select class="rbm-form-select" @bind="priorityFilter" @bind:after="FilterChanged" style="width: 200px;">
+            <option value="">All Priorities</option>
+            <option value="Critical">Critical</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+        </select>
+    </div>
+    <div class="rbm-action-buttons">
+        @if (CurrentUser.CanCreateWork)
+        {
+            <button class="rbm-btn rbm-btn-primary" @onclick="ShowCreateModal">
+                ➕ Create Work Order
+            </button>
+        }
+    </div>
+</div>
+
+<!-- Statistics -->
+<div class="rbm-grid rbm-grid-4">
+    <div class="rbm-stat-card">
+        <div class="rbm-stat-label">Total Work Orders</div>
+        <div class="rbm-stat-value">@FilteredWorkOrders.Count()</div>
+    </div>
+    <div class="rbm-stat-card">
+        <div class="rbm-stat-label">Open</div>
+        <div class="rbm-stat-value" style="color: var(--rbm-accent);">@FilteredWorkOrders.Count(w => w.Status == "Open")</div>
+    </div>
+    <div class="rbm-stat-card">
+        <div class="rbm-stat-label">In Progress</div>
+        <div class="rbm-stat-value" style="color: var(--rbm-warning);">@FilteredWorkOrders.Count(w => w.Status == "In Progress")</div>
+    </div>
+    <div class="rbm-stat-card">
+        <div class="rbm-stat-label">Completed</div>
+        <div class="rbm-stat-value" style="color: var(--rbm-success);">@FilteredWorkOrders.Count(w => w.Status == "Completed")</div>
+    </div>
+</div>
+
+<!-- Work Orders Table -->
+<div class="rbm-card mt-3">
+    <div class="rbm-table-container">
+        <table class="rbm-table">
+            <thead>
+                <tr>
+                    <th>Work Order ID</th>
+                    <th>Asset</th>
+                    <th>Priority</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Due Date</th>
+                    <th>Assigned To</th>
+                    <th>Est. Downtime</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var wo in FilteredWorkOrders.OrderBy(w => w.DueDate))
+                {
+                    <tr>
+                        <td><strong>@wo.WorkOrderId</strong></td>
+                        <td>
+                            <div><strong>@wo.AssetName</strong></div>
+                            <div style="font-size: 12px; color: var(--rbm-text-light);">
+                                @assets.FirstOrDefault(a => a.Id == wo.AssetId)?.AssetId
+                            </div>
+                        </td>
+                        <td>
+                            <span class="rbm-badge-pill rbm-badge-@wo.Priority.ToLower()">
+                                @wo.Priority
+                            </span>
+                        </td>
+                        <td>@wo.Type</td>
+                        <td>
+                            <span class="rbm-badge-pill" style="@GetStatusStyle(wo.Status)">
+                                @wo.Status
+                            </span>
+                        </td>
+                        <td>
+                            <div>@wo.DueDate.ToString("MMM dd, yyyy")</div>
+                            @if (wo.DueDate < DateTime.Now && wo.Status != "Completed")
+                            {
+                                <div style="font-size: 11px; color: var(--rbm-danger); font-weight: 600;">
+                                    ⚠️ OVERDUE
+                                </div>
+                            }
+                        </td>
+                        <td>@wo.AssignedTo</td>
+                        <td>@wo.EstimatedDowntime hrs</td>
+                        <td>
+                            <div style="display: flex; gap: 4px;">
+                                @if (wo.Status == "Open")
+                                {
+                                    <button class="rbm-btn rbm-btn-sm rbm-btn-success" @onclick="() => StartWorkOrder(wo)">
+                                        ▶️ Start
+                                    </button>
+                                }
+                                @if (wo.Status == "In Progress")
+                                {
+                                    <button class="rbm-btn rbm-btn-sm rbm-btn-primary" @onclick="() => CompleteWorkOrder(wo)">
+                                        ✓ Complete
+                                    </button>
+                                }
+                                <button class="rbm-btn rbm-btn-sm rbm-btn-outline" @onclick="() => ViewWorkOrder(wo)">
+                                    👁️
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@if (showCreateModal)
+{
+    <div class="rbm-modal-backdrop" @onclick="CloseCreateModal">
+        <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 700px;">
+            <div class="rbm-modal-header">
+                <h3 class="rbm-modal-title">Create Work Order</h3>
+                <button class="rbm-modal-close" @onclick="CloseCreateModal">&times;</button>
+            </div>
+            <div class="rbm-modal-body">
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Asset</label>
+                    <select class="rbm-form-select" @bind="newWorkOrder.AssetId" @bind:after="OnAssetSelected">
+                        <option value="0">-- Select Asset --</option>
+                        @foreach (var asset in assets)
+                        {
+                            <option value="@asset.Id">@asset.AssetId - @asset.Name</option>
+                        }
+                    </select>
+                </div>
+
+                @if (newWorkOrder.AssetId > 0)
+                {
+                    var selectedAsset = assets.FirstOrDefault(a => a.Id == newWorkOrder.AssetId);
+                    if (selectedAsset != null)
+                    {
+                        <div style="padding: 12px; background: var(--rbm-bg); border-radius: 8px; margin-bottom: 16px;">
+                            <div><strong>Asset Health Score:</strong> @selectedAsset.HealthScore</div>
+                            <div><strong>Status:</strong> <span class="rbm-badge-pill rbm-badge-@selectedAsset.Status.ToLower()">@selectedAsset.Status</span></div>
+                        </div>
+                    }
+                }
+
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Link to Failure Mode (Optional)</label>
+                    <select class="rbm-form-select">
+                        <option value="0">-- None --</option>
+                        @foreach (var fm in DataService.GetFailureModes(newWorkOrder.AssetId))
+                        {
+                            <option value="@fm.Id">@fm.Mode (RPN: @fm.RPN)</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="rbm-grid rbm-grid-2">
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Priority</label>
+                        <select class="rbm-form-select" @bind="newWorkOrder.Priority">
+                            <option value="Low">Low</option>
+                            <option value="Medium">Medium</option>
+                            <option value="High">High</option>
+                            <option value="Critical">Critical</option>
+                        </select>
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Type</label>
+                        <select class="rbm-form-select" @bind="newWorkOrder.Type">
+                            <option value="Preventive">Preventive</option>
+                            <option value="Corrective">Corrective</option>
+                            <option value="Predictive">Predictive</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="rbm-grid rbm-grid-2">
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Due Date</label>
+                        <input type="date" class="rbm-form-input" @bind="newWorkOrder.DueDate">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Estimated Downtime (hours)</label>
+                        <input type="number" class="rbm-form-input" @bind="newWorkOrder.EstimatedDowntime" step="0.5">
+                    </div>
+                </div>
+
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Assign To</label>
+                    <select class="rbm-form-select" @bind="newWorkOrder.AssignedTo">
+                        <option value="">-- Select Technician --</option>
+                        @foreach (var user in DataService.GetUsers().Where(u => u.Role == "Technician"))
+                        {
+                            <option value="@user.Name">@user.Name</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Description</label>
+                    <textarea class="rbm-form-textarea" @bind="newWorkOrder.Description" placeholder="Describe the work to be performed..."></textarea>
+                </div>
+            </div>
+            <div class="rbm-modal-footer">
+                <button class="rbm-btn rbm-btn-outline" @onclick="CloseCreateModal">Cancel</button>
+                <button class="rbm-btn rbm-btn-primary" @onclick="SaveWorkOrder" disabled="@(newWorkOrder.AssetId == 0)">
+                    Create Work Order
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showViewModal && selectedWorkOrder != null)
+{
+    <div class="rbm-modal-backdrop" @onclick="CloseViewModal">
+        <div class="rbm-modal" @onclick:stopPropagation="true">
+            <div class="rbm-modal-header">
+                <h3 class="rbm-modal-title">@selectedWorkOrder.WorkOrderId</h3>
+                <button class="rbm-modal-close" @onclick="CloseViewModal">&times;</button>
+            </div>
+            <div class="rbm-modal-body">
+                <div class="rbm-grid rbm-grid-2" style="margin-bottom: 20px;">
+                    <div>
+                        <strong>Asset:</strong> @selectedWorkOrder.AssetName<br>
+                        <strong>Priority:</strong> <span class="rbm-badge-pill rbm-badge-@selectedWorkOrder.Priority.ToLower()">@selectedWorkOrder.Priority</span><br>
+                        <strong>Type:</strong> @selectedWorkOrder.Type
+                    </div>
+                    <div>
+                        <strong>Status:</strong> <span class="rbm-badge-pill" style="@GetStatusStyle(selectedWorkOrder.Status)">@selectedWorkOrder.Status</span><br>
+                        <strong>Due Date:</strong> @selectedWorkOrder.DueDate.ToString("MMM dd, yyyy")<br>
+                        <strong>Assigned To:</strong> @selectedWorkOrder.AssignedTo
+                    </div>
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <strong>Description:</strong>
+                    <p style="margin-top: 8px;">@selectedWorkOrder.Description</p>
+                </div>
+                <div>
+                    <strong>Estimated Downtime:</strong> @selectedWorkOrder.EstimatedDowntime hours
+                </div>
+            </div>
+            <div class="rbm-modal-footer">
+                <button class="rbm-btn rbm-btn-outline" @onclick="CloseViewModal">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showSuccessMessage)
+{
+    <div style="position: fixed; top: 80px; right: 20px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; border-left: 4px solid var(--rbm-success);">
+        <div style="display: flex; align-items: center, gap: 12px;">
+            <span style="font-size: 24px;">✓</span>
+            <div>
+                <div style="font-weight: 600; color: var(--rbm-success);">Success!</div>
+                <div style="font-size: 14px; color: var(--rbm-text-light);">@successMessage</div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Asset> assets = new();
+    private List<WorkOrder> workOrders = new();
+    private WorkOrder newWorkOrder = new();
+    private WorkOrder? selectedWorkOrder;
+    private bool showCreateModal = false;
+    private bool showViewModal = false;
+    private bool showSuccessMessage = false;
+    private string successMessage = "";
+    private string statusFilter = "";
+    private string priorityFilter = "";
+
+    private IEnumerable<WorkOrder> FilteredWorkOrders
+    {
+        get
+        {
+            var filtered = workOrders.AsEnumerable();
+            
+            if (!string.IsNullOrEmpty(statusFilter))
+                filtered = filtered.Where(w => w.Status == statusFilter);
+            
+            if (!string.IsNullOrEmpty(priorityFilter))
+                filtered = filtered.Where(w => w.Priority == priorityFilter);
+            
+            return filtered;
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        assets = DataService.GetAssets();
+        workOrders = DataService.GetWorkOrders();
+    }
+
+    private void ShowCreateModal()
+    {
+        newWorkOrder = new WorkOrder 
+        { 
+            DueDate = DateTime.Now.AddDays(7),
+            Priority = "Medium",
+            Type = "Preventive",
+            Status = "Open",
+            EstimatedDowntime = 2
+        };
+        showCreateModal = true;
+    }
+
+    private void CloseCreateModal()
+    {
+        showCreateModal = false;
+    }
+
+    private void OnAssetSelected()
+    {
+        var asset = assets.FirstOrDefault(a => a.Id == newWorkOrder.AssetId);
+        if (asset != null)
+        {
+            newWorkOrder.AssetName = asset.Name;
+        }
+    }
+
+    private void FilterChanged()
+    {
+        StateHasChanged();
+    }
+
+    private void SaveWorkOrder()
+    {
+        DataService.AddWorkOrder(newWorkOrder);
+        workOrders = DataService.GetWorkOrders();
+        ShowSuccess($"Work order {newWorkOrder.WorkOrderId} created successfully");
+        CloseCreateModal();
+    }
+
+    private void StartWorkOrder(WorkOrder wo)
+    {
+        wo.Status = "In Progress";
+        DataService.UpdateWorkOrder(wo);
+        workOrders = DataService.GetWorkOrders();
+        ShowSuccess($"Work order {wo.WorkOrderId} started");
+    }
+
+    private void CompleteWorkOrder(WorkOrder wo)
+    {
+        wo.Status = "Completed";
+        wo.CompletedDate = DateTime.Now;
+        DataService.UpdateWorkOrder(wo);
+        workOrders = DataService.GetWorkOrders();
+        ShowSuccess($"Work order {wo.WorkOrderId} completed");
+    }
+
+    private void ShowSuccess(string message)
+    {
+        successMessage = message;
+        showSuccessMessage = true;
+        StateHasChanged();
+        
+        Task.Delay(3000).ContinueWith(_ =>
+        {
+            showSuccessMessage = false;
+            InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private void ViewWorkOrder(WorkOrder wo)
+    {
+        selectedWorkOrder = wo;
+        showViewModal = true;
+    }
+
+    private void CloseViewModal()
+    {
+        showViewModal = false;
+    }
+
+    private string GetStatusStyle(string status)
+    {
+        return status switch
+        {
+            "Open" => "background: rgba(2, 136, 209, 0.1); color: var(--rbm-accent);",
+            "In Progress" => "background: rgba(251, 140, 0, 0.1); color: var(--rbm-warning);",
+            "Completed" => "background: rgba(67, 160, 71, 0.1); color: var(--rbm-success);",
+            "Cancelled" => "background: rgba(96, 125, 139, 0.1); color: var(--rbm-text-light);",
+            _ => ""
+        };
+    }
+}
