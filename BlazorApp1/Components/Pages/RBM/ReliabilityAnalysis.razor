@@ -1,0 +1,794 @@
+@page "/rbm/reliability-analysis"
+@page "/rbm/reliability-analysis/{AssetId:int}"
+@rendermode InteractiveServer
+@layout RBMLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject BlazorApp1.Services.DataService DataService
+@inject BlazorApp1.Services.CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+@using BlazorApp1.Models
+@using System.Linq
+
+<PageTitle>Reliability Analysis | RBM CMMS</PageTitle>
+
+@if (!isInitialized)
+{
+    <div style="text-align: center; padding: 40px;">
+        <div style="font-size: 48px; margin-bottom: 16px;">?</div>
+        <div>Loading reliability data...</div>
+    </div>
+}
+else if (AssetId == null)
+{
+    <!-- Reliability Dashboard Overview -->
+    <div class="rbm-page-header">
+        <h1 class="rbm-page-title">?? Reliability Analysis</h1>
+        <p class="rbm-page-subtitle">Track MTBF, MTTR, availability, and OEE for all assets</p>
+    </div>
+
+    <!-- Key Metrics -->
+    <div class="rbm-grid rbm-grid-5 mb-4">
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-label">Fleet Availability</div>
+            <div class="rbm-stat-value" style="color: @GetAvailabilityColor(fleetAvailability);">@fleetAvailability.ToString("F1")%</div>
+            <div style="position: absolute; top: 12px; right: 16px; font-size: 32px; opacity: 0.3;">??</div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-label">Avg MTBF</div>
+            <div class="rbm-stat-value">@avgMTBF.ToString("F0")h</div>
+            <div style="position: absolute; top: 12px; right: 16px; font-size: 32px; opacity: 0.3;">??</div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-label">Avg MTTR</div>
+            <div class="rbm-stat-value">@avgMTTR.ToString("F1")h</div>
+            <div style="position: absolute; top: 12px; right: 16px; font-size: 32px; opacity: 0.3;">??</div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-label">Avg OEE</div>
+            <div class="rbm-stat-value" style="color: @GetOEEColor(avgOEE);">@avgOEE.ToString("F1")%</div>
+            <div style="position: absolute; top: 12px; right: 16px; font-size: 32px, opacity: 0.3;">??</div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-label">Critical Assets</div>
+            <div class="rbm-stat-value" style="color: @(criticalReliabilityCount > 0 ? "#e53935" : "#43a047");">@criticalReliabilityCount</div>
+            <div style="position: absolute; top: 12px; right: 16px; font-size: 32px; opacity: 0.3;">??</div>
+        </div>
+    </div>
+
+    <!-- Analysis Options -->
+    <div class="rbm-card mb-4">
+        <div style="padding: 16px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+            <select class="rbm-form-select" @bind="selectedPeriod" @bind:event="onchange" style="flex: 1; min-width: 150px;">
+                <option value="Daily">Daily</option>
+                <option value="Weekly">Weekly</option>
+                <option value="Monthly">Monthly</option>
+                <option value="Quarterly">Quarterly</option>
+                <option value="Yearly">Yearly</option>
+            </select>
+            
+            <select class="rbm-form-select" @bind="selectedAssetFilter" @bind:event="onchange" style="flex: 1; min-width: 200px;">
+                <option value="all">All Assets</option>
+                <option value="critical">Critical Assets Only</option>
+                <option value="low-availability">Low Availability (&lt;90%)</option>
+                <option value="high-downtime">High Downtime (&gt;5h/day)</option>
+            </select>
+
+            <button class="rbm-btn rbm-btn-primary" @onclick="CalculateMetrics">
+                ?? Recalculate
+            </button>
+            
+            <button class="rbm-btn rbm-btn-secondary" @onclick="ExportAnalysis">
+                ?? Export Report
+            </button>
+        </div>
+    </div>
+
+    <!-- Reliability Metrics Table -->
+    <div class="rbm-card mb-4">
+        <div class="rbm-card-header">
+            <h3>Asset Reliability Metrics (@reliabilityData.Count)</h3>
+        </div>
+        <div class="rbm-table-container">
+            @if (reliabilityData.Any())
+            {
+                <table class="rbm-table">
+                    <thead>
+                        <tr>
+                            <th>Asset</th>
+                            <th>MTBF (h)</th>
+                            <th>MTTR (h)</th>
+                            <th>Availability %</th>
+                            <th>OEE %</th>
+                            <th>Failures</th>
+                            <th>Downtime (h)</th>
+                            <th>Uptime (h)</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var metric in reliabilityData.OrderBy(m => m.Availability))
+                        {
+                            var asset = assets.FirstOrDefault(a => a.Id == metric.AssetId);
+                            <tr>
+                                <td>
+                                    @if (asset != null)
+                                    {
+                                        <div><strong>@asset.AssetId</strong></div>
+                                        <div style="font-size: 12px; color: var(--rbm-text-light);">@asset.Name</div>
+                                    }
+                                </td>
+                                <td><strong>@metric.MTBF.ToString("F0")</strong></td>
+                                <td><strong>@metric.MTTR.ToString("F1")</strong></td>
+                                <td>
+                                    <span style="color: @GetAvailabilityColor(metric.Availability); font-weight: 600;">
+                                        @metric.Availability.ToString("F1")%
+                                    </span>
+                                </td>
+                                <td>
+                                    <span style="color: @GetOEEColor(metric.OEE); font-weight: 600;">
+                                        @metric.OEE.ToString("F1")%
+                                    </span>
+                                </td>
+                                <td class="text-center">@metric.FailureCount</td>
+                                <td class="text-center">@metric.TotalDowntimeHours.ToString("F1")</td>
+                                <td class="text-center">@metric.TotalUptimeHours.ToString("F0")</td>
+                                <td>
+                                    <span class="rbm-badge-pill" style="background: @GetReliabilityStatusColor(metric); color: white;">
+                                        @GetReliabilityStatus(metric)
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => ViewAssetAnalysis(metric.AssetId)">
+                                        ??? View
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <div style="text-align: center; padding: 40px; color: var(--rbm-text-light);">
+                    <div style="font-size: 48px; margin-bottom: 16px;">??</div>
+                    <div>No reliability data available. Add downtime records to enable analysis.</div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Benchmarking Comparison -->
+    <div class="rbm-grid rbm-grid-2 mb-4">
+        <div class="rbm-card">
+            <div class="rbm-card-header">
+                <h3>MTBF Distribution</h3>
+            </div>
+            <div style="padding: 20px; min-height: 300px; display: flex; flex-direction: column; justify-content: space-around;">
+                @foreach (var group in reliabilityData.GroupBy(r => GetMTBFCategory(r.MTBF)))
+                {
+                    var count = group.Count();
+                    var percentage = (count * 100) / reliabilityData.Count;
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="width: 100px;">@group.Key</div>
+                        <div style="flex: 1;">
+                            <div style="background: linear-gradient(90deg, #2196F3 0%, #1976D2 100%); 
+                                        height: 24px; 
+                                        border-radius: 4px;
+                                        width: @(percentage)%;
+                                        display: flex;
+                                        align-items: center;
+                                        justify-content: center;
+                                        color: white;
+                                        font-size: 11px;
+                                        font-weight: 600;">
+                                @if (percentage > 5) { <text>@percentage.ToString("F0")%</text> }
+                            </div>
+                        </div>
+                        <div style="width: 40px; text-align: right;">@count</div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="rbm-card">
+            <div class="rbm-card-header">
+                <h3>OEE Performance Tiers</h3>
+            </div>
+            <div style="padding: 20px;">
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <div style="padding: 16px; background: #e8f5e9; border-left: 4px solid #43a047; border-radius: 8px;">
+                        <div style="font-weight: 600; color: #2e7d32; margin-bottom: 4px;">?? Excellent (OEE &gt; 85%)</div>
+                        <div style="font-size: 24px; font-weight: 700; color: #43a047;">@reliabilityData.Count(r => r.OEE > 85)</div>
+                        <div style="font-size: 12px; color: var(--rbm-text-light); margin-top: 8px;">Assets performing well</div>
+                    </div>
+                    
+                    <div style="padding: 16px; background: #fff3e0; border-left: 4px solid #fb8c00; border-radius: 8px;">
+                        <div style="font-weight: 600; color: #e65100; margin-bottom: 4px;">?? Good (70% - 85% OEE)</div>
+                        <div style="font-size: 24px; font-weight: 700; color: #fb8c00;">@reliabilityData.Count(r => r.OEE >= 70 && r.OEE <= 85)</div>
+                        <div style="font-size: 12px; color: var(--rbm-text-light); margin-top: 8px;">Assets needing attention</div>
+                    </div>
+                    
+                    <div style="padding: 16px; background: #ffebee; border-left: 4px solid #e53935; border-radius: 8px;">
+                        <div style="font-weight: 600; color: #c62828; margin-bottom: 4px;">?? Poor (OEE &lt; 70%)</div>
+                        <div style="font-size: 24px, font-weight: 700; color: #e53935;">@reliabilityData.Count(r => r.OEE < 70)</div>
+                        <div style="font-size: 12px, color: var(--rbm-text-light); margin-top: 8px;">Urgent improvement needed</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Issues -->
+    <div class="rbm-card">
+        <div class="rbm-card-header">
+            <h3>?? Top Reliability Issues</h3>
+        </div>
+        <div style="padding: 20px;">
+            @if (reliabilityData.Any())
+            {
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    @foreach (var metric in reliabilityData.OrderBy(m => m.Availability).Take(5))
+                    {
+                        var asset = assets.FirstOrDefault(a => a.Id == metric.AssetId);
+                        var issue = GetReliabilityIssue(metric);
+                        <div style="padding: 12px; background: var(--rbm-bg); border-radius: 8px; border-left: 4px solid @issue.Color;">
+                            <div style="font-weight: 600; margin-bottom: 4px;">
+                                @issue.Icon @asset?.AssetId - @issue.Title
+                            </div>
+                            <div style="font-size: 13px; color: var(--rbm-text-light); margin-bottom: 8px;">
+                                @issue.Description
+                            </div>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap; font-size: 12px;">
+                                <span>?? Availability: @metric.Availability.ToString("F1")%</span>
+                                <span>?? MTBF: @metric.MTBF.ToString("F0")h</span>
+                                <span>?? MTTR: @metric.MTTR.ToString("F1")h</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div style="color: var(--rbm-text-light); text-align: center; padding: 20px;">
+                    No reliability issues detected
+                </div>
+            }
+        </div>
+    </div>
+}
+else
+{
+    <!-- Asset Detailed Reliability Analysis -->
+    @if (selectedAsset != null && selectedMetrics.Any())
+    {
+        var latestMetric = selectedMetrics.First();
+        
+        <div class="rbm-page-header">
+            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="BackToAnalysis" style="margin-bottom: 16px;">
+                ? Back to Analysis
+            </button>
+            <h1 class="rbm-page-title">@selectedAsset.Name - Reliability Analysis</h1>
+            <p class="rbm-page-subtitle">@selectedAsset.AssetId - Detailed metrics and trends</p>
+        </div>
+
+        <!-- Key Metrics Cards -->
+        <div class="rbm-grid rbm-grid-4 mb-4">
+            <div class="rbm-stat-card">
+                <div class="rbm-stat-label">MTBF</div>
+                <div class="rbm-stat-value">@latestMetric.MTBF.ToString("F0")</div>
+                <div style="font-size: 12px; color: var(--rbm-text-light); margin-top: 8px;">Mean Time Between Failures (hours)</div>
+            </div>
+            
+            <div class="rbm-stat-card">
+                <div class="rbm-stat-label">MTTR</div>
+                <div class="rbm-stat-value">@latestMetric.MTTR.ToString("F1")</div>
+                <div style="font-size: 12px; color: var(--rbm-text-light); margin-top: 8px;">Mean Time To Repair (hours)</div>
+            </div>
+            
+            <div class="rbm-stat-card">
+                <div class="rbm-stat-label">Availability</div>
+                <div class="rbm-stat-value" style="color: @GetAvailabilityColor(latestMetric.Availability);">@latestMetric.Availability.ToString("F1")%</div>
+                <div style="font-size: 12px; color: var(--rbm-text-light); margin-top: 8px;">System availability</div>
+            </div>
+            
+            <div class="rbm-stat-card">
+                <div class="rbm-stat-label">OEE</div>
+                <div class="rbm-stat-value" style="color: @GetOEEColor(latestMetric.OEE);">@latestMetric.OEE.ToString("F1")%</div>
+                <div style="font-size: 12px; color: var(--rbm-text-light); margin-top: 8px;">Overall Equipment Effectiveness</div>
+            </div>
+        </div>
+
+        <!-- Detailed Metrics -->
+        <div class="rbm-grid rbm-grid-2 mb-4">
+            <div class="rbm-card">
+                <div class="rbm-card-header"><h3>Performance Indicators</h3></div>
+                <div style="padding: 20px;">
+                    <table style="width: 100%; font-size: 14px;">
+                        <tbody>
+                            <tr style="border-bottom: 1px solid var(--rbm-border);">
+                                <td style="padding: 8px 0;"><strong>Total Failures</strong></td>
+                                <td style="text-align: right; font-weight: 600;">@latestMetric.FailureCount</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid var(--rbm-border);">
+                                <td style="padding: 8px 0;"><strong>Total Downtime</strong></td>
+                                <td style="text-align: right; font-weight: 600;">@latestMetric.TotalDowntimeHours.ToString("F1") hours</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid var(--rbm-border);">
+                                <td style="padding: 8px 0;"><strong>Total Uptime</strong></td>
+                                <td style="text-align: right; font-weight: 600;">@latestMetric.TotalUptimeHours.ToString("F0") hours</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid var(--rbm-border);">
+                                <td style="padding: 8px 0;"><strong>MTTF</strong></td>
+                                <td style="text-align: right; font-weight: 600;">@latestMetric.MTTF.ToString("F0") hours</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0;"><strong>Period</strong></td>
+                                <td style="text-align: right; font-weight: 600;">@latestMetric.Period</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="rbm-card">
+                <div class="rbm-card-header"><h3>Reliability Assessment</h3></div>
+                <div style="padding: 20px;">
+                    @{
+                        var assessment = GetReliabilityAssessment(latestMetric);
+                    }
+                    <div style="padding: 16px; background: @assessment.BgColor; border-left: 4px solid @assessment.BorderColor; border-radius: 8px; margin-bottom: 16px;">
+                        <div style="font-weight: 600; color: @assessment.TextColor; margin-bottom: 8px;">@assessment.Title</div>
+                        <div style="font-size: 13px; color: @assessment.TextColor;">@assessment.Description</div>
+                    </div>
+                    
+                    <div style="padding: 12px; background: var(--rbm-bg); border-radius: 8px;">
+                        <strong style="display: block; margin-bottom: 8px;">Recommendations:</strong>
+                        <ul style="margin: 0; padding-left: 20px; font-size: 13px;">
+                            @foreach (var rec in assessment.Recommendations)
+                            {
+                                <li>@rec</li>
+                            }
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Historical Trends -->
+        <div class="rbm-card mb-4">
+            <div class="rbm-card-header"><h3>Historical Trends (Last 12 Periods)</h3></div>
+            <div style="padding: 20px; min-height: 400px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div>
+                        <h4 style="margin-bottom: 16px; font-size: 13px; font-weight: 600;">MTBF Trend</h4>
+                        <div style="display: flex; align-items: flex-end; justify-content: space-between; height: 200px; gap: 8px;">
+                            @foreach (var metric in selectedMetrics.Take(12).Reverse())
+                            {
+                                var maxMTBF = selectedMetrics.Max(m => m.MTBF);
+                                var height = (metric.MTBF / maxMTBF) * 180;
+                                <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                                    <div style="background: #2196F3; width: 100%; height: @height.ToString("F0")px; border-radius: 4px 4px 0 0;"></div>
+                                    <span style="font-size: 10px; color: var(--rbm-text-light);">@metric.MetricDate.ToString("MMM")</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h4 style="margin-bottom: 16px; font-size: 13px; font-weight: 600;">Availability Trend</h4>
+                        <div style="display: flex; align-items: flex-end; justify-content: space-between; height: 200px; gap: 8px;">
+                            @foreach (var metric in selectedMetrics.Take(12).Reverse())
+                            {
+                                var height = (metric.Availability / 100) * 180;
+                                var color = metric.Availability > 90 ? "#43a047" : metric.Availability > 80 ? "#fb8c00" : "#e53935";
+                                <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                                    <div style="background: @color; width: 100%; height: @height.ToString("F0")px; border-radius: 4px 4px 0 0;"></div>
+                                    <span style="font-size: 10px; color: var(--rbm-text-light);">@metric.MetricDate.ToString("MMM")</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Related Downtime Events -->
+        <div class="rbm-card mb-4">
+            <div class="rbm-card-header"><h3>Recent Downtime Events</h3></div>
+            <div class="rbm-table-container">
+                @if (downtimeEvents.Any())
+                {
+                    <table class="rbm-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Reason</th>
+                                <th>Duration (hours)</th>
+                                <th>Category</th>
+                                <th>Production Loss</th>
+                                <th>Work Order</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var dt in downtimeEvents.OrderByDescending(d => d.StartTime).Take(10))
+                            {
+                                <tr>
+                                    <td>@dt.StartTime.ToString("MMM dd, yyyy HH:mm")</td>
+                                    <td>@dt.Reason</td>
+                                    <td class="text-center">@dt.DurationHours.ToString("F1")</td>
+                                    <td>
+                                        <span class="rbm-badge-pill" style="background: @(dt.Category == "Planned" ? "#e3f2fd" : "#ffebee"); color: @(dt.Category == "Planned" ? "#1565c0" : "#c62828");">
+                                            @dt.Category
+                                        </span>
+                                    </td>
+                                    <td>@(dt.ProductionLoss > 0 ? dt.ProductionLoss.ToString("F0") + " units" : "N/A")</td>
+                                    <td>
+                                        @if (dt.RelatedWorkOrderId.HasValue)
+                                        {
+                                            <a href="/rbm/work-orders/@dt.RelatedWorkOrderId" style="color: var(--rbm-primary);">
+                                                @dt.RelatedWorkOrderId
+                                            </a>
+                                        }
+                                        else
+                                        {
+                                            <span style="color: var(--rbm-text-light);">-</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                else
+                {
+                    <div style="padding: 40px; text-align: center; color: var(--rbm-text-light);">
+                        No downtime events recorded
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Failure Modes for Asset -->
+        <div class="rbm-card">
+            <div class="rbm-card-header"><h3>Failure Modes (FMEA)</h3></div>
+            <div class="rbm-table-container">
+                @if (assetFailureModes.Any())
+                {
+                    <table class="rbm-table">
+                        <thead>
+                            <tr>
+                                <th>Failure Mode</th>
+                                <th>Cause</th>
+                                <th>Effect</th>
+                                <th>RPN</th>
+                                <th>Current Controls</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var fm in assetFailureModes.OrderByDescending(f => f.RPN))
+                            {
+                                <tr>
+                                    <td><strong>@fm.Mode</strong></td>
+                                    <td>@fm.Cause</td>
+                                    <td>@fm.Effect</td>
+                                    <td>
+                                        <strong style="color: @GetRPNColor(fm.RPN); font-size: 16px;">@fm.RPN</strong>
+                                    </td>
+                                    <td style="font-size: 13px;">@fm.CurrentControls</td>
+                                    <td>
+                                        @if (fm.RevisedRPN.HasValue)
+                                        {
+                                            <span class="rbm-badge-pill" style="background: #e8f5e9; color: #2e7d32;">
+                                                Controlled (RPN: @fm.RevisedRPN)
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="rbm-badge-pill" style="background: #fff3e0; color: #e65100;">
+                                                Monitoring
+                                            </span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                else
+                {
+                    <div style="padding: 40px; text-align: center; color: var(--rbm-text-light);">
+                        No failure modes defined for this asset
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    else if (selectedAsset != null)
+    {
+        <div class="rbm-page-header">
+            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="BackToAnalysis">
+                ? Back to Analysis
+            </button>
+            <h1 class="rbm-page-title">@selectedAsset.Name - No Reliability Data</h1>
+        </div>
+        <div style="text-align: center; padding: 60px 20px;">
+            <div style="font-size: 48px; margin-bottom: 16px;">??</div>
+            <div style="font-size: 18px; font-weight: 600;">No reliability metrics available</div>
+            <div style="color: var(--rbm-text-light); margin-top: 8px;">
+                Add downtime records to generate reliability analysis for this asset
+            </div>
+            <a href="/rbm/assets/@selectedAsset.Id" style="color: var(--rbm-primary); margin-top: 16px; display: inline-block;">
+                View Asset Details ?
+            </a>
+        </div>
+    }
+}
+
+@code {
+    [Parameter]
+    public int? AssetId { get; set; }
+
+    private List<Asset> assets = new();
+    private List<ReliabilityMetric> reliabilityData = new();
+    private List<ReliabilityMetric> selectedMetrics = new();
+    private List<FailureMode> assetFailureModes = new();
+    private List<AssetDowntime> downtimeEvents = new();
+    
+    private Asset? selectedAsset;
+    
+    private string selectedPeriod = "Monthly";
+    private string selectedAssetFilter = "all";
+    
+    private double fleetAvailability = 0;
+    private double avgMTBF = 0;
+    private double avgMTTR = 0;
+    private double avgOEE = 0;
+    private int criticalReliabilityCount = 0;
+    
+    private bool isInitialized = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CurrentUser.InitializeAsync();
+        await LoadDataAsync();
+        isInitialized = true;
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            assets = await DataService.GetAssetsAsync();
+            
+            if (AssetId.HasValue && AssetId.Value > 0)
+            {
+                selectedAsset = assets.FirstOrDefault(a => a.Id == AssetId.Value);
+                if (selectedAsset != null)
+                {
+                    selectedMetrics = await DataService.GetReliabilityMetricsAsync(selectedAsset.Id);
+                    assetFailureModes = await DataService.GetFailureModesAsync(selectedAsset.Id);
+                    downtimeEvents = await DataService.GetAssetDowntimeAsync(selectedAsset.Id);
+                }
+            }
+            else
+            {
+                await CalculateFleetMetricsAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading reliability data: {ex.Message}");
+        }
+    }
+
+    private async Task CalculateFleetMetricsAsync()
+    {
+        reliabilityData.Clear();
+        
+        foreach (var asset in assets)
+        {
+            var metrics = await DataService.GetReliabilityMetricsAsync(asset.Id);
+            if (metrics.Any())
+            {
+                var latest = metrics.OrderByDescending(m => m.MetricDate).First();
+                if (latest.Period == selectedPeriod)
+                {
+                    reliabilityData.Add(latest);
+                }
+            }
+        }
+
+        if (reliabilityData.Any())
+        {
+            fleetAvailability = reliabilityData.Average(m => m.Availability);
+            avgMTBF = reliabilityData.Average(m => m.MTBF);
+            avgMTTR = reliabilityData.Average(m => m.MTTR);
+            avgOEE = reliabilityData.Average(m => m.OEE);
+            criticalReliabilityCount = reliabilityData.Count(m => m.Availability < 80);
+        }
+        
+        ApplyFilters();
+    }
+
+    private void CalculateFleetMetrics()
+    {
+        CalculateFleetMetricsAsync().ConfigureAwait(false);
+    }
+
+    private void ApplyAnalysis(ChangeEventArgs e)
+    {
+        CalculateFleetMetrics();
+    }
+
+    private void ApplyFilters()
+    {
+        var filtered = reliabilityData.AsEnumerable();
+
+        if (selectedAssetFilter == "critical")
+        {
+            filtered = filtered.Where(m => m.Availability < 85);
+        }
+        else if (selectedAssetFilter == "low-availability")
+        {
+            filtered = filtered.Where(m => m.Availability < 90);
+        }
+        else if (selectedAssetFilter == "high-downtime")
+        {
+            filtered = filtered.Where(m => m.TotalDowntimeHours > 5);
+        }
+
+        reliabilityData = filtered.ToList();
+    }
+
+    private async Task CalculateMetrics()
+    {
+        await CalculateFleetMetricsAsync();
+        StateHasChanged();
+    }
+
+    private void ViewAssetAnalysis(int assetId)
+    {
+        Navigation.NavigateTo($"/rbm/reliability-analysis/{assetId}");
+    }
+
+    private void BackToAnalysis()
+    {
+        Navigation.NavigateTo("/rbm/reliability-analysis");
+    }
+
+    private async Task ExportAnalysis()
+    {
+        try
+        {
+            // TODO: Implement CSV export with async file operations
+            await Task.Delay(100);
+            Console.WriteLine("Exporting reliability analysis...");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Export error: {ex.Message}");
+        }
+    }
+
+    private string GetAvailabilityColor(double availability)
+    {
+        if (availability >= 95) return "#43a047";
+        if (availability >= 90) return "#fb8c00";
+        if (availability >= 85) return "#fbc02d";
+        return "#e53935";
+    }
+
+    private string GetOEEColor(double oee)
+    {
+        if (oee >= 85) return "#43a047";
+        if (oee >= 70) return "#fb8c00";
+        return "#e53935";
+    }
+
+    private string GetRPNColor(int rpn)
+    {
+        if (rpn > 200) return "#e53935";
+        if (rpn >= 100) return "#fb8c00";
+        return "#43a047";
+    }
+
+    private string GetMTBFCategory(double mtbf)
+    {
+        if (mtbf >= 1000) return "> 1000h";
+        if (mtbf >= 500) return "500-1000h";
+        if (mtbf >= 200) return "200-500h";
+        return "< 200h";
+    }
+
+    private string GetReliabilityStatus(ReliabilityMetric metric)
+    {
+        if (metric.Availability >= 95 && metric.OEE >= 85) return "Excellent";
+        if (metric.Availability >= 90 && metric.OEE >= 70) return "Good";
+        if (metric.Availability >= 85 && metric.OEE >= 60) return "Fair";
+        if (metric.Availability >= 80 && metric.OEE >= 50) return "Poor";
+        return "Critical";
+    }
+
+    private string GetReliabilityStatusColor(ReliabilityMetric metric)
+    {
+        return GetReliabilityStatus(metric) switch
+        {
+            "Excellent" => "#43a047",
+            "Good" => "#4caf50",
+            "Fair" => "#fb8c00",
+            "Poor" => "#fbc02d",
+            "Critical" => "#e53935",
+            _ => "#999999"
+        };
+    }
+
+    private (string Icon, string Title, string Description, string Color) GetReliabilityIssue(ReliabilityMetric metric)
+    {
+        if (metric.Availability < 80)
+        {
+            return ("??", "Critical Availability", "System availability below 80%", "#e53935");
+        }
+        if (metric.MTTR > 8)
+        {
+            return ("??", "Long Repair Time", "Average repair time exceeds 8 hours", "#fb8c00");
+        }
+        if (metric.FailureCount > 10)
+        {
+            return ("??", "High Failure Rate", "More than 10 failures in period", "#fbc02d");
+        }
+        return ("??", "Requires Attention", "Reliability metrics below targets", "#1976d2");
+    }
+
+    private (string Title, string Description, string BgColor, string BorderColor, string TextColor, List<string> Recommendations) GetReliabilityAssessment(ReliabilityMetric metric)
+    {
+        if (metric.Availability >= 95 && metric.OEE >= 85)
+        {
+            return (
+                "Excellent Performance",
+                "Asset is performing at or above world-class standards",
+                "#e8f5e9",
+                "#43a047",
+                "#2e7d32",
+                new List<string>
+                {
+                    "Maintain current preventive maintenance schedule",
+                    "Monitor for any deterioration trends",
+                    "Document best practices for other assets"
+                }
+            );
+        }
+        if (metric.Availability >= 90)
+        {
+            return (
+                "Good Performance",
+                "Asset is performing well with minor opportunities for improvement",
+                "#fff3e0",
+                "#fb8c00",
+                "#e65100",
+                new List<string>
+                {
+                    "Review predictive maintenance data",
+                    "Optimize maintenance intervals",
+                    "Consider condition-based maintenance"
+                }
+            );
+        }
+        return (
+            "Performance Needs Improvement",
+            "Asset is underperforming and requires immediate attention",
+            "#ffebee",
+            "#e53935",
+            "#c62828",
+            new List<string>
+            {
+                "Conduct root cause analysis of failures",
+                "Increase inspection frequency",
+                "Consider equipment upgrade or refurbishment",
+                "Implement corrective maintenance plan"
+            }
+        );
+    }
+}

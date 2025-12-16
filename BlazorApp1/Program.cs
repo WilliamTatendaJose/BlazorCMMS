@@ -18,10 +18,25 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<IdentityRedirectManager>();
 builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
 
+// Register HttpContextAccessor for tenant context
+builder.Services.AddHttpContextAccessor();
+
 // Register RBM CMMS Services
 builder.Services.AddScoped<DataService>();
 builder.Services.AddScoped<CurrentUserService>();
 builder.Services.AddScoped<RolePermissionService>();
+builder.Services.AddScoped<UserManagementService>();
+builder.Services.AddScoped<WorkOrderService>();
+builder.Services.AddScoped<UnitsSettingsService>();
+builder.Services.AddScoped<NotificationService>();
+builder.Services.AddScoped<ThemeService>();
+builder.Services.AddScoped<DataExportService>();
+builder.Services.AddScoped<MaintenanceScheduleExportService>();
+builder.Services.AddScoped<RecurringMaintenanceScheduler>();
+
+// Register Multi-tenancy Services
+builder.Services.AddScoped<ITenantService, TenantService>();
+builder.Services.AddScoped<ITenantManagementService, TenantManagementService>();
 
 builder.Services.AddAuthentication(options =>
     {
@@ -31,12 +46,17 @@ builder.Services.AddAuthentication(options =>
     .AddIdentityCookies();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
+
+// Add DbContextFactory for DataService - use AddPooledDbContextFactory
+builder.Services.AddPooledDbContextFactory<ApplicationDbContext>(options =>
     options.UseSqlServer(connectionString));
 
-// Add DbContextFactory for DataService
-builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
-    options.UseSqlServer(connectionString));
+// Add scoped DbContext for Identity (uses the factory)
+builder.Services.AddScoped(sp =>
+{
+    var factory = sp.GetRequiredService<IDbContextFactory<ApplicationDbContext>>();
+    return factory.CreateDbContext();
+});
 
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
@@ -45,23 +65,35 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
         options.SignIn.RequireConfirmedAccount = true;
         options.Stores.SchemaVersion = IdentitySchemaVersions.Version3;
         
-        // Password settings for demo (adjust for production)
+        // Password settings (production-ready)
         options.Password.RequireDigit = true;
         options.Password.RequireLowercase = true;
         options.Password.RequireUppercase = true;
         options.Password.RequireNonAlphanumeric = false;
         options.Password.RequiredLength = 6;
+        
+        // Lockout settings
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.Lockout.AllowedForNewUsers = true;
+        
+        // User settings
+        options.User.RequireUniqueEmail = true;
     })
-    .AddRoles<IdentityRole>() // Add role support
+    .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddSignInManager()
     .AddDefaultTokenProviders();
 
-builder.Services.AddSingleton<IEmailSender<ApplicationUser>, EmailSender>();
+// Register EmailSender as scoped for proper DI with IConfiguration
+builder.Services.AddScoped<IEmailSender<ApplicationUser>, EmailSender>();
 
 // Add authorization policies
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"))
+    .AddPolicy("SuperAdminOnly", policy => policy.RequireRole("SuperAdmin"))
+    .AddPolicy("TenantAdminOrSuperAdmin", policy => policy.RequireRole("TenantAdmin", "SuperAdmin"))
+    .AddPolicy("SuperAdminOrTenantAdmin", policy => policy.RequireRole("SuperAdmin", "TenantAdmin"))
     .AddPolicy("EngineerOrAdmin", policy => policy.RequireRole("Admin", "Reliability Engineer"))
     .AddPolicy("CanEdit", policy => policy.RequireRole("Admin", "Reliability Engineer", "Planner"))
     .AddPolicy("CanDelete", policy => policy.RequireRole("Admin", "Reliability Engineer"));
@@ -82,6 +114,24 @@ using (var scope = app.Services.CreateScope())
         var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
         var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
         await IdentityDataSeeder.SeedRolesAndUsersAsync(userManager, roleManager);
+        
+        // Seed SuperAdmin role if not exists
+        if (!await roleManager.RoleExistsAsync("SuperAdmin"))
+        {
+            await roleManager.CreateAsync(new IdentityRole("SuperAdmin"));
+        }
+        
+        // Seed TenantAdmin role if not exists
+        if (!await roleManager.RoleExistsAsync("TenantAdmin"))
+        {
+            await roleManager.CreateAsync(new IdentityRole("TenantAdmin"));
+        }
+        
+        // Seed Viewer role if not exists
+        if (!await roleManager.RoleExistsAsync("Viewer"))
+        {
+            await roleManager.CreateAsync(new IdentityRole("Viewer"));
+        }
     }
     catch (Exception ex)
     {

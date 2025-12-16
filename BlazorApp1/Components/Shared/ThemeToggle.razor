@@ -1,0 +1,49 @@
+@using BlazorApp1.Services
+@inject ThemeService ThemeService
+
+<button class="theme-toggle-btn" @onclick="ToggleTheme" title="Toggle dark mode">
+    @if (currentTheme == "dark")
+    {
+        <span>??</span>
+    }
+    else
+    {
+        <span>??</span>
+    }
+</button>
+
+@code {
+    private string currentTheme = "light";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Subscribe to theme changes
+        ThemeService.OnThemeChanged += OnThemeChanged;
+        // Initialize current theme value from service (may be updated on first render)
+        currentTheme = ThemeService.GetCurrentTheme();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Ensure the DOM and service state are in sync on first render
+            await ThemeService.InitializeThemeAsync();
+            currentTheme = ThemeService.GetCurrentTheme();
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleTheme()
+    {
+        await ThemeService.ToggleThemeAsync();
+        currentTheme = ThemeService.GetCurrentTheme();
+        StateHasChanged();
+    }
+
+    private void OnThemeChanged()
+    {
+        currentTheme = ThemeService.GetCurrentTheme();
+        StateHasChanged();
+    }
+}

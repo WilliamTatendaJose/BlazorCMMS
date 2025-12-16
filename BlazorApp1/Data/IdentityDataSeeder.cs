@@ -10,13 +10,39 @@ public static class IdentityDataSeeder
         RoleManager<IdentityRole> roleManager)
     {
         // Seed Roles
-        string[] roles = { "Admin", "Reliability Engineer", "Planner", "Technician" };
+        string[] roles = { "SuperAdmin", "Admin", "TenantAdmin", "Reliability Engineer", "Planner", "Technician" };
 
         foreach (var role in roles)
         {
             if (!await roleManager.RoleExistsAsync(role))
             {
                 await roleManager.CreateAsync(new IdentityRole(role));
+            }
+        }
+
+        // Seed Super Admin User
+        var superAdminEmail = "superadmin@company.com";
+        var existingSuperAdmin = await userManager.FindByEmailAsync(superAdminEmail);
+        if (existingSuperAdmin == null)
+        {
+            var superAdminUser = new ApplicationUser
+            {
+                UserName = superAdminEmail,
+                Email = superAdminEmail,
+                EmailConfirmed = true,
+                FullName = "Super Administrator",
+                Department = "Administration",
+                PhoneNumber = "555-0000",
+                IsActive = true,
+                IsSuperAdmin = true,
+                PrimaryTenantId = null, // Super admin is not tied to a specific tenant
+                CreatedDate = DateTime.Now
+            };
+
+            var result = await userManager.CreateAsync(superAdminUser, "SuperAdmin123!");
+            if (result.Succeeded)
+            {
+                await userManager.AddToRoleAsync(superAdminUser, "SuperAdmin");
             }
         }
 
@@ -55,6 +81,7 @@ public static class IdentityDataSeeder
                 Department = department,
                 PhoneNumber = phone,
                 IsActive = true,
+                IsSuperAdmin = false,
                 CreatedDate = DateTime.Now
             };
 

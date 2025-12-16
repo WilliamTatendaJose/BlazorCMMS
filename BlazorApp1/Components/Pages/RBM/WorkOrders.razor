@@ -5,6 +5,7 @@
 @attribute [Authorize]
 @inject BlazorApp1.Services.DataService DataService
 @inject BlazorApp1.Services.CurrentUserService CurrentUser
+@inject NavigationManager Navigation
 @using BlazorApp1.Models
 
 <div class="rbm-page-header">
@@ -99,8 +100,8 @@
                             </span>
                         </td>
                         <td>
-                            <div>@wo.DueDate.ToString("MMM dd, yyyy")</div>
-                            @if (wo.DueDate < DateTime.Now && wo.Status != "Completed")
+                            <div>@(wo.DueDate?.ToString("MMM dd, yyyy") ?? "Not set")</div>
+                            @if (wo.DueDate.HasValue && wo.DueDate < DateTime.Now && wo.Status != "Completed")
                             {
                                 <div style="font-size: 11px; color: var(--rbm-danger); font-weight: 600;">
                                     ⚠️ OVERDUE
@@ -123,8 +124,8 @@
                                         ✓ Complete
                                     </button>
                                 }
-                                <button class="rbm-btn rbm-btn-sm rbm-btn-outline" @onclick="() => ViewWorkOrder(wo)">
-                                    👁️
+                                <button class="rbm-btn rbm-btn-sm rbm-btn-outline" @onclick="() => ViewWorkOrder(wo.Id)">
+                                    👁️ View
                                 </button>
                             </div>
                         </td>
@@ -235,42 +236,6 @@
     </div>
 }
 
-@if (showViewModal && selectedWorkOrder != null)
-{
-    <div class="rbm-modal-backdrop" @onclick="CloseViewModal">
-        <div class="rbm-modal" @onclick:stopPropagation="true">
-            <div class="rbm-modal-header">
-                <h3 class="rbm-modal-title">@selectedWorkOrder.WorkOrderId</h3>
-                <button class="rbm-modal-close" @onclick="CloseViewModal">&times;</button>
-            </div>
-            <div class="rbm-modal-body">
-                <div class="rbm-grid rbm-grid-2" style="margin-bottom: 20px;">
-                    <div>
-                        <strong>Asset:</strong> @selectedWorkOrder.AssetName<br>
-                        <strong>Priority:</strong> <span class="rbm-badge-pill rbm-badge-@selectedWorkOrder.Priority.ToLower()">@selectedWorkOrder.Priority</span><br>
-                        <strong>Type:</strong> @selectedWorkOrder.Type
-                    </div>
-                    <div>
-                        <strong>Status:</strong> <span class="rbm-badge-pill" style="@GetStatusStyle(selectedWorkOrder.Status)">@selectedWorkOrder.Status</span><br>
-                        <strong>Due Date:</strong> @selectedWorkOrder.DueDate.ToString("MMM dd, yyyy")<br>
-                        <strong>Assigned To:</strong> @selectedWorkOrder.AssignedTo
-                    </div>
-                </div>
-                <div style="margin-bottom: 16px;">
-                    <strong>Description:</strong>
-                    <p style="margin-top: 8px;">@selectedWorkOrder.Description</p>
-                </div>
-                <div>
-                    <strong>Estimated Downtime:</strong> @selectedWorkOrder.EstimatedDowntime hours
-                </div>
-            </div>
-            <div class="rbm-modal-footer">
-                <button class="rbm-btn rbm-btn-outline" @onclick="CloseViewModal">Close</button>
-            </div>
-        </div>
-    </div>
-}
-
 @if (showSuccessMessage)
 {
     <div style="position: fixed; top: 80px; right: 20px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; border-left: 4px solid var(--rbm-success);">
@@ -288,9 +253,7 @@
     private List<Asset> assets = new();
     private List<WorkOrder> workOrders = new();
     private WorkOrder newWorkOrder = new();
-    private WorkOrder? selectedWorkOrder;
     private bool showCreateModal = false;
-    private bool showViewModal = false;
     private bool showSuccessMessage = false;
     private string successMessage = "";
     private string statusFilter = "";
@@ -312,10 +275,10 @@
         }
     }
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        assets = DataService.GetAssets();
-        workOrders = DataService.GetWorkOrders();
+        assets = await DataService.GetAssetsAsync();
+        workOrders = await DataService.GetWorkOrdersAsync();
     }
 
     private void ShowCreateModal()
@@ -339,10 +302,8 @@
     private void OnAssetSelected()
     {
         var asset = assets.FirstOrDefault(a => a.Id == newWorkOrder.AssetId);
-        if (asset != null)
-        {
-            newWorkOrder.AssetName = asset.Name;
-        }
+        // AssetName is a computed property, no need to assign it
+        // It will be automatically computed from the Asset navigation property
     }
 
     private void FilterChanged()
@@ -350,28 +311,28 @@
         StateHasChanged();
     }
 
-    private void SaveWorkOrder()
+    private async Task SaveWorkOrder()
     {
-        DataService.AddWorkOrder(newWorkOrder);
-        workOrders = DataService.GetWorkOrders();
+        await DataService.AddWorkOrderAsync(newWorkOrder);
+        workOrders = await DataService.GetWorkOrdersAsync();
         ShowSuccess($"Work order {newWorkOrder.WorkOrderId} created successfully");
         CloseCreateModal();
     }
 
-    private void StartWorkOrder(WorkOrder wo)
+    private async Task StartWorkOrder(WorkOrder wo)
     {
         wo.Status = "In Progress";
-        DataService.UpdateWorkOrder(wo);
-        workOrders = DataService.GetWorkOrders();
+        await DataService.UpdateWorkOrderAsync(wo);
+        workOrders = await DataService.GetWorkOrdersAsync();
         ShowSuccess($"Work order {wo.WorkOrderId} started");
     }
 
-    private void CompleteWorkOrder(WorkOrder wo)
+    private async Task CompleteWorkOrder(WorkOrder wo)
     {
         wo.Status = "Completed";
         wo.CompletedDate = DateTime.Now;
-        DataService.UpdateWorkOrder(wo);
-        workOrders = DataService.GetWorkOrders();
+        await DataService.UpdateWorkOrderAsync(wo);
+        workOrders = await DataService.GetWorkOrdersAsync();
         ShowSuccess($"Work order {wo.WorkOrderId} completed");
     }
 
@@ -388,15 +349,9 @@
         });
     }
 
-    private void ViewWorkOrder(WorkOrder wo)
+    private void ViewWorkOrder(int workOrderId)
     {
-        selectedWorkOrder = wo;
-        showViewModal = true;
-    }
-
-    private void CloseViewModal()
-    {
-        showViewModal = false;
+        Navigation.NavigateTo($"/rbm/work-orders/{workOrderId}");
     }
 
     private string GetStatusStyle(string status)

@@ -4,250 +4,980 @@
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
 @inject BlazorApp1.Services.DataService DataService
+@inject BlazorApp1.Services.CurrentUserService CurrentUser
+@inject BlazorApp1.Services.UnitsSettingsService UnitsSettings
+@inject NavigationManager Navigation
 @using BlazorApp1.Models
 @using BlazorApp1.Components.Shared
 
-<div class="rbm-page-header">
-    <h1 class="rbm-page-title">Condition Monitoring</h1>
-    <p class="rbm-page-subtitle">Track and analyze equipment condition parameters</p>
-</div>
+<PageTitle>Condition Monitoring | RBM CMMS</PageTitle>
 
-<div class="rbm-grid rbm-grid-2">
-    <!-- Data Input Form -->
-    <div class="rbm-card">
-        <div class="rbm-card-header">
-            <h3 class="rbm-card-title">Record Condition Data</h3>
+@if (!isInitialized)
+{
+    <div style="text-align: center; padding: 40px;">
+        <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
+        <div>Loading condition monitoring...</div>
+    </div>
+}
+else
+{
+    <!-- Page Header -->
+    <div class="rbm-page-header">
+        <div>
+            <h1 class="rbm-page-title">📊 Condition Monitoring</h1>
+            <p class="rbm-page-subtitle">Track and analyze real-time equipment condition parameters</p>
         </div>
-        
-        <div class="rbm-form-group">
-            <label class="rbm-form-label">Select Asset</label>
-            <select class="rbm-form-select" @bind="newReading.AssetId">
+        <div class="rbm-action-bar">
+            <!-- Units Info Display -->
+            <div style="display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--rbm-bg); border-radius: 6px; border: 1px solid var(--rbm-border);">
+                <span style="font-size: 12px; color: var(--rbm-text-light); font-weight: 600;">📐 Units: @currentUnitSystem</span>
+            </div>
+
+            @if (CurrentUser.CanEdit)
+            {
+                <button class="rbm-btn rbm-btn-primary" @onclick="ShowAddReadingModal">
+                    📝 Add Reading
+                </button>
+            }
+        </div>
+    </div>
+
+    <!-- Key Metrics -->
+    <div class="rbm-grid rbm-grid-5 mb-4">
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-label">Total Readings</div>
+            <div class="rbm-stat-value">@totalReadings</div>
+            <div style="position: absolute; top: 12px; right: 16px; font-size: 32px; opacity: 0.3;">📊</div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-label">Active Alerts</div>
+            <div class="rbm-stat-value" style="color: @(activeAlerts > 0 ? "#e53935" : "#43a047");">@activeAlerts</div>
+            <div style="position: absolute; top: 12px; right: 16px; font-size: 32px; opacity: 0.3;">🚨</div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-label">Monitored Assets</div>
+            <div class="rbm-stat-value">@monitoredAssets</div>
+            <div style="position: absolute; top: 12px; right: 16px; font-size: 32px; opacity: 0.3;">⚙️</div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-label">Critical Status</div>
+            <div class="rbm-stat-value" style="color: @(criticalCount > 0 ? "#e53935" : "#43a047");">@criticalCount</div>
+            <div style="position: absolute; top: 12px; right: 16px; font-size: 32px; opacity: 0.3;">⚠️</div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-label">Today's Readings</div>
+            <div class="rbm-stat-value">@todayReadings</div>
+            <div style="position: absolute; top: 12px; right: 16px; font-size: 32px, opacity: 0.3;">📅</div>
+        </div>
+    </div>
+
+    <!-- Filters Section -->
+    <div class="rbm-card mb-4">
+        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 16px;">
+            <select class="rbm-form-select" @bind="selectedAssetId" @bind:after="OnAssetSelectionChanged" style="flex: 1; min-width: 200px;">
                 <option value="0">-- Select Asset --</option>
                 @foreach (var asset in assets)
                 {
                     <option value="@asset.Id">@asset.AssetId - @asset.Name</option>
                 }
             </select>
+            
+            @if (selectedAsset != null && assetReadings.Any())
+            {
+                <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="ClearAssetSelection">
+                    ✕ Clear
+                </button>
+                <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="RefreshAssetData">
+                    🔄 Refresh
+                </button>
+                <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="ExportReadings">
+                    📥 Export CSV
+                </button>
+            }
+        </div>
+    </div>
+
+    <!-- Main Content Grid -->
+    <div class="rbm-grid rbm-grid-3 gap-4 mb-4">
+        <!-- Left Column: Data Input -->
+        <div class="rbm-card">
+            <div class="rbm-card-header">
+                <h3>📝 Record Reading</h3>
+            </div>
+            
+            <div style="padding: 20px;">
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Asset *</label>
+                    <select class="rbm-form-select" @bind="newReading.AssetId">
+                        <option value="0">-- Select Asset --</option>
+                        @foreach (var asset in assets)
+                        {
+                            <option value="@asset.Id">@asset.AssetId - @asset.Name</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Reading Date *</label>
+                    <input type="datetime-local" class="rbm-form-input" @bind="newReading.ReadingDate">
+                </div>
+
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Temperature (@UnitsSettings.GetTemperatureUnit())</label>
+                    <input type="number" step="0.1" class="rbm-form-input" @bind="newReading.Temperature" placeholder="@UnitsSettings.GetTemperaturePlaceholder()">
+                    @if (newReading.Temperature.HasValue)
+                    {
+                        <small style="color: @GetParameterStatus(newReading.Temperature, "temperature"); font-weight: 600;">
+                            @GetParameterStatusText(newReading.Temperature, "temperature")
+                        </small>
+                    }
+                </div>
+
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Vibration (mm/s)</label>
+                    <input type="number" step="0.1" class="rbm-form-input" @bind="newReading.Vibration" placeholder="e.g., 3.2">
+                    @if (newReading.Vibration.HasValue)
+                    {
+                        <small style="color: @GetParameterStatus(newReading.Vibration, "vibration"); font-weight: 600;">
+                            @GetParameterStatusText(newReading.Vibration, "vibration")
+                        </small>
+                    }
+                </div>
+
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Pressure (@UnitsSettings.GetPressureUnit())</label>
+                    <input type="number" step="0.1" class="rbm-form-input" @bind="newReading.Pressure" placeholder="@UnitsSettings.GetPressurePlaceholder()">
+                    @if (newReading.Pressure.HasValue)
+                    {
+                        <small style="color: @GetParameterStatus(newReading.Pressure, "pressure"); font-weight: 600;">
+                            @GetParameterStatusText(newReading.Pressure, "pressure")
+                        </small>
+                    }
+                </div>
+
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Oil Analysis</label>
+                    <select class="rbm-form-select" @bind="newReading.OilAnalysis">
+                        <option value="">-- Select --</option>
+                        <option value="Normal">✓ Normal</option>
+                        <option value="Warning">⚠️ Warning</option>
+                        <option value="Critical">🔴 Critical</option>
+                    </select>
+                </div>
+
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Current (Amps)</label>
+                    <input type="number" step="0.1" class="rbm-form-input" @bind="newReading.Current" placeholder="e.g., 15.5">
+                </div>
+
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Noise Level (dB)</label>
+                    <input type="number" step="0.1" class="rbm-form-input" @bind="newReading.NoiseLevel" placeholder="e.g., 75">
+                </div>
+
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Flow Rate (@UnitsSettings.GetFlowRateUnit())</label>
+                    <input type="number" step="0.1" class="rbm-form-input" @bind="newReading.FlowRate" placeholder="@UnitsSettings.GetFlowRatePlaceholder()">
+                </div>
+
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Voltage (V)</label>
+                    <input type="number" step="0.1" class="rbm-form-input" @bind="newReading.Voltage" placeholder="e.g., 240">
+                </div>
+
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Notes</label>
+                    <textarea class="rbm-form-input" @bind="newReading.Notes" placeholder="Additional observations..." style="min-height: 80px;"></textarea>
+                </div>
+
+                <button class="rbm-btn rbm-btn-primary" @onclick="SaveReading" disabled="@(newReading.AssetId == 0 || isSaving)" style="width: 100%;">
+                    @if (isSaving)
+                    {
+                        <span>⏳ Saving...</span>
+                    }
+                    else
+                    {
+                        <span>💾 Save Reading</span>
+                    }
+                </button>
+
+                @if (!string.IsNullOrEmpty(saveMessage))
+                {
+                    <div style="margin-top: 16px; padding: 12px; background: #e8f5e9; border-left: 4px solid #43a047; border-radius: 8px; color: #2e7d32; animation: slideIn 0.3s ease;">
+                        ✓ @saveMessage
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div style="margin-top: 16px; padding: 12px; background: #ffebee; border-left: 4px solid #e53935; border-radius: 8px; color: #c62828; animation: slideIn 0.3s ease;">
+                        ❌ @errorMessage
+                    </div>
+                }
+            </div>
         </div>
 
-        <div class="rbm-form-group">
-            <label class="rbm-form-label">Reading Date</label>
-            <input type="datetime-local" class="rbm-form-input" @bind="newReading.ReadingDate">
+        <!-- Middle Column: Health Score & Recommendations -->
+        <div>
+            <!-- Health Score Card -->
+            <div class="rbm-card mb-4">
+                <div class="rbm-card-header">
+                    <h3>💚 Asset Health</h3>
+                </div>
+                @if (selectedAsset != null)
+                {
+                    <div style="text-align: center; padding: 40px 20px;">
+                        <div style="font-size: 72px; font-weight: 700; color: @GetHealthColor(selectedAsset.HealthScore); animation: pulse 2s infinite;">
+                            @selectedAsset.HealthScore.ToString("F0")%
+                        </div>
+                        <div style="font-size: 16px; margin-top: 16px; color: var(--rbm-text);">
+                            <strong>@selectedAsset.Name</strong>
+                        </div>
+                        <div style="margin-top: 8px; font-size: 14px; color: var(--rbm-text-light);">
+                            @selectedAsset.AssetId
+                        </div>
+                        <div style="margin-top: 24px;">
+                            <span class="rbm-badge-pill" style="background: @selectedAsset.StatusColor; color: white; font-size: 14px; padding: 8px 16px;">
+                                @selectedAsset.Status
+                            </span>
+                        </div>
+                        <div style="margin-top: 16px; font-size: 13px; color: var(--rbm-text-light);">
+                            <div>Criticality: <strong>@selectedAsset.Criticality</strong></div>
+                            <div style="margin-top: 4px;">Uptime: <strong>@selectedAsset.Uptime.ToString("F1")%</strong></div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div style="text-align: center; padding: 40px 20px; color: var(--rbm-text-light);">
+                        <div style="font-size: 32px; margin-bottom: 8px;">👆</div>
+                        <div>Select an asset to view health details</div>
+                    </div>
+                }
+            </div>
+
+            <!-- Recommended Actions -->
+            <div class="rbm-card">
+                <div class="rbm-card-header">
+                    <h3>🎯 Actions & Insights</h3>
+                </div>
+                @if (selectedAsset != null)
+                {
+                    <div style="padding: 20px;">
+                        @if (selectedAsset.HealthScore < 60)
+                        {
+                            <div style="padding: 16px; background: #ffebee; border-left: 4px solid #e53935; border-radius: 8px; margin-bottom: 12px; animation: slideIn 0.3s ease;">
+                                <strong style="color: #c62828;">🚨 CRITICAL: Immediate Action</strong>
+                                <p style="margin: 8px 0 0 0; font-size: 13px;">Schedule emergency maintenance immediately.</p>
+                            </div>
+                        }
+                        else if (selectedAsset.HealthScore < 80)
+                        {
+                            <div style="padding: 16px; background: #fff3e0; border-left: 4px solid #fb8c00; border-radius: 8px; margin-bottom: 12px; animation: slideIn 0.3s ease;">
+                                <strong style="color: #e65100;">⚠️ Preventive Maintenance Recommended</strong>
+                                <p style="margin: 8px 0 0 0; font-size: 13px;">Schedule maintenance within 7 days.</p>
+                            </div>
+                        }
+                        else
+                        {
+                            <div style="padding: 16px; background: #e8f5e9; border-left: 4px solid #43a047; border-radius: 8px; margin-bottom: 12px; animation: slideIn 0.3s ease;">
+                                <strong style="color: #2e7d32;">✓ Operating Normally</strong>
+                                <p style="margin: 8px 0 0 0; font-size: 13px;">Continue routine monitoring.</p>
+                            </div>
+                        }
+
+                        <div style="margin-top: 20px;">
+                            <h4 style="font-size: 13px; font-weight: 600; color: var(--rbm-text-light); margin-bottom: 12px; text-transform: uppercase;">📊 INSIGHTS</h4>
+                            <ul style="list-style: none; padding: 0; margin: 0; font-size: 13px;">
+                                @if (assetReadings.Any())
+                                {
+                                    <li style="padding: 8px 0; border-bottom: 1px solid var(--rbm-border);">
+                                        📈 @assetReadings.Count total readings
+                                    </li>
+                                    <li style="padding: 8px 0; border-bottom: 1px solid var(--rbm-border);">
+                                        ⏱️ Latest: @assetReadings.First().ReadingDate.ToString("MMM dd, HH:mm")
+                                    </li>
+                                    @if (assetReadings.Any(r => r.Temperature.HasValue))
+                                    {
+                                        var avgTemp = assetReadings.Where(r => r.Temperature.HasValue).Average(r => r.Temperature.Value);
+                                        <li style="padding: 8px 0; border-bottom: 1px solid var(--rbm-border);">
+                                            🌡️ Avg Temp: @UnitsSettings.ConvertTemperature(avgTemp).ToString("F1")@UnitsSettings.GetTemperatureUnit()
+                                        </li>
+                                    }
+                                    @if (assetReadings.Any(r => r.Vibration.HasValue))
+                                    {
+                                        var avgVib = assetReadings.Where(r => r.Vibration.HasValue).Average(r => r.Vibration.Value);
+                                        <li style="padding: 8px 0;">
+                                            📊 Avg Vibration: @avgVib.ToString("F1") mm/s
+                                        </li>
+                                    }
+                                }
+                                else
+                                {
+                                    <li style="padding: 8px 0; color: var(--rbm-text-light);">
+                                        Add readings to see insights
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div style="text-align: center; padding: 40px 20px; color: var(--rbm-text-light);">
+                        <div style="font-size: 32px; margin-bottom: 8px;">👆</div>
+                        <div>Select an asset to view recommendations</div>
+                    </div>
+                }
+            </div>
         </div>
 
-        <div class="rbm-form-group">
-            <label class="rbm-form-label">Temperature (°F)</label>
-            <input type="number" step="0.1" class="rbm-form-input" @bind="newReading.Temperature" placeholder="Enter temperature">
+        <!-- Right Column: Readings List -->
+        <div class="rbm-card">
+            <div class="rbm-card-header">
+                <h3>📋 Recent Readings</h3>
+                @if (assetReadings.Any())
+                {
+                    <span class="rbm-badge" style="margin-left: auto; background: #1976d2; color: white;">@assetReadings.Count</span>
+                }
+            </div>
+            
+            <div style="padding: 20px;">
+                @if (assetReadings.Any())
+                {
+                    <div style="max-height: 600px; overflow-y: auto;">
+                        @foreach (var reading in assetReadings.Take(20))
+                        {
+                            <div style="padding: 12px; background: var(--rbm-bg); border-radius: 6px; margin-bottom: 8px; border-left: 4px solid @GetReadingStatusColor(reading); cursor: pointer; transition: all 0.2s; hover: scale 1.02;" @onclick="() => ShowReadingDetails(reading)">
+                                <div style="font-size: 12px; color: var(--rbm-text-light); margin-bottom: 4px; font-weight: 600;">
+                                    @reading.ReadingDate.ToString("MMM dd, yyyy HH:mm")
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; margin-bottom: 8px;">
+                                    @if (reading.Temperature.HasValue)
+                                    {
+                                        <div style="color: #1976d2;">🌡️ @UnitsSettings.ConvertTemperature(reading.Temperature.Value).ToString("F1")@UnitsSettings.GetTemperatureUnit()</div>
+                                    }
+                                    @if (reading.Vibration.HasValue)
+                                    {
+                                        <div style="color: #388e3c;">📊 @reading.Vibration mm/s</div>
+                                    }
+                                    @if (reading.Pressure.HasValue)
+                                    {
+                                        <div style="color: #d32f2f;">⚡ @UnitsSettings.ConvertPressure(reading.Pressure.Value).ToString("F1")@UnitsSettings.GetPressureUnit()</div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(reading.OilAnalysis))
+                                    {
+                                        <div>🛢️ @reading.OilAnalysis</div>
+                                    }
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span class="rbm-badge" style="background: @GetReadingStatusBgColor(reading); color: white; font-size: 11px;">@reading.OverallStatus</span>
+                                    <span style="font-size: 11px; color: var(--rbm-text-light);">@(reading.RecordedBy ?? "System")</span>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div style="text-align: center; padding: 40px 20px; color: var(--rbm-text-light);">
+                        <div style="font-size: 32px; margin-bottom: 8px;">📭</div>
+                        <div>No readings recorded yet</div>
+                        @if (selectedAsset != null)
+                        {
+                            <div style="font-size: 12px; margin-top: 8px;">Add your first reading for @selectedAsset.Name</div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Condition Trends Section -->
+    <div class="rbm-card mb-4">
+        <div class="rbm-card-header">
+            <h3>📈 Condition Trends & Statistics</h3>
         </div>
 
-        <div class="rbm-form-group">
-            <label class="rbm-form-label">Vibration (mm/s)</label>
-            <input type="number" step="0.1" class="rbm-form-input" @bind="newReading.Vibration" placeholder="Enter vibration">
-        </div>
-
-        <div class="rbm-form-group">
-            <label class="rbm-form-label">Pressure (PSI)</label>
-            <input type="number" step="0.1" class="rbm-form-input" @bind="newReading.Pressure" placeholder="Enter pressure">
-        </div>
-
-        <div class="rbm-form-group">
-            <label class="rbm-form-label">Oil Analysis</label>
-            <select class="rbm-form-select" @bind="newReading.OilAnalysis">
-                <option value="">-- Select --</option>
-                <option value="Normal">Normal</option>
-                <option value="Warning">Warning</option>
-                <option value="Critical">Critical</option>
-            </select>
-        </div>
-
-        <div class="rbm-form-group">
-            <label class="rbm-form-label">Notes</label>
-            <textarea class="rbm-form-textarea" @bind="newReading.Notes" placeholder="Additional observations..."></textarea>
-        </div>
-
-        <button class="rbm-btn rbm-btn-primary" @onclick="SaveReading" disabled="@(newReading.AssetId == 0)">
-            💾 Save Reading
-        </button>
-
-        @if (!string.IsNullOrEmpty(saveMessage))
+        @if (selectedAsset != null && assetReadings.Any())
         {
-            <div style="margin-top: 16px; padding: 12px; background: rgba(67, 160, 71, 0.1); color: var(--rbm-success); border-radius: 8px;">
-                ✓ @saveMessage
+            <div style="padding: 20px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                    @if (assetReadings.Any(r => r.Temperature.HasValue))
+                    {
+                        var temps = assetReadings.Where(r => r.Temperature.HasValue).Select(r => UnitsSettings.ConvertTemperature(r.Temperature.Value)).ToList();
+                        <div style="padding: 16px; background: #f5f5f5; border-radius: 8px; border-left: 4px solid #1976d2;">
+                            <div style="font-size: 12px; color: #1976d2; margin-bottom: 8px; font-weight: 600;">🌡️ TEMPERATURE</div>
+                            <div style="font-size: 24px; font-weight: 700, color: #1976d2;">
+                                @temps.Average().ToString("F1")@UnitsSettings.GetTemperatureUnit()
+                            </div>
+                            <div style="font-size: 11px; color: var(--rbm-text-light); margin-top: 8px;">
+                                Min: @temps.Min().ToString("F1")@UnitsSettings.GetTemperatureUnit() | Max: @temps.Max().ToString("F1")@UnitsSettings.GetTemperatureUnit()
+                            </div>
+                        </div>
+                    }
+                    @if (assetReadings.Any(r => r.Vibration.HasValue))
+                    {
+                        var vibs = assetReadings.Where(r => r.Vibration.HasValue).Select(r => r.Vibration.Value).ToList();
+                        <div style="padding: 16px; background: #f5f5f5; border-radius: 8px; border-left: 4px solid #388e3c;">
+                            <div style="font-size: 12px; color: #388e3c; margin-bottom: 8px; font-weight: 600;">📊 VIBRATION</div>
+                            <div style="font-size: 24px; font-weight: 700, color: #388e3c;">
+                                @vibs.Average().ToString("F1") mm/s
+                            </div>
+                            <div style="font-size: 11px; color: var(--rbm-text-light); margin-top: 8px;">
+                                Min: @vibs.Min().ToString("F1") | Max: @vibs.Max().ToString("F1")
+                            </div>
+                        </div>
+                    }
+                    @if (assetReadings.Any(r => r.Pressure.HasValue))
+                    {
+                        var press = assetReadings.Where(r => r.Pressure.HasValue).Select(r => UnitsSettings.ConvertPressure(r.Pressure.Value)).ToList();
+                        <div style="padding: 16px; background: #f5f5f5; border-radius: 8px; border-left: 4px solid #d32f2f;">
+                            <div style="font-size: 12px; color: #d32f2f; margin-bottom: 8px; font-weight: 600;">⚡ PRESSURE</div>
+                            <div style="font-size: 24px; font-weight: 700, color: #d32f2f;">
+                                @press.Average().ToString("F1")@UnitsSettings.GetPressureUnit()
+                            </div>
+                            <div style="font-size: 11px; color: var(--rbm-text-light); margin-top: 8px;">
+                                Min: @press.Min().ToString("F1")@UnitsSettings.GetPressureUnit() | Max: @press.Max().ToString("F1")@UnitsSettings.GetPressureUnit()
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <!-- Status Distribution -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+                    @{
+                        var normal = assetReadings.Count(r => r.OverallStatus == "Normal");
+                        var warning = assetReadings.Count(r => r.OverallStatus == "Warning");
+                        var critical = assetReadings.Count(r => r.OverallStatus == "Critical");
+                        var total = assetReadings.Count;
+                    }
+                    <div style="padding: 12px; background: #e8f5e9; border-radius: 6px; text-align: center;">
+                        <div style="font-size: 12px; color: #2e7d32; font-weight: 600;">✓ Normal</div>
+                        <div style="font-size: 20px; color: #43a047; margin-top: 4px;">@normal <span style="font-size: 12px;">(@((normal*100)/total)%)</span></div>
+                    </div>
+                    <div style="padding: 12px; background: #fff3e0; border-radius: 6px; text-align: center;">
+                        <div style="font-size: 12px; color: #e65100; font-weight: 600;">⚠️ Warning</div>
+                        <div style="font-size: 20px, color: #fb8c00; margin-top: 4px;">@warning <span style="font-size: 12px;">(@((warning*100)/total)%)</span></div>
+                    </div>
+                    <div style="padding: 12px; background: #ffebee; border-radius: 6px; text-align: center;">
+                        <div style="font-size: 12px; color: #c62828; font-weight: 600;">🔴 Critical</div>
+                        <div style="font-size: 20px; color: #e53935; margin-top: 4px;">@critical <span style="font-size: 12px;">(@((critical*100)/total)%)</span></div>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div style="text-align: center; padding: 60px 20px; color: var(--rbm-text-light);">
+                <div style="font-size: 48px; margin-bottom: 16px;">📊</div>
+                <div>Select an asset and record readings to see trends</div>
             </div>
         }
     </div>
 
-    <!-- Health Score & Recommendations -->
-    <div>
+    <!-- Active Alerts -->
+    @if (assetAlerts.Any())
+    {
         <div class="rbm-card">
             <div class="rbm-card-header">
-                <h3 class="rbm-card-title">Health Score Indicator</h3>
+                <h3>🚨 Active Alerts</h3>
+                <span class="rbm-badge" style="background: #e53935; color: white; margin-left: auto;">@assetAlerts.Count</span>
             </div>
-            @if (selectedAsset != null)
-            {
-                <div style="text-align: center; padding: 40px 20px;">
-                    <div style="font-size: 72px; font-weight: 700; color: @GetHealthColor(selectedAsset.HealthScore);">
-                        @selectedAsset.HealthScore
-                    </div>
-                    <div style="font-size: 20px; margin-top: 16px; color: var(--rbm-text-light);">
-                        @selectedAsset.Name
-                    </div>
-                    <div style="margin-top: 24px;">
-                        <span class="rbm-badge-pill rbm-badge-@selectedAsset.Status.ToLower()" style="font-size: 16px; padding: 8px 20px;">
-                            @selectedAsset.Status
-                        </span>
-                    </div>
+            <div style="padding: 20px;">
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    @foreach (var alert in assetAlerts.Take(5))
+                    {
+                        <div style="padding: 16px; background: @(alert["severity"] == "Critical" ? "#ffebee" : "#fff3e0"); border-left: 4px solid @(alert["severity"] == "Critical" ? "#e53935" : "#fb8c00"); border-radius: 8px;">
+                            <div style="font-weight: 600; color: @(alert["severity"] == "Critical" ? "#c62828" : "#e65100"); margin-bottom: 4px;">
+                                @alert["type"]
+                            </div>
+                            <div style="font-size: 13px; color: var(--rbm-text); margin-bottom: 4px;">
+                                @alert["description"]
+                            </div>
+                            <div style="font-size: 12px; color: var(--rbm-text-light);">
+                                @((DateTime)alert["date"]).ToString("MMM dd, HH:mm")
+                            </div>
+                        </div>
+                    }
                 </div>
-            }
-            else
-            {
-                <div style="text-align: center; padding: 40px 20px; color: var(--rbm-text-light);">
-                    Select an asset to view health score
-                </div>
-            }
+            </div>
         </div>
+    }
+}
 
-        <div class="rbm-card mt-3">
-            <div class="rbm-card-header">
-                <h3 class="rbm-card-title">Recommended Actions</h3>
+<!-- Reading Details Modal -->
+@if (showReadingModal && selectedReading != null)
+{
+    <div class="rbm-modal-backdrop" @onclick="CloseReadingModal">
+        <div class="rbm-modal" @onclick:stopPropagation="true">
+            <div class="rbm-modal-header">
+                <h3>📊 Reading Details</h3>
+                <button class="rbm-modal-close" @onclick="CloseReadingModal">&times;</button>
             </div>
-            @if (selectedAsset != null)
-            {
-                <div style="padding: 20px;">
-                    @if (selectedAsset.HealthScore < 60)
+            <div class="rbm-modal-body">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div>
+                        <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Date/Time</div>
+                        <div>@selectedReading.ReadingDate.ToString("MMM dd, yyyy HH:mm")</div>
+                    </div>
+                    <div>
+                        <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Recorded By</div>
+                        <div>@(selectedReading.RecordedBy ?? "System")</div>
+                    </div>
+                    @if (selectedReading.Temperature.HasValue)
                     {
-                        <div style="padding: 16px; background: rgba(229, 57, 53, 0.1); border-left: 4px solid var(--rbm-danger); border-radius: 8px; margin-bottom: 12px;">
-                            <strong style="color: var(--rbm-danger);">🚨 Immediate Action Required</strong>
-                            <p style="margin: 8px 0 0 0;">Schedule corrective maintenance immediately. Asset is in critical condition.</p>
+                        <div>
+                            <div style="font-weight: 600; color: #1976d2; font-size: 12px; margin-bottom: 4px;">🌡️ Temperature</div>
+                            <div style="color: #1976d2; font-weight: 600;">@UnitsSettings.ConvertTemperature(selectedReading.Temperature.Value).ToString("F1")@UnitsSettings.GetTemperatureUnit()</div>
                         </div>
                     }
-                    else if (selectedAsset.HealthScore < 80)
+                    @if (selectedReading.Vibration.HasValue)
                     {
-                        <div style="padding: 16px; background: rgba(251, 140, 0, 0.1); border-left: 4px solid var(--rbm-warning); border-radius: 8px; margin-bottom: 12px;">
-                            <strong style="color: var(--rbm-warning);">⚠️ Preventive Maintenance Recommended</strong>
-                            <p style="margin: 8px 0 0 0;">Schedule preventive maintenance within the next 7 days to prevent degradation.</p>
+                        <div>
+                            <div style="font-weight: 600; color: #388e3c; font-size: 12px; margin-bottom: 4px;">📊 Vibration</div>
+                            <div style="color: #388e3c; font-weight: 600;">@selectedReading.Vibration.Value.ToString("F1") mm/s</div>
                         </div>
                     }
-                    else
+                    @if (selectedReading.Pressure.HasValue)
                     {
-                        <div style="padding: 16px; background: rgba(67, 160, 71, 0.1); border-left: 4px solid var(--rbm-success); border-radius: 8px; margin-bottom: 12px;">
-                            <strong style="color: var(--rbm-success);">✓ Asset Operating Normally</strong>
-                            <p style="margin: 8px 0 0 0;">Continue routine monitoring. No immediate action required.</p>
+                        <div>
+                            <div style="font-weight: 600; color: #d32f2f; font-size: 12px; margin-bottom: 4px;">⚡ Pressure</div>
+                            <div style="color: #d32f2f; font-weight: 600;">@UnitsSettings.ConvertPressure(selectedReading.Pressure.Value).ToString("F1")@UnitsSettings.GetPressureUnit()</div>
                         </div>
                     }
-
+                    @if (!string.IsNullOrEmpty(selectedReading.OilAnalysis))
+                    {
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">🛢️ Oil Analysis</div>
+                            <div>@selectedReading.OilAnalysis</div>
+                        </div>
+                    }
+                    @if (selectedReading.Current.HasValue)
+                    {
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">⚡ Current</div>
+                            <div>@selectedReading.Current.Value.ToString("F1") A</div>
+                        </div>
+                    }
+                    @if (selectedReading.Voltage.HasValue)
+                    {
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">⚡ Voltage</div>
+                            <div>@selectedReading.Voltage.Value.ToString("F1") V</div>
+                        </div>
+                    }
+                    @if (selectedReading.NoiseLevel.HasValue)
+                    {
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">🔊 Noise Level</div>
+                            <div>@selectedReading.NoiseLevel.Value.ToString("F1") dB</div>
+                        </div>
+                    }
+                    @if (selectedReading.FlowRate.HasValue)
+                    {
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">💧 Flow Rate</div>
+                            <div>@UnitsSettings.ConvertFlowRate(selectedReading.FlowRate.Value).ToString("F1")@UnitsSettings.GetFlowRateUnit()</div>
+                        </div>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(selectedReading.Notes))
+                {
                     <div style="margin-top: 20px;">
-                        <h4 style="font-size: 14px; color: var(--rbm-text-light); margin-bottom: 12px;">AI-GENERATED INSIGHTS</h4>
-                        <ul style="list-style: none; padding: 0; margin: 0;">
-                            <li style="padding: 8px 0; border-bottom: 1px solid var(--rbm-border);">
-                                📊 Vibration trending upward over last 5 readings
-                            </li>
-                            <li style="padding: 8px 0; border-bottom: 1px solid var(--rbm-border);">
-                                🌡️ Temperature within normal operating range
-                            </li>
-                            <li style="padding: 8px 0;">
-                                🔧 Similar assets show 15% failure rate at this health score
-                            </li>
-                        </ul>
+                        <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 8px;">📝 Notes</div>
+                        <div style="padding: 12px; background: var(--rbm-bg); border-radius: 6px; font-size: 13px;">@selectedReading.Notes</div>
                     </div>
-                </div>
-            }
-            else
-            {
-                <div style="text-align: center; padding: 40px 20px; color: var(--rbm-text-light);">
-                    Select an asset to view recommendations
-                </div>
-            }
-        </div>
-    </div>
-</div>
-
-<!-- Trend Visualization -->
-<div class="rbm-card mt-3">
-    <div class="rbm-card-header">
-        <h3 class="rbm-card-title">Condition Trends</h3>
-    </div>
-    @if (selectedAsset != null && assetReadings.Any())
-    {
-        <div class="rbm-chart">
-            <div style="text-align: center;">
-                <div style="font-size: 48px; margin-bottom: 16px;">📈</div>
-                <div><strong>@assetReadings.Count</strong> readings recorded for @selectedAsset.Name</div>
-                <div style="margin-top: 16px; color: var(--rbm-text-light);">
-                    Latest reading: @assetReadings.First().ReadingDate.ToString("MMM dd, yyyy HH:mm")
-                </div>
-                <div style="margin-top: 8px;">
-                    @if (assetReadings.First().Temperature.HasValue)
-                    {
-                        <span style="margin-right: 20px;">🌡️ Temp: @assetReadings.First().Temperature°F</span>
-                    }
-                    @if (assetReadings.First().Vibration.HasValue)
-                    {
-                        <span style="margin-right: 20px;">📊 Vib: @assetReadings.First().Vibration mm/s</span>
-                    }
-                    @if (assetReadings.First().Pressure.HasValue)
-                    {
-                        <span>⚡ Press: @assetReadings.First().Pressure PSI</span>
-                    }
+                }
+                <div style="margin-top: 20px;">
+                    <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 8px;">Status</div>
+                    <span class="rbm-badge" style="background: @GetReadingStatusBgColor(selectedReading); color: white;">@selectedReading.OverallStatus</span>
                 </div>
             </div>
-        </div>
-    }
-    else
-    {
-        <div class="rbm-chart">
-            <div style="text-align: center; color: var(--rbm-text-light);">
-                No condition data available. Record readings to see trends.
+            <div class="rbm-modal-footer">
+                <button class="rbm-btn rbm-btn-outline" @onclick="CloseReadingModal">Close</button>
             </div>
         </div>
-    }
-</div>
+    </div>
+}
 
 @code {
     private List<Asset> assets = new();
     private Asset? selectedAsset;
     private List<ConditionReading> assetReadings = new();
     private ConditionReading newReading = new();
+    private ConditionReading? selectedReading;
+    private List<Dictionary<string, object>> assetAlerts = new();
+    
+    private int selectedAssetId = 0;
     private string saveMessage = "";
+    private string errorMessage = "";
+    private bool isSaving = false;
+    private bool isInitialized = false;
+    private bool showReadingModal = false;
+    
+    // Unit System
+    private string currentUnitSystem = "imperial";
+    
+    // Metrics
+    private int totalReadings = 0;
+    private int activeAlerts = 0;
+    private int monitoredAssets = 0;
+    private int criticalCount = 0;
+    private int todayReadings = 0;
 
-    protected override void OnInitialized()
+    private int _previousAssetId = 0;
+
+    protected override async Task OnInitializedAsync()
     {
-        assets = DataService.GetAssets();
-        newReading.ReadingDate = DateTime.Now;
+        try
+        {
+            await CurrentUser.InitializeAsync();
+            
+            // Initialize units settings for current user
+            if (!string.IsNullOrEmpty(CurrentUser.UserId))
+            {
+                await UnitsSettings.InitializeAsync(CurrentUser.UserId);
+                currentUnitSystem = UnitsSettings.GetUnitSystem();
+            }
+            
+            await LoadDataAsync();
+            isInitialized = true;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Initialization error: {ex.Message}";
+            isInitialized = true;
+            StateHasChanged();
+        }
     }
 
-    private void SaveReading()
+    private async Task LoadDataAsync()
     {
-        if (newReading.AssetId > 0)
+        try
         {
-            DataService.AddConditionReading(newReading);
-            selectedAsset = assets.FirstOrDefault(a => a.Id == newReading.AssetId);
-            assetReadings = DataService.GetConditionReadings(newReading.AssetId);
+            assets = await DataService.GetAssetsAsync();
+            assets = assets.Where(a => !a.IsRetired).ToList();
+            monitoredAssets = assets.Count;
             
-            saveMessage = "Reading saved successfully!";
+            totalReadings = 0;
+            criticalCount = assets.Count(a => a.Status == "Critical");
+            todayReadings = 0;
+            
+            // Calculate totals
+            foreach (var asset in assets)
+            {
+                var readings = await DataService.GetConditionReadingsAsync(asset.Id);
+                totalReadings += readings.Count;
+                todayReadings += readings.Count(r => r.ReadingDate.Date == DateTime.Now.Date);
+            }
+            
+            activeAlerts = 0;
+            assetAlerts = new();
+            
+            newReading.ReadingDate = DateTime.Now;
             StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading data: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await base.OnAfterRenderAsync(firstRender);
+        }
+    }
+
+    private async Task OnAssetSelectionChanged()
+    {
+        if (selectedAssetId > 0)
+        {
+            selectedAsset = assets.FirstOrDefault(a => a.Id == selectedAssetId);
+            if (selectedAsset != null)
+            {
+                assetReadings = await DataService.GetConditionReadingsAsync(selectedAssetId);
+                assetReadings = assetReadings.OrderByDescending(r => r.ReadingDate).ToList();
+                GenerateAlerts();
+            }
+        }
+        StateHasChanged();
+    }
+
+    private void ClearAssetSelection()
+    {
+        selectedAssetId = 0;
+        selectedAsset = null;
+        assetReadings = new();
+        assetAlerts = new();
+        StateHasChanged();
+    }
+
+    private async Task RefreshAssetData()
+    {
+        if (selectedAssetId > 0)
+        {
+            selectedAsset = assets.FirstOrDefault(a => a.Id == selectedAssetId);
+            if (selectedAsset != null)
+            {
+                assetReadings = await DataService.GetConditionReadingsAsync(selectedAssetId);
+                assetReadings = assetReadings.OrderByDescending(r => r.ReadingDate).ToList();
+                GenerateAlerts();
+                StateHasChanged();
+            }
+        }
+    }
+
+    private void GenerateAlerts()
+    {
+        assetAlerts = new();
+        activeAlerts = 0;
+
+        if (selectedAsset == null) return;
+
+        // Alert 1: Health Score
+        if (selectedAsset.HealthScore < 60)
+        {
+            assetAlerts.Add(new Dictionary<string, object>
+            {
+                { "type", "Low Health Score" },
+                { "description", $"Asset health is at {selectedAsset.HealthScore.ToString("F0")}% - Consider maintenance" },
+                { "severity", "Critical" },
+                { "date", DateTime.Now }
+            });
+            activeAlerts++;
+        }
+
+        // Alert 2: Overdue Maintenance
+        if (selectedAsset.IsOverdue)
+        {
+            assetAlerts.Add(new Dictionary<string, object>
+            {
+                { "type", "Overdue Maintenance" },
+                { "description", $"Maintenance was due on {selectedAsset.NextScheduledMaintenance?.ToString("MMM dd, yyyy")}" },
+                { "severity", "Critical" },
+                { "date", DateTime.Now }
+            });
+            activeAlerts++;
+        }
+
+        // Alert 3: Abnormal Readings
+        if (assetReadings.Any())
+        {
+            var lastReading = assetReadings.First();
+            if (lastReading.OverallStatus == "Warning")
+            {
+                assetAlerts.Add(new Dictionary<string, object>
+                {
+                    { "type", "Abnormal Parameters" },
+                    { "description", "Latest reading shows warning-level parameters" },
+                    { "severity", "Warning" },
+                    { "date", DateTime.Now }
+                });
+                activeAlerts++;
+            }
+            else if (lastReading.OverallStatus == "Critical")
+            {
+                assetAlerts.Add(new Dictionary<string, object>
+                {
+                    { "type", "Critical Parameters" },
+                    { "description", "Latest reading shows critical-level parameters" },
+                    { "severity", "Critical" },
+                    { "date", DateTime.Now }
+                });
+                activeAlerts++;
+            }
+        }
+    }
+
+    private async Task SaveReading()
+    {
+        if (newReading.AssetId == 0)
+        {
+            errorMessage = "Please select an asset";
+            return;
+        }
+
+        try
+        {
+            isSaving = true;
+            errorMessage = "";
+            saveMessage = "";
+            StateHasChanged();
+
+            newReading.RecordedBy = CurrentUser.UserName;
+            newReading.OverallStatus = DetermineOverallStatus();
+
+            await DataService.AddConditionReadingAsync(newReading);
+            
+            // Reload data
+            assetReadings = await DataService.GetConditionReadingsAsync(newReading.AssetId);
+            assetReadings = assetReadings.OrderByDescending(r => r.ReadingDate).ToList();
+            
+            await LoadDataAsync();
+            GenerateAlerts();
+            
+            saveMessage = $"✓ Reading saved successfully";
             
             // Reset form
-            var assetId = newReading.AssetId;
             newReading = new ConditionReading 
             { 
-                AssetId = assetId,
                 ReadingDate = DateTime.Now 
             };
             
-            // Clear message after 3 seconds
-            Task.Delay(3000).ContinueWith(_ => 
-            {
-                saveMessage = "";
-                InvokeAsync(StateHasChanged);
-            });
+            await Task.Delay(2500);
+            saveMessage = "";
         }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ShowAddReadingModal()
+    {
+        StateHasChanged();
+    }
+
+    private void ShowReadingDetails(ConditionReading reading)
+    {
+        selectedReading = reading;
+        showReadingModal = true;
+        StateHasChanged();
+    }
+
+    private void CloseReadingModal()
+    {
+        showReadingModal = false;
+        selectedReading = null;
+        StateHasChanged();
+    }
+
+    private string DetermineOverallStatus()
+    {
+        if (!string.IsNullOrEmpty(newReading.OilAnalysis) && newReading.OilAnalysis == "Critical")
+            return "Critical";
+        
+        if (newReading.Vibration.HasValue && newReading.Vibration > 10)
+            return "Critical";
+            
+        if (newReading.Temperature.HasValue && (newReading.Temperature > 130 || newReading.Temperature < 40))
+            return "Warning";
+            
+        if (newReading.Pressure.HasValue && (newReading.Pressure > 100 || newReading.Pressure < 20))
+            return "Warning";
+
+        if (newReading.Vibration.HasValue && newReading.Vibration > 5)
+            return "Warning";
+            
+        return "Normal";
     }
 
     private string GetHealthColor(double healthScore)
     {
-        if (healthScore >= 80) return "var(--rbm-success)";
-        if (healthScore >= 60) return "var(--rbm-warning)";
-        return "var(--rbm-danger)";
+        if (healthScore >= 80) return "#43a047";
+        if (healthScore >= 60) return "#fb8c00";
+        return "#e53935";
+    }
+
+    private string GetParameterStatus(double? value, string parameter)
+    {
+        if (!value.HasValue) return "#999";
+        
+        return parameter switch
+        {
+            "temperature" => value > 130 || value < 40 ? "#e53935" : "#43a047",
+            "vibration" => value > 10 ? "#e53935" : (value > 5 ? "#fb8c00" : "#43a047"),
+            "pressure" => value > 100 || value < 20 ? "#e53935" : "#43a047",
+            _ => "#999"
+        };
+    }
+
+    private string GetParameterStatusText(double? value, string parameter)
+    {
+        if (!value.HasValue) return "";
+        
+        return parameter switch
+        {
+            "temperature" => value > 130 ? "🔴 High" : (value < 40 ? "🔴 Low" : "✓ Normal"),
+            "vibration" => value > 10 ? "🔴 Critical" : (value > 5 ? "⚠️ Warning" : "✓ Normal"),
+            "pressure" => value > 100 ? "🔴 High" : (value < 20 ? "🔴 Low" : "✓ Normal"),
+            _ => ""
+        };
+    }
+
+    private string GetReadingStatusColor(ConditionReading reading)
+    {
+        return reading.OverallStatus switch
+        {
+            "Critical" => "#e53935",
+            "Warning" => "#fb8c00",
+            _ => "#43a047"
+        };
+    }
+
+    private string GetReadingStatusBgColor(ConditionReading reading)
+    {
+        return reading.OverallStatus switch
+        {
+            "Critical" => "#e53935",
+            "Warning" => "#fb8c00",
+            _ => "#43a047"
+        };
+    }
+
+    private async Task ExportReadings()
+    {
+        if (!assetReadings.Any())
+        {
+            errorMessage = "No readings to export";
+            return;
+        }
+
+        try
+        {
+            var tempUnit = UnitsSettings.GetTemperatureUnit();
+            var pressUnit = UnitsSettings.GetPressureUnit();
+            var flowUnit = UnitsSettings.GetFlowRateUnit();
+            
+            var csv = $"Date,Temperature ({tempUnit}),Vibration (mm/s),Pressure ({pressUnit}),Oil Analysis,Current (A),Voltage (V),Noise (dB),Flow Rate ({flowUnit}),Notes,Status\n";
+            
+            foreach (var reading in assetReadings.OrderBy(r => r.ReadingDate))
+            {
+                var temp = reading.Temperature.HasValue ? UnitsSettings.ConvertTemperature(reading.Temperature.Value).ToString("F1") : "";
+                var pressure = reading.Pressure.HasValue ? UnitsSettings.ConvertPressure(reading.Pressure.Value).ToString("F1") : "";
+                var flowRate = reading.FlowRate.HasValue ? UnitsSettings.ConvertFlowRate(reading.FlowRate.Value).ToString("F1") : "";
+                
+                csv += $"{reading.ReadingDate:yyyy-MM-dd HH:mm}," +
+                       $"{temp}," +
+                       $"{reading.Vibration?.ToString("F1") ?? ""}," +
+                       $"{pressure}," +
+                       $"{reading.OilAnalysis ?? ""}," +
+                       $"{reading.Current?.ToString("F1") ?? ""}," +
+                       $"{reading.Voltage?.ToString("F1") ?? ""}," +
+                       $"{reading.NoiseLevel?.ToString("F1") ?? ""}," +
+                       $"{flowRate}," +
+                       $"\"{reading.Notes?.Replace("\"", "\"\"")}\"," +
+                       $"{reading.OverallStatus}\n";
+            }
+
+            saveMessage = "✓ CSV data prepared. Download feature coming soon.";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Export error: {ex.Message}";
+        }
+
+        StateHasChanged();
     }
 }

@@ -1,0 +1,445 @@
+﻿@using BlazorApp1.Models
+
+<div class="rbm-modal-backdrop" @onclick="OnBackdropClick">
+    <div class="rbm-modal edit-modal" @onclick:stopPropagation="true">
+        <div class="rbm-modal-header">
+            <h3 class="rbm-modal-title">Edit Work Order - @editWorkOrder?.WorkOrderId</h3>
+            <button class="rbm-modal-close" @onclick="Cancel">&times;</button>
+        </div>
+
+        <div class="rbm-modal-body">
+            @if (editWorkOrder != null)
+            {
+                <div class="edit-form">
+                    <!-- Basic Information Section -->
+                    <div class="form-section">
+                        <h4 class="form-section-title">📋 Basic Information</h4>
+                        
+                        <div class="rbm-grid rbm-grid-2">
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Priority</label>
+                                <select class="rbm-form-select" @bind="editWorkOrder.Priority">
+                                    <option value="Low">Low</option>
+                                    <option value="Medium">Medium</option>
+                                    <option value="High">High</option>
+                                    <option value="Critical">Critical</option>
+                                </select>
+                            </div>
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Type</label>
+                                <select class="rbm-form-select" @bind="editWorkOrder.Type" disabled="@(!canEditType)">
+                                    <option value="Preventive">Preventive</option>
+                                    <option value="Corrective">Corrective</option>
+                                    <option value="Predictive">Predictive</option>
+                                    <option value="Emergency">Emergency</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="rbm-grid rbm-grid-2">
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Category</label>
+                                <input type="text" class="rbm-form-input" @bind="editWorkOrder.Category" placeholder="e.g., Mechanical, Electrical">
+                            </div>
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Sub Category</label>
+                                <input type="text" class="rbm-form-input" @bind="editWorkOrder.SubCategory" placeholder="Optional">
+                            </div>
+                        </div>
+
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Description</label>
+                            <textarea class="rbm-form-textarea" @bind="editWorkOrder.Description" placeholder="Describe the work..."></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Scheduling Section -->
+                    <div class="form-section">
+                        <h4 class="form-section-title">📅 Scheduling</h4>
+
+                        <div class="rbm-grid rbm-grid-2">
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Due Date</label>
+                                <input type="date" class="rbm-form-input" @bind="editWorkOrder.DueDate">
+                            </div>
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Estimated Downtime (hours)</label>
+                                <input type="number" class="rbm-form-input" @bind="editWorkOrder.EstimatedDowntime" step="0.5">
+                            </div>
+                        </div>
+
+                        <div class="rbm-grid rbm-grid-2">
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Scheduled Start Date</label>
+                                <input type="datetime-local" class="rbm-form-input" @bind="editWorkOrder.ScheduledStartDate">
+                            </div>
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Scheduled End Date</label>
+                                <input type="datetime-local" class="rbm-form-input" @bind="editWorkOrder.ScheduledEndDate">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Location & Contact Section -->
+                    <div class="form-section">
+                        <h4 class="form-section-title">📍 Location & Contact</h4>
+
+                        <div class="rbm-grid rbm-grid-3">
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Location</label>
+                                <input type="text" class="rbm-form-input" @bind="editWorkOrder.Location">
+                            </div>
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Building</label>
+                                <input type="text" class="rbm-form-input" @bind="editWorkOrder.Building">
+                            </div>
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Floor</label>
+                                <input type="text" class="rbm-form-input" @bind="editWorkOrder.Floor">
+                            </div>
+                        </div>
+
+                        <div class="rbm-grid rbm-grid-2">
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Assigned To</label>
+                                <select class="rbm-form-select" @bind="editWorkOrder.AssignedTo">
+                                    <option value="">-- Select Technician --</option>
+                                    @foreach (var user in technicians)
+                                    {
+                                        <option value="@user.Name">@user.Name</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Department</label>
+                                <input type="text" class="rbm-form-input" @bind="editWorkOrder.Department">
+                            </div>
+                        </div>
+
+                        <div class="rbm-grid rbm-grid-3">
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Contact Person</label>
+                                <input type="text" class="rbm-form-input" @bind="editWorkOrder.ContactPerson">
+                            </div>
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Contact Phone</label>
+                                <input type="text" class="rbm-form-input" @bind="editWorkOrder.ContactPhone" placeholder="XXX-XXX-XXXX">
+                            </div>
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Contact Email</label>
+                                <input type="email" class="rbm-form-input" @bind="editWorkOrder.ContactEmail">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cost & Time Section -->
+                    <div class="form-section">
+                        <h4 class="form-section-title">💰 Cost & Time</h4>
+
+                        <div class="rbm-grid rbm-grid-2">
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Estimated Cost</label>
+                                <div class="input-with-prefix">
+                                    <span class="prefix">$</span>
+                                    <input type="number" class="rbm-form-input" @bind="editWorkOrder.EstimatedCost" step="0.01">
+                                </div>
+                            </div>
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Actual Cost</label>
+                                <div class="input-with-prefix">
+                                    <span class="prefix">$</span>
+                                    <input type="number" class="rbm-form-input" @bind="editWorkOrder.ActualCost" step="0.01">
+                                </div>
+                            </div>
+                        </div>
+
+                        @if (canEditCompletion)
+                        {
+                            <div class="rbm-grid rbm-grid-2">
+                                <div class="rbm-form-group">
+                                    <label class="rbm-form-label">Actual Downtime (hours)</label>
+                                    <input type="number" class="rbm-form-input" @bind="editWorkOrder.ActualDowntime" step="0.5">
+                                </div>
+                                <div class="rbm-form-group">
+                                    <label class="rbm-form-label">Labor Hours</label>
+                                    <input type="number" class="rbm-form-input" @bind="editWorkOrder.LaborHours" step="0.5">
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Safety & Requirements Section -->
+                    <div class="form-section">
+                        <h4 class="form-section-title">⚠️ Safety & Requirements</h4>
+
+                        <div class="checkbox-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" @bind="editWorkOrder.RequiresShutdown">
+                                <span>Requires Shutdown</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" @bind="editWorkOrder.LockOutRequired">
+                                <span>Lock Out Required</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" @bind="editWorkOrder.RequiresSafetyPermit">
+                                <span>Requires Safety Permit</span>
+                            </label>
+                        </div>
+
+                        @if (editWorkOrder.RequiresSafetyPermit)
+                        {
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Safety Permit Number</label>
+                                <input type="text" class="rbm-form-input" @bind="editWorkOrder.SafetyPermitNumber">
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Work Details Section (if technician or in progress) -->
+                    @if (canEditCompletion)
+                    {
+                        <div class="form-section">
+                            <h4 class="form-section-title">🔧 Work Details</h4>
+
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Details of Work Carried Out</label>
+                                <textarea class="rbm-form-textarea" @bind="editWorkOrder.DetailsOfWorkCarriedOut" placeholder="Describe the work performed..."></textarea>
+                            </div>
+
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Corrective Action</label>
+                                <textarea class="rbm-form-textarea" @bind="editWorkOrder.CorrectiveAction" placeholder="Describe corrective actions..."></textarea>
+                            </div>
+
+                            <div class="rbm-form-group">
+                                <label class="rbm-form-label">Completion Notes</label>
+                                <textarea class="rbm-form-textarea" @bind="editWorkOrder.CompletionNotes" placeholder="Additional completion notes..."></textarea>
+                            </div>
+
+                            <div class="rbm-grid rbm-grid-2">
+                                <div class="rbm-form-group">
+                                    <label class="rbm-form-label">Artisan Name</label>
+                                    <input type="text" class="rbm-form-input" @bind="editWorkOrder.ArtisanName">
+                                </div>
+                                <div class="rbm-form-group">
+                                    <label class="rbm-form-label">Parts Used</label>
+                                    <input type="text" class="rbm-form-input" @bind="editWorkOrder.PartsUsed" placeholder="Comma separated">
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Job Card Fields Section (for engineering) -->
+                    @if (isEngineer || isAdmin)
+                    {
+                        <div class="form-section">
+                            <h4 class="form-section-title">📝 Job Card Information</h4>
+
+                            <div class="rbm-grid rbm-grid-2">
+                                <div class="rbm-form-group">
+                                    <label class="rbm-form-label">Job Number</label>
+                                    <input type="text" class="rbm-form-input" @bind="editWorkOrder.JobNumber">
+                                </div>
+                                <div class="rbm-form-group">
+                                    <label class="rbm-form-label">Job Type</label>
+                                    <select class="rbm-form-select" @bind="editWorkOrder.JobType">
+                                        <option value="">-- Select --</option>
+                                        <option value="Mechanical">Mechanical</option>
+                                        <option value="Electrical">Electrical</option>
+                                        <option value="Both">Both</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="checkbox-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" @bind="editWorkOrder.IsMechanical">
+                                    <span>Mechanical Work</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" @bind="editWorkOrder.IsElectrical">
+                                    <span>Electrical Work</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" @bind="editWorkOrder.HousekeepingAffected">
+                                    <span>Housekeeping Affected</span>
+                                </label>
+                            </div>
+
+                            @if (editWorkOrder.HousekeepingAffected)
+                            {
+                                <div class="rbm-form-group">
+                                    <label class="rbm-form-label">Housekeeping Notes</label>
+                                    <textarea class="rbm-form-textarea" @bind="editWorkOrder.HousekeepingNotes"></textarea>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="rbm-modal-footer">
+            <button class="rbm-btn rbm-btn-outline" @onclick="Cancel">Cancel</button>
+            <button class="rbm-btn rbm-btn-primary" @onclick="SaveChanges" disabled="@isSaving">
+                @if (isSaving)
+                {
+                    <span>Saving...</span>
+                }
+                else
+                {
+                    <span>💾 Save Changes</span>
+                }
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public WorkOrder? OriginalWorkOrder { get; set; }
+
+    [Parameter]
+    public List<User>? Technicians { get; set; }
+
+    [Parameter]
+    public EventCallback<WorkOrder> OnSave { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    [Parameter]
+    public string UserRole { get; set; } = "Technician";
+
+    private WorkOrder? editWorkOrder;
+    private List<User> technicians = new();
+    private bool isSaving = false;
+    private bool canEditType = false;
+    private bool canEditCompletion = false;
+    private bool isEngineer = false;
+    private bool isAdmin = false;
+
+    protected override void OnInitialized()
+    {
+        if (OriginalWorkOrder != null)
+        {
+            // Create a copy to avoid modifying original until save
+            editWorkOrder = new WorkOrder
+            {
+                Id = OriginalWorkOrder.Id,
+                WorkOrderId = OriginalWorkOrder.WorkOrderId,
+                AssetId = OriginalWorkOrder.AssetId,
+                Priority = OriginalWorkOrder.Priority,
+                Type = OriginalWorkOrder.Type,
+                Status = OriginalWorkOrder.Status,
+                CreatedDate = OriginalWorkOrder.CreatedDate,
+                DueDate = OriginalWorkOrder.DueDate,
+                StartedDate = OriginalWorkOrder.StartedDate,
+                CompletedDate = OriginalWorkOrder.CompletedDate,
+                AssignedTo = OriginalWorkOrder.AssignedTo,
+                Description = OriginalWorkOrder.Description,
+                EstimatedDowntime = OriginalWorkOrder.EstimatedDowntime,
+                ActualDowntime = OriginalWorkOrder.ActualDowntime,
+                EstimatedCost = OriginalWorkOrder.EstimatedCost,
+                ActualCost = OriginalWorkOrder.ActualCost,
+                CompletionNotes = OriginalWorkOrder.CompletionNotes,
+                PartsUsed = OriginalWorkOrder.PartsUsed,
+                LaborHours = OriginalWorkOrder.LaborHours,
+                RequestedBy = OriginalWorkOrder.RequestedBy,
+                RequestedDate = OriginalWorkOrder.RequestedDate,
+                RequestReason = OriginalWorkOrder.RequestReason,
+                ApprovedBy = OriginalWorkOrder.ApprovedBy,
+                ApprovedDate = OriginalWorkOrder.ApprovedDate,
+                ApprovalNotes = OriginalWorkOrder.ApprovalNotes,
+                RejectedBy = OriginalWorkOrder.RejectedBy,
+                RejectedDate = OriginalWorkOrder.RejectedDate,
+                RejectionReason = OriginalWorkOrder.RejectionReason,
+                Category = OriginalWorkOrder.Category,
+                SubCategory = OriginalWorkOrder.SubCategory,
+                Location = OriginalWorkOrder.Location,
+                Building = OriginalWorkOrder.Building,
+                Floor = OriginalWorkOrder.Floor,
+                ContactPerson = OriginalWorkOrder.ContactPerson,
+                ContactPhone = OriginalWorkOrder.ContactPhone,
+                ContactEmail = OriginalWorkOrder.ContactEmail,
+                ScheduledStartDate = OriginalWorkOrder.ScheduledStartDate,
+                ScheduledEndDate = OriginalWorkOrder.ScheduledEndDate,
+                RequiresShutdown = OriginalWorkOrder.RequiresShutdown,
+                RequiresSafetyPermit = OriginalWorkOrder.RequiresSafetyPermit,
+                SafetyPermitNumber = OriginalWorkOrder.SafetyPermitNumber,
+                IsRecurring = OriginalWorkOrder.IsRecurring,
+                RecurrencePattern = OriginalWorkOrder.RecurrencePattern,
+                RecurrenceInterval = OriginalWorkOrder.RecurrenceInterval,
+                ParentWorkOrderId = OriginalWorkOrder.ParentWorkOrderId,
+                LastModifiedBy = OriginalWorkOrder.LastModifiedBy,
+                LastModifiedDate = OriginalWorkOrder.LastModifiedDate,
+                Department = OriginalWorkOrder.Department,
+                Originator = OriginalWorkOrder.Originator,
+                FaultDate = OriginalWorkOrder.FaultDate,
+                FaultTime = OriginalWorkOrder.FaultTime,
+                JobNumber = OriginalWorkOrder.JobNumber,
+                IsAcknowledged = OriginalWorkOrder.IsAcknowledged,
+                AcknowledgedDate = OriginalWorkOrder.AcknowledgedDate,
+                AcknowledgedBy = OriginalWorkOrder.AcknowledgedBy,
+                LockOutRequired = OriginalWorkOrder.LockOutRequired,
+                JobType = OriginalWorkOrder.JobType,
+                IsMechanical = OriginalWorkOrder.IsMechanical,
+                IsElectrical = OriginalWorkOrder.IsElectrical,
+                ArtisanName = OriginalWorkOrder.ArtisanName,
+                ArtisanSignature = OriginalWorkOrder.ArtisanSignature,
+                TimeSubmitted = OriginalWorkOrder.TimeSubmitted,
+                TimeDone = OriginalWorkOrder.TimeDone,
+                TimeCompleted = OriginalWorkOrder.TimeCompleted,
+                HousekeepingAffected = OriginalWorkOrder.HousekeepingAffected,
+                HousekeepingNotes = OriginalWorkOrder.HousekeepingNotes,
+                DetailsOfRequest = OriginalWorkOrder.DetailsOfRequest,
+                DetailsOfWorkCarriedOut = OriginalWorkOrder.DetailsOfWorkCarriedOut,
+                CorrectiveAction = OriginalWorkOrder.CorrectiveAction,
+                OriginatorVerification = OriginalWorkOrder.OriginatorVerification,
+                OriginatorVerificationDate = OriginalWorkOrder.OriginatorVerificationDate,
+                EngineeringForemanVerification = OriginalWorkOrder.EngineeringForemanVerification,
+                EngineeringForemanVerificationDate = OriginalWorkOrder.EngineeringForemanVerificationDate,
+                HODVerification = OriginalWorkOrder.HODVerification,
+                HODVerificationDate = OriginalWorkOrder.HODVerificationDate,
+                HandOverTime = OriginalWorkOrder.HandOverTime,
+                BreakdownType = OriginalWorkOrder.BreakdownType,
+                AnyOtherDetails = OriginalWorkOrder.AnyOtherDetails
+            };
+        }
+
+        technicians = Technicians ?? new();
+
+        // Determine permissions based on role
+        isEngineer = UserRole == "Reliability Engineer" || UserRole == "Admin";
+        isAdmin = UserRole == "Admin";
+        canEditType = isEngineer || isAdmin;
+        canEditCompletion = UserRole == "Technician" || isEngineer || isAdmin;
+    }
+
+    private async Task SaveChanges()
+    {
+        if (editWorkOrder == null)
+            return;
+
+        isSaving = true;
+        try
+        {
+            await OnSave.InvokeAsync(editWorkOrder);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task Cancel()
+    {
+        await OnCancel.InvokeAsync();
+    }
+
+    private void OnBackdropClick()
+    {
+        // Don't close on backdrop click - require explicit cancel/save
+    }
+}

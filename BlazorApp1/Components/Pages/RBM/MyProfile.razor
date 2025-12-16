@@ -1,0 +1,469 @@
+﻿@page "/rbm/profile"
+@rendermode InteractiveServer
+@layout RBMLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using BlazorApp1.Data
+@using BlazorApp1.Services
+@using BlazorApp1.Models
+@attribute [Authorize]
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject CurrentUserService CurrentUser
+@inject UnitsSettingsService UnitsSettings
+@inject NavigationManager Navigation
+
+<PageTitle>My Profile | RBM CMMS</PageTitle>
+
+@if (!isInitialized)
+{
+    <div style="text-align: center; padding: 60px;">
+        <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
+        <div style="color: var(--rbm-text-light);">Loading profile...</div>
+    </div>
+}
+else
+{
+    <div class="rbm-page-header">
+        <h1 class="rbm-page-title">👤 My Profile</h1>
+        <p class="rbm-page-subtitle">Manage your account settings and preferences</p>
+    </div>
+
+    <!-- Profile Overview Card -->
+    <div class="profile-hero">
+        <div class="profile-avatar-section">
+            <img src="https://ui-avatars.com/api/?name=@(user?.FullName?.Replace(" ", "+") ?? "User")&background=0288d1&color=fff&size=120" 
+                 alt="Profile" class="profile-avatar" />
+            <div class="profile-details">
+                <h2>@(user?.FullName ?? user?.Email)</h2>
+                <p class="profile-email">@user?.Email</p>
+                <div class="profile-badges">
+                    <span class="rbm-badge-pill" style="@GetRoleBadgeStyle(userRole)">@userRole</span>
+                    @if (user?.TwoFactorEnabled == true)
+                    {
+                        <span class="rbm-badge-pill rbm-badge-success">🔐 2FA Enabled</span>
+                    }
+                    @if (passkeyCount > 0)
+                    {
+                        <span class="rbm-badge-pill" style="background: rgba(156, 39, 176, 0.1); color: #9C27B0;">🔑 @passkeyCount Passkey(s)</span>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="profile-stats">
+            <div class="stat-item">
+                <div class="stat-label">Member Since</div>
+                <div class="stat-value">@user?.CreatedDate.ToString("MMM yyyy")</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Last Login</div>
+                <div class="stat-value">@(user?.LastLoginDate?.ToString("dd MMM, yyyy") ?? "—")</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Department</div>
+                <div class="stat-value">@(string.IsNullOrEmpty(user?.Department) ? "—" : user.Department)</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="profile-grid">
+        <!-- Personal Information -->
+        <div class="rbm-card">
+            <div class="rbm-card-header">
+                <h3 class="rbm-card-title">👤 Personal Information</h3>
+                <a href="Account/Manage" class="rbm-btn rbm-btn-outline rbm-btn-sm">Edit</a>
+            </div>
+            <div class="info-list">
+                <div class="info-item">
+                    <span class="info-label">Full Name</span>
+                    <span class="info-value">@(user?.FullName ?? "Not set")</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Email</span>
+                    <span class="info-value">@user?.Email</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Phone</span>
+                    <span class="info-value">@(string.IsNullOrEmpty(user?.PhoneNumber) ? "Not set" : user.PhoneNumber)</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Department</span>
+                    <span class="info-value">@(string.IsNullOrEmpty(user?.Department) ? "Not set" : user.Department)</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Security Settings -->
+        <div class="rbm-card">
+            <div class="rbm-card-header">
+                <h3 class="rbm-card-title">🔒 Security</h3>
+            </div>
+            <div class="security-options">
+                <a href="Account/Manage/ChangePassword" class="security-item">
+                    <div class="security-icon">🔑</div>
+                    <div class="security-content">
+                        <h4>Change Password</h4>
+                        <p>Update your account password</p>
+                    </div>
+                    <span class="security-arrow">→</span>
+                </a>
+                
+                <a href="Account/Manage/TwoFactorAuthentication" class="security-item @(user?.TwoFactorEnabled == true ? "enabled" : "")">
+                    <div class="security-icon">🔐</div>
+                    <div class="security-content">
+                        <h4>Two-Factor Authentication</h4>
+                        <p>@(user?.TwoFactorEnabled == true ? "Enabled - Extra security active" : "Add an extra layer of security")</p>
+                    </div>
+                    <span class="security-arrow">→</span>
+                </a>
+                
+                <a href="Account/Manage/Passkeys" class="security-item @(passkeyCount > 0 ? "enabled" : "")">
+                    <div class="security-icon">🗝️</div>
+                    <div class="security-content">
+                        <h4>Passkeys</h4>
+                        <p>@(passkeyCount > 0 ? $"{passkeyCount} passkey(s) registered" : "Set up passwordless sign-in")</p>
+                    </div>
+                    <span class="security-arrow">→</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Account Actions -->
+        <div class="rbm-card">
+            <div class="rbm-card-header">
+                <h3 class="rbm-card-title">⚙️ Account</h3>
+            </div>
+            <div class="account-options">
+                <a href="Account/Manage/Email" class="account-item">
+                    <span class="account-icon">📧</span>
+                    <span>Change Email Address</span>
+                </a>
+                <a href="Account/Manage/PersonalData" class="account-item">
+                    <span class="account-icon">📥</span>
+                    <span>Download My Data</span>
+                </a>
+                <a href="Account/Manage/DeletePersonalData" class="account-item danger">
+                    <span class="account-icon">🗑️</span>
+                    <span>Delete Account</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Role & Permissions -->
+        <div class="rbm-card">
+            <div class="rbm-card-header">
+                <h3 class="rbm-card-title">👥 Role & Permissions</h3>
+            </div>
+            <div class="permissions-list">
+                <div class="permission-item">
+                    <span>View Assets & Data</span>
+                    <span class="permission-status yes">✓</span>
+                </div>
+                <div class="permission-item">
+                    <span>Edit Records</span>
+                    <span class="permission-status @(canEdit ? "yes" : "no")">@(canEdit ? "✓" : "✕")</span>
+                </div>
+                <div class="permission-item">
+                    <span>Delete Records</span>
+                    <span class="permission-status @(canDelete ? "yes" : "no")">@(canDelete ? "✓" : "✕")</span>
+                </div>
+                <div class="permission-item">
+                    <span>Create Work Orders</span>
+                    <span class="permission-status @(canCreateWork ? "yes" : "no")">@(canCreateWork ? "✓" : "✕")</span>
+                </div>
+                <div class="permission-item">
+                    <span>Manage Users</span>
+                    <span class="permission-status @(isAdmin ? "yes" : "no")">@(isAdmin ? "✓" : "✕")</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Units & Measurements Settings -->
+    <UnitsSettingsComponent InitialSettings="userSettings" />
+}
+
+<style>
+    .profile-hero {
+        background: linear-gradient(135deg, #0288d1 0%, #37474f 100%);
+        border-radius: 16px;
+        padding: 32px;
+        color: white;
+        margin-bottom: 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 24px;
+    }
+
+    .profile-avatar-section {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+    }
+
+    .profile-avatar {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        border: 4px solid rgba(255,255,255,0.3);
+    }
+
+    .profile-details h2 {
+        margin: 0 0 4px 0;
+        font-size: 28px;
+    }
+
+    .profile-email {
+        margin: 0 0 12px 0;
+        opacity: 0.8;
+    }
+
+    .profile-badges {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .profile-stats {
+        display: flex;
+        gap: 32px;
+    }
+
+    .stat-item {
+        text-align: center;
+    }
+
+    .stat-label {
+        font-size: 12px;
+        opacity: 0.7;
+        margin-bottom: 4px;
+    }
+
+    .stat-value {
+        font-size: 16px;
+        font-weight: 600;
+    }
+
+    .profile-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 24px;
+        margin-bottom: 24px;
+    }
+
+    @@media (max-width: 900px) {
+        .profile-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .profile-hero {
+            flex-direction: column;
+            text-align: center;
+        }
+        
+        .profile-avatar-section {
+            flex-direction: column;
+        }
+        
+        .profile-stats {
+            justify-content: center;
+        }
+    }
+
+    .info-list {
+        padding: 16px 24px;
+    }
+
+    .info-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--rbm-border);
+    }
+
+    .info-item:last-child {
+        border-bottom: none;
+    }
+
+    .info-label {
+        color: var(--rbm-text-light);
+        font-size: 14px;
+    }
+
+    .info-value {
+        font-weight: 500;
+        color: var(--rbm-text);
+    }
+
+    .security-options {
+        padding: 8px;
+    }
+
+    .security-item {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 16px;
+        border-radius: 8px;
+        text-decoration: none;
+        color: inherit;
+        transition: background 0.2s;
+    }
+
+    .security-item:hover {
+        background: var(--rbm-bg);
+    }
+
+    .security-item.enabled {
+        background: rgba(76, 175, 80, 0.05);
+    }
+
+    .security-icon {
+        font-size: 24px;
+        width: 48px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--rbm-bg);
+        border-radius: 10px;
+    }
+
+    .security-content {
+        flex: 1;
+    }
+
+    .security-content h4 {
+        margin: 0 0 4px 0;
+        font-size: 15px;
+        color: var(--rbm-text);
+    }
+
+    .security-content p {
+        margin: 0;
+        font-size: 13px;
+        color: var(--rbm-text-light);
+    }
+
+    .security-arrow {
+        color: var(--rbm-text-light);
+        font-size: 18px;
+    }
+
+    .account-options {
+        padding: 8px 16px;
+    }
+
+    .account-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 8px;
+        border-radius: 6px;
+        text-decoration: none;
+        color: var(--rbm-text);
+        transition: background 0.2s;
+    }
+
+    .account-item:hover {
+        background: var(--rbm-bg);
+    }
+
+    .account-item.danger {
+        color: var(--rbm-danger);
+    }
+
+    .account-icon {
+        font-size: 18px;
+    }
+
+    .permissions-list {
+        padding: 16px 24px;
+    }
+
+    .permission-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--rbm-border);
+        font-size: 14px;
+    }
+
+    .permission-item:last-child {
+        border-bottom: none;
+    }
+
+    .permission-status {
+        font-size: 16px;
+    }
+
+    .permission-status.yes {
+        color: #43a047;
+    }
+
+    .permission-status.no {
+        color: #e53935;
+    }
+</style>
+
+@code {
+    private bool isInitialized = false;
+    private ApplicationUser? user;
+    private UserSettings? userSettings;
+    private string userRole = "";
+    private int passkeyCount = 0;
+    private bool canEdit = false;
+    private bool canDelete = false;
+    private bool canCreateWork = false;
+    private bool isAdmin = false;
+
+    [CascadingParameter]
+    private Task<Microsoft.AspNetCore.Components.Authorization.AuthenticationState>? AuthenticationState { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthenticationState != null)
+        {
+            var authState = await AuthenticationState;
+            var claimsPrincipal = authState.User;
+            
+            if (claimsPrincipal.Identity?.IsAuthenticated == true)
+            {
+                user = await UserManager.GetUserAsync(claimsPrincipal);
+                
+                if (user != null)
+                {
+                    // Initialize UnitsSettingsService with the current user
+                    await UnitsSettings.InitializeAsync(user.Id);
+                    userSettings = UnitsSettings.GetCurrentSettings();
+                    
+                    var roles = await UserManager.GetRolesAsync(user);
+                    userRole = roles.FirstOrDefault() ?? "No Role";
+                    
+                    var passkeys = await UserManager.GetPasskeysAsync(user);
+                    passkeyCount = passkeys.Count;
+                }
+            }
+        }
+
+        // Initialize CurrentUser service for permissions
+        await CurrentUser.InitializeAsync();
+        canEdit = CurrentUser.CanEdit;
+        canDelete = CurrentUser.CanDelete;
+        canCreateWork = CurrentUser.CanCreateWork;
+        isAdmin = CurrentUser.IsAdmin;
+
+        isInitialized = true;
+    }
+
+    private string GetRoleBadgeStyle(string role) => role switch
+    {
+        "Admin" => "background: rgba(229, 57, 53, 0.2); color: white;",
+        "Reliability Engineer" => "background: rgba(2, 136, 209, 0.2); color: white;",
+        "Planner" => "background: rgba(251, 140, 0, 0.2); color: white;",
+        "Technician" => "background: rgba(67, 160, 71, 0.2); color: white;",
+        _ => "background: rgba(255,255,255,0.2); color: white;"
+    };
+}

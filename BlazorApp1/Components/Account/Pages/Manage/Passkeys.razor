@@ -9,55 +9,369 @@
 @inject SignInManager<ApplicationUser> SignInManager
 @inject IdentityRedirectManager RedirectManager
 
-<PageTitle>Manage your passkeys</PageTitle>
+<PageTitle>Passkeys | RBM CMMS</PageTitle>
 
-<h3>Manage your passkeys</h3>
+<h2>🔑 Passkeys</h2>
+<p class="page-description">Manage your passkeys for secure, passwordless authentication</p>
 
 <StatusMessage />
 
-@if (currentPasskeys is { Count: > 0 })
-{
-    <table class="table">
-        <tbody>
+<!-- Info Card -->
+<div class="info-card">
+    <div class="info-icon">💡</div>
+    <div class="info-content">
+        <h4>What are Passkeys?</h4>
+        <p>
+            Passkeys are a secure and convenient way to sign in without passwords. 
+            They use biometrics (fingerprint, face) or device PIN and are resistant to phishing attacks.
+        </p>
+    </div>
+</div>
+
+<!-- Current Passkeys -->
+<div class="section-card">
+    <div class="section-header">
+        <h3>📋 Your Passkeys</h3>
+        <span class="passkey-count">@(currentPasskeys?.Count ?? 0) registered</span>
+    </div>
+
+    @if (currentPasskeys is { Count: > 0 })
+    {
+        <div class="passkeys-list">
             @foreach (var passkey in currentPasskeys)
             {
-                <tr>
-                    <td>@(passkey.Name ?? "Unnamed passkey")</td>
-                    <td>
+                <div class="passkey-item">
+                    <div class="passkey-icon">🔐</div>
+                    <div class="passkey-info">
+                        <div class="passkey-name">@(passkey.Name ?? "Unnamed passkey")</div>
+                        <div class="passkey-meta">
+                            Added: @passkey.CreatedAt.ToString("MMM dd, yyyy")
+                        </div>
+                    </div>
+                    <div class="passkey-actions">
                         @{
                             var credentialId = Base64Url.EncodeToString(passkey.CredentialId);
                         }
                         <form @formname="@($"update-passkey-{credentialId}")" @onsubmit="UpdatePasskey" method="post">
                             <AntiforgeryToken />
-                            <div>
-                                <input type="hidden" name="CredentialId" value="@credentialId" />
-                                <button type="submit" name="Action" value="rename" class="btn btn-primary" title="Rename this passkey">Rename</button>
-                                <button type="submit" name="Action" value="delete" class="btn btn-danger" title="Remove this passkey from your account">Delete</button>
-                            </div>
+                            <input type="hidden" name="CredentialId" value="@credentialId" />
+                            <button type="submit" name="Action" value="rename" class="btn-icon" title="Rename">
+                                ✏️
+                            </button>
+                            <button type="submit" name="Action" value="delete" class="btn-icon btn-danger" title="Delete">
+                                🗑️
+                            </button>
                         </form>
-                    </td>
-                </tr>
+                    </div>
+                </div>
             }
-        </tbody>
-    </table>
-}
-else
-{
-    <p>No passkeys are registered.</p>
-}
-
-<form @formname="add-passkey" @onsubmit="AddPasskey" method="post">
-    <AntiforgeryToken />
-    @if (currentPasskeys is { Count: >= MaxPasskeyCount })
-    {
-        <p class="text-danger">You have reached the maximum number of allowed passkeys. Please delete one before adding a new one.</p>
+        </div>
     }
     else
     {
-        <PasskeySubmit Operation="PasskeyOperation.Create" Name="Input" class="btn btn-primary">Add a new passkey</PasskeySubmit>
+        <div class="empty-state">
+            <div class="empty-icon">🔑</div>
+            <h4>No passkeys registered</h4>
+            <p>Add a passkey to enable secure, passwordless sign-in</p>
+        </div>
+    }
+</div>
+
+<!-- Add New Passkey -->
+<div class="section-card">
+    <div class="section-header">
+        <h3>➕ Add New Passkey</h3>
+    </div>
+    <div class="add-passkey-content">
+        <form @formname="add-passkey" @onsubmit="AddPasskey" method="post">
+            <AntiforgeryToken />
+            @if (currentPasskeys is { Count: >= MaxPasskeyCount })
+            {
+                <div class="warning-message">
+                    <span>⚠️</span>
+                    <span>You have reached the maximum number of allowed passkeys (@MaxPasskeyCount). Please delete one before adding a new one.</span>
+                </div>
+            }
+            else
+            {
+                <div class="add-passkey-info">
+                    <p>
+                        When you click "Add Passkey", your browser will prompt you to create a new passkey using:
+                    </p>
+                    <ul>
+                        <li>🖐️ Your fingerprint</li>
+                        <li>👤 Face recognition</li>
+                        <li>🔢 Device PIN</li>
+                        <li>🔐 Security key (USB/NFC)</li>
+                    </ul>
+                </div>
+                <PasskeySubmit Operation="PasskeyOperation.Create" Name="Input" class="btn-primary btn-large">
+                    <span>🔑</span> Add a New Passkey
+                </PasskeySubmit>
+            }
+        </form>
+    </div>
+</div>
+
+<!-- Security Tips -->
+<div class="security-tips">
+    <h4>🛡️ Security Tips</h4>
+    <ul>
+        <li><strong>Register multiple passkeys</strong> - Use different devices as backup</li>
+        <li><strong>Name your passkeys</strong> - Makes it easier to identify and manage them</li>
+        <li><strong>Remove unused passkeys</strong> - Keep your account clean and secure</li>
+        <li><strong>Keep devices updated</strong> - Ensures best security and compatibility</li>
+    </ul>
+</div>
+
+<style>
+    .passkeys-page {
+        max-width: 600px;
     }
 
-</form>
+    .passkeys-page h2 {
+        margin: 0 0 8px 0;
+        font-size: 22px;
+        color: #37474f;
+    }
+
+    .page-description {
+        color: #78909c;
+        margin: 0 0 24px 0;
+    }
+
+    .info-card {
+        display: flex;
+        gap: 16px;
+        background: linear-gradient(135deg, rgba(2, 136, 209, 0.1) 0%, rgba(2, 136, 209, 0.05) 100%);
+        border: 1px solid rgba(2, 136, 209, 0.2);
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 24px;
+    }
+
+    .info-icon {
+        font-size: 32px;
+    }
+
+    .info-content h4 {
+        margin: 0 0 8px 0;
+        color: #0288d1;
+        font-size: 16px;
+    }
+
+    .info-content p {
+        margin: 0;
+        color: #546e7a;
+        font-size: 14px;
+        line-height: 1.6;
+    }
+
+    .section-card {
+        background: #f5f7fa;
+        border-radius: 12px;
+        margin-bottom: 24px;
+        overflow: hidden;
+    }
+
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        background: white;
+        border-bottom: 1px solid #eceff1;
+    }
+
+    .section-header h3 {
+        margin: 0;
+        font-size: 16px;
+        color: #37474f;
+    }
+
+    .passkey-count {
+        background: rgba(2, 136, 209, 0.1);
+        color: #0288d1;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 13px;
+        font-weight: 500;
+    }
+
+    .passkeys-list {
+        padding: 8px;
+    }
+
+    .passkey-item {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 16px;
+        background: white;
+        border-radius: 8px;
+        margin-bottom: 8px;
+    }
+
+    .passkey-item:last-child {
+        margin-bottom: 0;
+    }
+
+    .passkey-icon {
+        font-size: 28px;
+        width: 48px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(76, 175, 80, 0.1);
+        border-radius: 10px;
+    }
+
+    .passkey-info {
+        flex: 1;
+    }
+
+    .passkey-name {
+        font-weight: 600;
+        color: #37474f;
+        margin-bottom: 4px;
+    }
+
+    .passkey-meta {
+        font-size: 13px;
+        color: #78909c;
+    }
+
+    .passkey-actions form {
+        display: flex;
+        gap: 8px;
+    }
+
+    .btn-icon {
+        background: #f5f7fa;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        padding: 8px 12px;
+        cursor: pointer;
+        font-size: 16px;
+        transition: background 0.2s;
+    }
+
+    .btn-icon:hover {
+        background: #eceff1;
+    }
+
+    .btn-icon.btn-danger:hover {
+        background: rgba(229, 57, 53, 0.1);
+        border-color: rgba(229, 57, 53, 0.3);
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 48px 24px;
+        background: white;
+    }
+
+    .empty-icon {
+        font-size: 48px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+    }
+
+    .empty-state h4 {
+        margin: 0 0 8px 0;
+        color: #37474f;
+    }
+
+    .empty-state p {
+        margin: 0;
+        color: #78909c;
+    }
+
+    .add-passkey-content {
+        padding: 20px;
+        background: white;
+    }
+
+    .add-passkey-info {
+        margin-bottom: 24px;
+    }
+
+    .add-passkey-info p {
+        color: #546e7a;
+        margin: 0 0 12px 0;
+    }
+
+    .add-passkey-info ul {
+        margin: 0;
+        padding-left: 20px;
+        color: #607d8b;
+    }
+
+    .add-passkey-info li {
+        margin-bottom: 6px;
+    }
+
+    .warning-message {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: rgba(255, 152, 0, 0.1);
+        border: 1px solid rgba(255, 152, 0, 0.3);
+        color: #e65100;
+        padding: 16px;
+        border-radius: 8px;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #0288d1 0%, #0277bd 100%);
+        color: white;
+        border: none;
+        padding: 14px 28px;
+        border-radius: 8px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: transform 0.1s, box-shadow 0.2s;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(2, 136, 209, 0.3);
+    }
+
+    .btn-large {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .security-tips {
+        background: #fffde7;
+        border: 1px solid #fff59d;
+        border-radius: 12px;
+        padding: 20px;
+    }
+
+    .security-tips h4 {
+        margin: 0 0 16px 0;
+        color: #5d4037;
+        font-size: 16px;
+    }
+
+    .security-tips ul {
+        margin: 0;
+        padding-left: 20px;
+        color: #6d4c41;
+        font-size: 14px;
+    }
+
+    .security-tips li {
+        margin-bottom: 8px;
+    }
+</style>
 
 @code {
     private const int MaxPasskeyCount = 100;
@@ -177,6 +491,6 @@ else
             return;
         }
 
-        RedirectManager.RedirectToCurrentPageWithStatus("Passkey deleted successfully.", HttpContext);
+        RedirectManager.RedirectToCurrentPageWithStatus("✅ Passkey deleted successfully.", HttpContext);
     }
 }

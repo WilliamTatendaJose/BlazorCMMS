@@ -51,6 +51,9 @@ public class MaintenanceSchedule
     [MaxLength(2000)]
     public string CompletionNotes { get; set; } = string.Empty;
     
+    // Multi-tenancy support
+    public int? TenantId { get; set; }
+    
     // Navigation properties
     [ForeignKey("AssetId")]
     public virtual Asset? Asset { get; set; }

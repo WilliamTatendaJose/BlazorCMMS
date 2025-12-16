@@ -1,9 +1,9 @@
-@* Simple CSS-based Pie Chart Component *@
+@* Enhanced CSS-based Pie Chart Component *@
 @if (Total > 0)
 {
-    <div class="simple-pie-chart" style="display: flex; flex-direction: column; align-items: center;">
-        <div style="position: relative; width: 200px; height: 200px;">
-            <svg viewBox="0 0 200 200" style="width: 200px; height: 200px;">
+    <div class="pie-chart-container">
+        <div class="pie-chart-wrapper">
+            <svg viewBox="0 0 200 200" class="pie-chart-svg">
                 @{
                     double currentAngle = 0;
                     var segments = new[] 
@@ -25,11 +25,20 @@
                             var startY = 100 + 80 * Math.Sin((currentAngle - 90) * Math.PI / 180);
                             var endX = 100 + 80 * Math.Cos((currentAngle + angle - 90) * Math.PI / 180);
                             var endY = 100 + 80 * Math.Sin((currentAngle + angle - 90) * Math.PI / 180);
-                        
-                            <path d="M 100 100 L @startX @startY A 80 80 0 @largeArc 1 @endX @endY Z"
-                                  fill="@segment.Color" 
-                                  stroke="white" 
-                                  stroke-width="2"/>
+                            
+                            // Handle full circle case
+                            if (percentage >= 0.9999)
+                            {
+                                <circle cx="100" cy="100" r="80" fill="@segment.Color" stroke="white" stroke-width="2"/>
+                            }
+                            else
+                            {
+                                <path d="M 100 100 L @startX.ToString("F2") @startY.ToString("F2") A 80 80 0 @largeArc 1 @endX.ToString("F2") @endY.ToString("F2") Z"
+                                      fill="@segment.Color" 
+                                      stroke="white" 
+                                      stroke-width="2"
+                                      class="pie-segment"/>
+                            }
                         
                             currentAngle += angle;
                         }
@@ -38,26 +47,164 @@
                 <circle cx="100" cy="100" r="50" fill="white"/>
             </svg>
             
-            <!-- Center labels overlay -->
-            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none;">
-                <div style="font-size: 24px; font-weight: 700; color: #37474f;">@Total</div>
-                <div style="font-size: 12px; color: #78909c;">Assets</div>
+            <div class="pie-chart-center">
+                <div class="center-value">@Total</div>
+                <div class="center-label">Total Assets</div>
             </div>
         </div>
         
-        <div style="margin-top: 20px; text-align: center;">
-            <div style="margin-bottom: 8px;"><span style="color: #43a047; font-size: 20px;">?</span> <strong>@HealthyCount</strong> Healthy (@(Total > 0 ? (HealthyCount * 100 / Total) : 0)%)</div>
-            <div style="margin-bottom: 8px;"><span style="color: #fb8c00; font-size: 20px;">?</span> <strong>@WarningCount</strong> Warning (@(Total > 0 ? (WarningCount * 100 / Total) : 0)%)</div>
-            <div><span style="color: #e53935; font-size: 20px;">?</span> <strong>@CriticalCount</strong> Critical (@(Total > 0 ? (CriticalCount * 100 / Total) : 0)%)</div>
+        <div class="pie-chart-legend">
+            <div class="legend-item">
+                <span class="legend-dot healthy"></span>
+                <span class="legend-label">Healthy</span>
+                <span class="legend-value">@HealthyCount</span>
+                <span class="legend-percent">(@(Total > 0 ? (HealthyCount * 100 / Total) : 0)%)</span>
+            </div>
+            <div class="legend-item">
+                <span class="legend-dot warning"></span>
+                <span class="legend-label">Warning</span>
+                <span class="legend-value">@WarningCount</span>
+                <span class="legend-percent">(@(Total > 0 ? (WarningCount * 100 / Total) : 0)%)</span>
+            </div>
+            <div class="legend-item">
+                <span class="legend-dot critical"></span>
+                <span class="legend-label">Critical</span>
+                <span class="legend-value">@CriticalCount</span>
+                <span class="legend-percent">(@(Total > 0 ? (CriticalCount * 100 / Total) : 0)%)</span>
+            </div>
         </div>
     </div>
 }
 else
 {
-    <div style="text-align: center; padding: 40px; color: var(--rbm-text-light);">
-        No asset data available
+    <div class="pie-chart-empty">
+        <span class="empty-icon">??</span>
+        <p>No asset data available</p>
     </div>
 }
+
+<style>
+    .pie-chart-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 24px;
+    }
+
+    .pie-chart-wrapper {
+        position: relative;
+        width: 200px;
+        height: 200px;
+    }
+
+    .pie-chart-svg {
+        width: 200px;
+        height: 200px;
+        transform: rotate(0deg);
+    }
+
+    .pie-segment {
+        transition: transform 0.2s ease;
+        transform-origin: center;
+    }
+
+    .pie-segment:hover {
+        transform: scale(1.02);
+        filter: brightness(1.1);
+    }
+
+    .pie-chart-center {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        pointer-events: none;
+    }
+
+    .center-value {
+        font-size: 32px;
+        font-weight: 700;
+        color: #37474f;
+        line-height: 1;
+    }
+
+    .center-label {
+        font-size: 12px;
+        color: #78909c;
+        margin-top: 4px;
+    }
+
+    .pie-chart-legend {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        width: 100%;
+        max-width: 220px;
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        background: #f5f7fa;
+        border-radius: 8px;
+        transition: background 0.2s;
+    }
+
+    .legend-item:hover {
+        background: #eceff1;
+    }
+
+    .legend-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    .legend-dot.healthy { background: #43a047; }
+    .legend-dot.warning { background: #fb8c00; }
+    .legend-dot.critical { background: #e53935; }
+
+    .legend-label {
+        flex: 1;
+        font-size: 14px;
+        color: #37474f;
+    }
+
+    .legend-value {
+        font-size: 16px;
+        font-weight: 600;
+        color: #37474f;
+    }
+
+    .legend-percent {
+        font-size: 12px;
+        color: #78909c;
+        min-width: 40px;
+        text-align: right;
+    }
+
+    .pie-chart-empty {
+        text-align: center;
+        padding: 48px 24px;
+        color: #78909c;
+    }
+
+    .pie-chart-empty .empty-icon {
+        font-size: 48px;
+        display: block;
+        margin-bottom: 12px;
+        opacity: 0.5;
+    }
+
+    .pie-chart-empty p {
+        margin: 0;
+        font-size: 14px;
+    }
+</style>
 
 @code {
     [Parameter] public int HealthyCount { get; set; }

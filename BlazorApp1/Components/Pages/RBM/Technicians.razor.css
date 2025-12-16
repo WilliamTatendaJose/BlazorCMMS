@@ -1,0 +1,235 @@
+/* Technician Portal Styles */
+
+/* Animation Keyframes */
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Work Order Card Styles */
+.work-order-card {
+    padding: 16px;
+    background: var(--rbm-bg);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    border-left: 4px solid var(--rbm-primary);
+    transition: all 0.2s ease;
+}
+
+.work-order-card:hover {
+    background: rgba(0, 0, 0, 0.02);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.completed-wo-item {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--rbm-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.completed-wo-item:last-child {
+    border-bottom: none;
+}
+
+/* Enhanced Stat Cards */
+.rbm-stat-card.elevated {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    border: 1px solid rgba(0,0,0,0.05);
+    transition: all 0.3s ease;
+}
+
+.rbm-stat-card.elevated:hover {
+    box-shadow: 0 8px 16px rgba(0,0,0,0.12);
+    transform: translateY(-2px);
+}
+
+.rbm-stat-icon {
+    font-size: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+}
+
+.gradient-blue {
+    background: linear-gradient(135deg, rgba(33, 150, 243, 0.15), rgba(33, 150, 243, 0.05));
+    color: #2196F3;
+}
+
+.gradient-orange {
+    background: linear-gradient(135deg, rgba(255, 152, 0, 0.15), rgba(255, 152, 0, 0.05));
+    color: #FF9800;
+}
+
+.gradient-green {
+    background: linear-gradient(135deg, rgba(76, 175, 80, 0.15), rgba(76, 175, 80, 0.05));
+    color: #4CAF50;
+}
+
+/* Toast Notifications */
+.toast-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    max-width: 400px;
+    display: flex;
+    gap: 12px;
+    padding: 16px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 9999;
+    animation: slideInRight 0.3s ease;
+    cursor: pointer;
+}
+
+.success-toast {
+    background: #e8f5e9;
+    border-left: 4px solid #43a047;
+}
+
+.error-toast {
+    background: #ffebee;
+    border-left: 4px solid #e53935;
+}
+
+.toast-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.toast-content {
+    flex: 1;
+}
+
+.toast-title {
+    font-weight: 600;
+    font-size: 14px;
+    margin: 0 0 4px 0;
+    color: var(--rbm-text);
+}
+
+.toast-message {
+    font-size: 13px;
+    margin: 0;
+    color: var(--rbm-text-light);
+}
+
+.toast-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: var(--rbm-text-light);
+    padding: 0;
+    margin-left: 8px;
+}
+
+.toast-close:hover {
+    color: var(--rbm-text);
+}
+
+/* Utility Styles */
+.mb-4 {
+    margin-bottom: 24px;
+}
+
+.mt-4 {
+    margin-top: 24px;
+}
+
+.mt-3 {
+    margin-top: 16px;
+}
+
+/* Alert Styles */
+.alert {
+    padding: 12px 16px;
+    border-radius: 6px;
+    border-left: 4px solid;
+    display: flex;
+    gap: 8px;
+    font-size: 14px;
+}
+
+.alert-danger {
+    background: #ffebee;
+    border-color: #e53935;
+    color: #c62828;
+}
+
+.btn-close {
+    background: none;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    color: inherit;
+    padding: 0;
+}
+
+/* Badge Styles */
+.rbm-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.rbm-badge-info {
+    background: rgba(33, 150, 243, 0.1);
+    color: #2196F3;
+}
+
+.rbm-badge-success {
+    background: rgba(67, 160, 71, 0.1);
+    color: #43a047;
+}
+
+.rbm-badge-warning {
+    background: rgba(251, 140, 0, 0.1);
+    color: #FF9800;
+}
+
+.rbm-badge-danger {
+    background: rgba(229, 57, 53, 0.1);
+    color: #e53935;
+}
+
+.rbm-badge-secondary {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--rbm-text);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .rbm-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .work-order-card {
+        margin-bottom: 8px;
+    }
+
+    .toast-notification {
+        right: 10px;
+        left: 10px;
+        max-width: none;
+    }
+}

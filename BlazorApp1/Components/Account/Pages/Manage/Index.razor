@@ -8,34 +8,207 @@
 @inject SignInManager<ApplicationUser> SignInManager
 @inject IdentityRedirectManager RedirectManager
 
-<PageTitle>Profile</PageTitle>
+<PageTitle>Profile | RBM CMMS</PageTitle>
 
-<h3>Profile</h3>
-<StatusMessage />
+<div class="profile-page">
+    <div class="profile-header-card">
+        <img src="https://ui-avatars.com/api/?name=@(user?.FullName?.Replace(" ", "+") ?? "User")&background=0288d1&color=fff&size=100" 
+             alt="Profile" class="profile-avatar" />
+        <div class="profile-header-info">
+            <h2>@(user?.FullName ?? username)</h2>
+            <p class="email">@username</p>
+            <p class="member-since">Member since @user?.CreatedDate.ToString("MMMM yyyy")</p>
+        </div>
+    </div>
 
-<div class="row">
-    <div class="col-xl-6">
+    <StatusMessage />
+
+    <div class="form-section">
+        <h3>📝 Personal Information</h3>
         <EditForm Model="Input" FormName="profile" OnValidSubmit="OnValidSubmitAsync" method="post">
             <DataAnnotationsValidator />
-            <ValidationSummary class="text-danger" role="alert" />
-            <div class="form-floating mb-3">
-                <input type="text" value="@username" id="username" class="form-control" placeholder="Choose your username." disabled />
-                <label for="username" class="form-label">Username</label>
+            <ValidationSummary class="validation-summary" role="alert" />
+            
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="username">Username / Email</label>
+                    <input type="text" value="@username" id="username" class="form-input" disabled />
+                    <span class="input-hint">Your username cannot be changed</span>
+                </div>
+                
+                <div class="form-group">
+                    <label for="Input.FullName">Full Name</label>
+                    <InputText @bind-Value="Input.FullName" id="Input.FullName" class="form-input" placeholder="Enter your full name" />
+                    <ValidationMessage For="() => Input.FullName" class="validation-error" />
+                </div>
+                
+                <div class="form-group">
+                    <label for="Input.Department">Department</label>
+                    <InputText @bind-Value="Input.Department" id="Input.Department" class="form-input" placeholder="e.g., Maintenance" />
+                    <ValidationMessage For="() => Input.Department" class="validation-error" />
+                </div>
+                
+                <div class="form-group">
+                    <label for="Input.PhoneNumber">Phone Number</label>
+                    <InputText @bind-Value="Input.PhoneNumber" id="Input.PhoneNumber" class="form-input" placeholder="555-0123" />
+                    <ValidationMessage For="() => Input.PhoneNumber" class="validation-error" />
+                </div>
             </div>
-            <div class="form-floating mb-3">
-                <InputText @bind-Value="Input.PhoneNumber" id="Input.PhoneNumber" class="form-control" placeholder="Enter your phone number" />
-                <label for="Input.PhoneNumber" class="form-label">Phone number</label>
-                <ValidationMessage For="() => Input.PhoneNumber" class="text-danger" />
+            
+            <div class="form-actions">
+                <button type="submit" class="btn-primary">💾 Save Changes</button>
             </div>
-            <button type="submit" class="w-100 btn btn-lg btn-primary">Save</button>
         </EditForm>
     </div>
 </div>
+
+<style>
+    .profile-page {
+        max-width: 100%;
+    }
+
+    .profile-header-card {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        padding: 24px;
+        background: linear-gradient(135deg, rgba(2, 136, 209, 0.1) 0%, rgba(55, 71, 79, 0.05) 100%);
+        border-radius: 12px;
+        margin-bottom: 32px;
+    }
+
+    .profile-avatar {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        border: 3px solid white;
+    }
+
+    .profile-header-info h2 {
+        margin: 0 0 4px 0;
+        font-size: 22px;
+        color: #37474f;
+    }
+
+    .profile-header-info .email {
+        margin: 0 0 4px 0;
+        color: #546e7a;
+        font-size: 14px;
+    }
+
+    .profile-header-info .member-since {
+        margin: 0;
+        color: #90a4ae;
+        font-size: 13px;
+    }
+
+    .form-section h3 {
+        margin: 0 0 24px 0;
+        font-size: 18px;
+        color: #37474f;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #eceff1;
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+    }
+
+    @@media (max-width: 700px) {
+        .form-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .profile-header-card {
+            flex-direction: column;
+            text-align: center;
+        }
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .form-group label {
+        font-size: 14px;
+        font-weight: 600;
+        color: #37474f;
+    }
+
+    .form-input {
+        padding: 12px 16px;
+        border: 1px solid #cfd8dc;
+        border-radius: 8px;
+        font-size: 15px;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .form-input:focus {
+        outline: none;
+        border-color: #0288d1;
+        box-shadow: 0 0 0 3px rgba(2, 136, 209, 0.1);
+    }
+
+    .form-input:disabled {
+        background: #eceff1;
+        color: #78909c;
+    }
+
+    .input-hint {
+        font-size: 12px;
+        color: #90a4ae;
+    }
+
+    .validation-summary {
+        background: rgba(229, 57, 53, 0.1);
+        color: #c62828;
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        list-style: none;
+    }
+
+    .validation-error {
+        color: #e53935;
+        font-size: 13px;
+    }
+
+    .form-actions {
+        margin-top: 32px;
+        padding-top: 24px;
+        border-top: 1px solid #eceff1;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #0288d1 0%, #0277bd 100%);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.1s, box-shadow 0.2s;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(2, 136, 209, 0.3);
+    }
+</style>
 
 @code {
     private ApplicationUser? user;
     private string? username;
     private string? phoneNumber;
+    private string? fullName;
+    private string? department;
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
@@ -56,8 +229,12 @@
 
         username = await UserManager.GetUserNameAsync(user);
         phoneNumber = await UserManager.GetPhoneNumberAsync(user);
+        fullName = user.FullName;
+        department = user.Department;
 
         Input.PhoneNumber ??= phoneNumber;
+        Input.FullName ??= fullName;
+        Input.Department ??= department;
     }
 
     private async Task OnValidSubmitAsync()
@@ -78,12 +255,42 @@
             }
         }
 
+        var needsUpdate = false;
+        if (Input.FullName != fullName)
+        {
+            user.FullName = Input.FullName;
+            needsUpdate = true;
+        }
+        if (Input.Department != department)
+        {
+            user.Department = Input.Department;
+            needsUpdate = true;
+        }
+
+        if (needsUpdate)
+        {
+            var updateResult = await UserManager.UpdateAsync(user);
+            if (!updateResult.Succeeded)
+            {
+                RedirectManager.RedirectToCurrentPageWithStatus("Error: Failed to update profile.", HttpContext);
+                return;
+            }
+        }
+
         await SignInManager.RefreshSignInAsync(user);
-        RedirectManager.RedirectToCurrentPageWithStatus("Your profile has been updated", HttpContext);
+        RedirectManager.RedirectToCurrentPageWithStatus("✅ Your profile has been updated!", HttpContext);
     }
 
     private sealed class InputModel
     {
+        [Display(Name = "Full Name")]
+        [StringLength(200, ErrorMessage = "Full name cannot exceed 200 characters")]
+        public string? FullName { get; set; }
+
+        [Display(Name = "Department")]
+        [StringLength(100, ErrorMessage = "Department cannot exceed 100 characters")]
+        public string? Department { get; set; }
+
         [Phone]
         [Display(Name = "Phone number")]
         public string? PhoneNumber { get; set; }

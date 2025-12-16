@@ -209,7 +209,7 @@
             </div>
             <div class="rbm-modal-footer">
                 <button class="rbm-btn rbm-btn-outline" @onclick="CloseModal">Cancel</button>
-                <button class="rbm-btn rbm-btn-primary" @onclick="SaveFailureMode">Save</button>
+                <button class="rbm-btn rbm-btn-primary" @onclick="SaveFailureModeAsync">Save</button>
             </div>
         </div>
     </div>
@@ -221,11 +221,25 @@
     private FailureMode currentFailureMode = new();
     private bool showModal = false;
     private bool editMode = false;
+    private bool isInitialized = false;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        assets = DataService.GetAssets();
-        failureModes = DataService.GetFailureModes();
+        await LoadDataAsync();
+        isInitialized = true;
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            assets = await DataService.GetAssetsAsync();
+            failureModes = await DataService.GetFailureModesAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading data: {ex.Message}");
+        }
     }
 
     private void ShowAddModal()
@@ -257,18 +271,25 @@
         showModal = false;
     }
 
-    private void SaveFailureMode()
+    private async Task SaveFailureModeAsync()
     {
-        if (editMode)
+        try
         {
-            DataService.UpdateFailureMode(currentFailureMode);
+            if (editMode)
+            {
+                await DataService.UpdateFailureModeAsync(currentFailureMode);
+            }
+            else
+            {
+                await DataService.AddFailureModeAsync(currentFailureMode);
+            }
+            failureModes = await DataService.GetFailureModesAsync();
+            CloseModal();
         }
-        else
+        catch (Exception ex)
         {
-            DataService.AddFailureMode(currentFailureMode);
+            Console.WriteLine($"Error saving failure mode: {ex.Message}");
         }
-        failureModes = DataService.GetFailureModes();
-        CloseModal();
     }
 
     private string GetRPNColor(int rpn)

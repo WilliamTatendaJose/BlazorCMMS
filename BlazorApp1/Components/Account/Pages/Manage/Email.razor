@@ -12,46 +12,266 @@
 @inject NavigationManager NavigationManager
 @inject IdentityRedirectManager RedirectManager
 
-<PageTitle>Manage email</PageTitle>
+<PageTitle>Email Settings | RBM CMMS</PageTitle>
 
-<h3>Manage email</h3>
+<div class="email-page">
+    <h2>📧 Email Settings</h2>
+    <p class="page-description">Manage your email address and verification status</p>
 
-<StatusMessage Message="@message"/>
-<div class="row">
-    <div class="col-xl-6">
-        <form @onsubmit="OnSendEmailVerificationAsync" @formname="send-verification" id="send-verification-form" method="post">
-            <AntiforgeryToken />
-        </form>
+    <StatusMessage Message="@message"/>
+
+    <!-- Current Email Status -->
+    <div class="current-email-card">
+        <div class="email-status">
+            <div class="email-info">
+                <label>Current Email</label>
+                <div class="email-value">@email</div>
+            </div>
+            <div class="status-badge @(isEmailConfirmed ? "verified" : "unverified")">
+                @if (isEmailConfirmed)
+                {
+                    <span>✅ Verified</span>
+                }
+                else
+                {
+                    <span>⚠️ Not Verified</span>
+                }
+            </div>
+        </div>
+        
+        @if (!isEmailConfirmed)
+        {
+            <div class="verification-prompt">
+                <p>Your email is not verified. Please verify your email to ensure account security.</p>
+                <form @onsubmit="OnSendEmailVerificationAsync" @formname="send-verification" method="post">
+                    <AntiforgeryToken />
+                    <button type="submit" class="btn-secondary">📨 Send Verification Email</button>
+                </form>
+            </div>
+        }
+    </div>
+
+    <!-- Change Email -->
+    <div class="section-card">
+        <h3>✏️ Change Email Address</h3>
+        <p class="section-description">Enter a new email address. A confirmation link will be sent to verify it.</p>
+        
         <EditForm Model="Input" FormName="change-email" OnValidSubmit="OnValidSubmitAsync" method="post">
             <DataAnnotationsValidator />
-            <ValidationSummary class="text-danger" role="alert" />
-            @if (isEmailConfirmed)
-            {
-                <div class="form-floating mb-3 input-group">
-                    <input type="text" value="@email" id="email" class="form-control" placeholder="Enter your email" disabled />
-                    <div class="input-group-append">
-                        <span class="h-100 input-group-text text-success font-weight-bold">✓</span>
-                    </div>
-                    <label for="email" class="form-label">Email</label>
-                </div>
-            }
-            else
-            {
-                <div class="form-floating mb-3">
-                    <input type="text" value="@email" id="email" class="form-control" placeholder="Enter your email" disabled />
-                    <label for="email" class="form-label">Email</label>
-                    <button type="submit" class="btn btn-link" form="send-verification-form">Send verification email</button>
-                </div>
-            }
-            <div class="form-floating mb-3">
-                <InputText @bind-Value="Input.NewEmail" id="Input.NewEmail" class="form-control" autocomplete="email" aria-required="true" placeholder="Enter a new email" />
-                <label for="Input.NewEmail" class="form-label">New email</label>
-                <ValidationMessage For="() => Input.NewEmail" class="text-danger" />
+            <ValidationSummary class="validation-summary" role="alert" />
+            
+            <div class="form-group">
+                <label for="Input.NewEmail">New Email Address</label>
+                <InputText @bind-Value="Input.NewEmail" id="Input.NewEmail" class="form-input" 
+                           autocomplete="email" placeholder="Enter new email address" />
+                <ValidationMessage For="() => Input.NewEmail" class="validation-error" />
             </div>
-            <button type="submit" class="w-100 btn btn-lg btn-primary">Change email</button>
+            
+            <div class="form-actions">
+                <button type="submit" class="btn-primary">📧 Change Email</button>
+            </div>
         </EditForm>
     </div>
+
+    <!-- Info Note -->
+    <div class="info-note">
+        <span class="note-icon">💡</span>
+        <div>
+            <strong>Note:</strong> After changing your email, you'll need to verify the new address before it becomes active.
+            You'll continue using your current email until verification is complete.
+        </div>
+    </div>
 </div>
+
+<style>
+    .email-page {
+        max-width: 550px;
+    }
+
+    .email-page h2 {
+        margin: 0 0 8px 0;
+        font-size: 22px;
+        color: #37474f;
+    }
+
+    .page-description {
+        color: #78909c;
+        margin: 0 0 24px 0;
+    }
+
+    .current-email-card {
+        background: #f5f7fa;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 24px;
+    }
+
+    .email-status {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .email-info label {
+        display: block;
+        font-size: 12px;
+        color: #78909c;
+        margin-bottom: 4px;
+    }
+
+    .email-value {
+        font-size: 16px;
+        font-weight: 600;
+        color: #37474f;
+    }
+
+    .status-badge {
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 500;
+    }
+
+    .status-badge.verified {
+        background: rgba(76, 175, 80, 0.1);
+        color: #43a047;
+    }
+
+    .status-badge.unverified {
+        background: rgba(255, 152, 0, 0.1);
+        color: #f57c00;
+    }
+
+    .verification-prompt {
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid #e0e0e0;
+    }
+
+    .verification-prompt p {
+        color: #f57c00;
+        font-size: 14px;
+        margin: 0 0 12px 0;
+    }
+
+    .section-card {
+        background: #f5f7fa;
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 24px;
+    }
+
+    .section-card h3 {
+        margin: 0 0 8px 0;
+        font-size: 16px;
+        color: #37474f;
+    }
+
+    .section-description {
+        color: #78909c;
+        font-size: 14px;
+        margin: 0 0 20px 0;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group label {
+        display: block;
+        font-size: 14px;
+        font-weight: 600;
+        color: #37474f;
+        margin-bottom: 8px;
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 12px 16px;
+        border: 1px solid #cfd8dc;
+        border-radius: 8px;
+        font-size: 15px;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        box-sizing: border-box;
+        background: white;
+    }
+
+    .form-input:focus {
+        outline: none;
+        border-color: #0288d1;
+        box-shadow: 0 0 0 3px rgba(2, 136, 209, 0.1);
+    }
+
+    .validation-summary {
+        background: rgba(229, 57, 53, 0.1);
+        color: #c62828;
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 16px;
+        list-style: none;
+    }
+
+    .validation-error {
+        color: #e53935;
+        font-size: 13px;
+        margin-top: 6px;
+        display: block;
+    }
+
+    .form-actions {
+        margin-top: 24px;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #0288d1 0%, #0277bd 100%);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.1s, box-shadow 0.2s;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(2, 136, 209, 0.3);
+    }
+
+    .btn-secondary {
+        background: white;
+        color: #0288d1;
+        border: 1px solid #0288d1;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    .btn-secondary:hover {
+        background: rgba(2, 136, 209, 0.05);
+    }
+
+    .info-note {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        background: rgba(2, 136, 209, 0.05);
+        border: 1px solid rgba(2, 136, 209, 0.2);
+        border-radius: 8px;
+        padding: 16px;
+        font-size: 14px;
+        color: #546e7a;
+    }
+
+    .note-icon {
+        font-size: 20px;
+    }
+</style>
 
 @code {
     private string? message;
@@ -105,7 +325,7 @@
 
         await EmailSender.SendConfirmationLinkAsync(user, Input.NewEmail, HtmlEncoder.Default.Encode(callbackUrl));
 
-        message = "Confirmation link to change email sent. Please check your email.";
+        message = "✅ Confirmation link sent. Please check your new email address.";
     }
 
     private async Task OnSendEmailVerificationAsync()
@@ -130,7 +350,7 @@
 
         await EmailSender.SendConfirmationLinkAsync(user, email, HtmlEncoder.Default.Encode(callbackUrl));
 
-        message = "Verification email sent. Please check your email.";
+        message = "✅ Verification email sent. Please check your inbox.";
     }
 
     private sealed class InputModel

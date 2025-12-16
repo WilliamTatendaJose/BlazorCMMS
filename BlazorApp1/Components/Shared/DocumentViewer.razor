@@ -1,0 +1,399 @@
+﻿@using BlazorApp1.Models
+@inject IJSRuntime JS
+
+<div class="document-viewer @(IsFullscreen ? "fullscreen" : "")">
+    <!-- Viewer Header -->
+    <div class="viewer-header">
+        <div class="viewer-title">
+            <span class="file-icon">@GetFileIcon()</span>
+            <div class="title-info">
+                <h4>@Document?.Title</h4>
+                <span class="file-meta">@Document?.FileName • @Document?.FileSizeFormatted</span>
+            </div>
+        </div>
+        <div class="viewer-controls">
+            @if (CanZoom)
+            {
+                <button class="viewer-btn" @onclick="ZoomOut" title="Zoom Out" disabled="@(zoomLevel <= 25)">
+                    <span>➖</span>
+                </button>
+                <span class="zoom-level">@zoomLevel%</span>
+                <button class="viewer-btn" @onclick="ZoomIn" title="Zoom In" disabled="@(zoomLevel >= 300)">
+                    <span>➕</span>
+                </button>
+                <button class="viewer-btn" @onclick="ResetZoom" title="Reset Zoom">
+                    <span>↺</span>
+                </button>
+                <div class="viewer-divider"></div>
+            }
+            @if (IsPdf && totalPages > 1)
+            {
+                <button class="viewer-btn" @onclick="PreviousPage" title="Previous Page" disabled="@(currentPage <= 1)">
+                    <span>◀</span>
+                </button>
+                <span class="page-info">@currentPage / @totalPages</span>
+                <button class="viewer-btn" @onclick="NextPage" title="Next Page" disabled="@(currentPage >= totalPages)">
+                    <span>▶</span>
+                </button>
+                <div class="viewer-divider"></div>
+            }
+            @if (IsImage)
+            {
+                <button class="viewer-btn" @onclick="RotateLeft" title="Rotate Left">
+                    <span>↶</span>
+                </button>
+                <button class="viewer-btn" @onclick="RotateRight" title="Rotate Right">
+                    <span>↷</span>
+                </button>
+                <div class="viewer-divider"></div>
+            }
+            <button class="viewer-btn" @onclick="ToggleFullscreen" title="@(IsFullscreen ? "Exit Fullscreen" : "Fullscreen")">
+                <span>@(IsFullscreen ? "⛶" : "⛶")</span>
+            </button>
+            <button class="viewer-btn primary" @onclick="DownloadDocument" title="Download">
+                <span>⬇️</span> Download
+            </button>
+            @if (ShowCloseButton)
+            {
+                <button class="viewer-btn danger" @onclick="OnClose" title="Close">
+                    <span>✕</span>
+                </button>
+            }
+        </div>
+    </div>
+
+    <!-- Viewer Content -->
+    <div class="viewer-content" @ref="viewerContent">
+        @if (IsLoading)
+        {
+            <div class="viewer-loading">
+                <div class="loading-spinner"></div>
+                <p>Loading document...</p>
+            </div>
+        }
+        else if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            <div class="viewer-error">
+                <span class="error-icon">⚠️</span>
+                <h4>Unable to preview document</h4>
+                <p>@ErrorMessage</p>
+                <button class="rbm-btn rbm-btn-primary" @onclick="DownloadDocument">
+                    ⬇️ Download Instead
+                </button>
+            </div>
+        }
+        else if (IsPdf)
+        {
+            <div class="pdf-viewer">
+                <iframe src="@GetViewerUrl()" 
+                        class="pdf-frame"
+                        title="PDF Viewer"></iframe>
+            </div>
+        }
+        else if (IsImage)
+        {
+            <div class="image-viewer">
+                <img src="@GetViewerUrl()" 
+                     alt="@Document?.Title" 
+                     @onclick="ToggleZoomOnClick"
+                     draggable="false" />
+            </div>
+        }
+        else if (IsOfficeDocument)
+        {
+            <div class="office-viewer">
+                <div class="office-preview-notice">
+                    <span class="file-type-icon">@GetFileIcon()</span>
+                    <h4>@GetFileTypeName() Document</h4>
+                    <p>@Document?.FileName</p>
+                    <div class="office-actions">
+                        <button class="rbm-btn rbm-btn-primary" @onclick="DownloadDocument">
+                            ⬇️ Download to View
+                        </button>
+                        @if (CanOpenInOfficeOnline)
+                        {
+                            <button class="rbm-btn rbm-btn-outline" @onclick="OpenInOfficeOnline">
+                                🌐 Open in Office Online
+                            </button>
+                        }
+                    </div>
+                    <p class="hint">Office documents require download or Office Online to view</p>
+                </div>
+            </div>
+        }
+        else if (IsCADDocument)
+        {
+            <div class="cad-viewer">
+                <div class="cad-preview-notice">
+                    <span class="file-type-icon">📐</span>
+                    <h4>CAD Drawing</h4>
+                    <p>@Document?.FileName</p>
+                    <p class="file-info">Format: @Document?.FileType • Size: @Document?.FileSizeFormatted</p>
+                    <div class="cad-actions">
+                        <button class="rbm-btn rbm-btn-primary" @onclick="DownloadDocument">
+                            ⬇️ Download DWG File
+                        </button>
+                    </div>
+                    <p class="hint">CAD files require AutoCAD or a compatible viewer</p>
+                    <div class="cad-tools">
+                        <h5>Recommended Viewers:</h5>
+                        <ul>
+                            <li>AutoCAD (Full version)</li>
+                            <li>AutoCAD Web App (Free)</li>
+                            <li>DWG TrueView (Free)</li>
+                            <li>A360 Viewer (Free online)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        }
+        else if (IsTextDocument)
+        {
+            <div class="text-viewer">
+                <pre>@textContent</pre>
+            </div>
+        }
+        else
+        {
+            <div class="unsupported-viewer">
+                <span class="file-type-icon">@GetFileIcon()</span>
+                <h4>Preview Not Available</h4>
+                <p>This file type (@Document?.FileType) cannot be previewed in the browser.</p>
+                <button class="rbm-btn rbm-btn-primary" @onclick="DownloadDocument">
+                    ⬇️ Download File
+                </button>
+            </div>
+        }
+    </div>
+
+    <!-- Viewer Footer -->
+    <div class="viewer-footer">
+        <div class="footer-info">
+            <span class="info-item">
+                <strong>Category:</strong> @Document?.Category
+            </span>
+            <span class="info-item">
+                <strong>Version:</strong> @Document?.Version (Rev @Document?.RevisionNumber)
+            </span>
+            <span class="info-item">
+                <strong>Status:</strong> 
+                <span class="status-badge @GetStatusClass()">@Document?.Status</span>
+            </span>
+            @if (Document?.IsExpired == true)
+            {
+                <span class="info-item warning">
+                    ⚠️ Document Expired
+                </span>
+            }
+        </div>
+        <div class="footer-stats">
+            <span>👁️ @Document?.ViewCount views</span>
+            <span>⬇️ @Document?.DownloadCount downloads</span>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public Document? Document { get; set; }
+    [Parameter] public bool ShowCloseButton { get; set; } = true;
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnDownload { get; set; }
+
+    private ElementReference viewerContent;
+    private int zoomLevel = 100;
+    private int rotation = 0;
+    private int currentPage = 1;
+    private int totalPages = 1;
+    private bool IsLoading = true;
+    private bool IsFullscreen = false;
+    private string ErrorMessage = "";
+    private string textContent = "";
+
+    private static readonly string[] ImageExtensions = { "JPG", "JPEG", "PNG", "GIF", "BMP", "WEBP", "SVG", "TIFF", "TIF" };
+    private static readonly string[] PdfExtensions = { "PDF" };
+    private static readonly string[] OfficeExtensions = { "DOC", "DOCX", "XLS", "XLSX", "PPT", "PPTX", "ODT", "ODS", "ODP" };
+    private static readonly string[] CADExtensions = { "DWG", "DXF", "DGN", "STEP", "STP", "IGES", "IGS", "STL", "OBJ" };
+    private static readonly string[] TextExtensions = { "TXT", "CSV", "LOG", "XML", "JSON", "HTML", "CSS", "JS", "MD" };
+
+    private bool IsPdf => PdfExtensions.Contains(Document?.FileType?.ToUpper() ?? "");
+    private bool IsImage => ImageExtensions.Contains(Document?.FileType?.ToUpper() ?? "");
+    private bool IsOfficeDocument => OfficeExtensions.Contains(Document?.FileType?.ToUpper() ?? "");
+    private bool IsCADDocument => CADExtensions.Contains(Document?.FileType?.ToUpper() ?? "");
+    private bool IsTextDocument => TextExtensions.Contains(Document?.FileType?.ToUpper() ?? "");
+    private bool CanZoom => IsPdf || IsImage || IsTextDocument;
+    private bool CanOpenInOfficeOnline => false; // Would require Office 365 integration
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Document != null)
+        {
+            IsLoading = true;
+            ErrorMessage = "";
+            
+            try
+            {
+                // Simulate loading delay
+                await Task.Delay(300);
+                
+                // Validate file exists
+                if (string.IsNullOrEmpty(Document.FilePath) || !File.Exists(Document.FilePath))
+                {
+                    // Check in wwwroot
+                    var webPath = Path.Combine("wwwroot", "uploads", "documents", Path.GetFileName(Document.FilePath ?? ""));
+                    if (!File.Exists(webPath))
+                    {
+                        ErrorMessage = "Document file not found on server.";
+                    }
+                }
+                
+                // Load text content for text files
+                if (IsTextDocument && string.IsNullOrEmpty(ErrorMessage))
+                {
+                    try
+                    {
+                        var path = Document.FilePath;
+                        if (!File.Exists(path))
+                        {
+                            path = Path.Combine("wwwroot", "uploads", "documents", Path.GetFileName(path));
+                        }
+                        if (File.Exists(path))
+                        {
+                            textContent = await File.ReadAllTextAsync(path);
+                        }
+                    }
+                    catch
+                    {
+                        ErrorMessage = "Unable to read the text file.";
+                    }
+                }
+            }
+            finally
+            {
+                IsLoading = false;
+            }
+        }
+    }
+
+    private string GetViewerUrl()
+    {
+        if (Document == null) return "";
+        
+        // Get relative path for web access
+        var fileName = Path.GetFileName(Document.FilePath);
+        return $"/uploads/documents/{fileName}";
+    }
+
+    private void ZoomIn()
+    {
+        if (zoomLevel < 300)
+            zoomLevel += 25;
+    }
+
+    private void ZoomOut()
+    {
+        if (zoomLevel > 25)
+            zoomLevel -= 25;
+    }
+
+    private void ResetZoom()
+    {
+        zoomLevel = 100;
+        rotation = 0;
+    }
+
+    private void RotateLeft()
+    {
+        rotation -= 90;
+    }
+
+    private void RotateRight()
+    {
+        rotation += 90;
+    }
+
+    private void PreviousPage()
+    {
+        if (currentPage > 1)
+            currentPage--;
+    }
+
+    private void NextPage()
+    {
+        if (currentPage < totalPages)
+            currentPage++;
+    }
+
+    private void ToggleZoomOnClick()
+    {
+        zoomLevel = zoomLevel == 100 ? 150 : 100;
+    }
+
+    private void ToggleFullscreen()
+    {
+        IsFullscreen = !IsFullscreen;
+    }
+
+    private async Task DownloadDocument()
+    {
+        if (Document == null) return;
+        
+        await OnDownload.InvokeAsync();
+        
+        // Trigger browser download
+        var url = GetViewerUrl();
+        await JS.InvokeVoidAsync("downloadFile", url, Document.FileName);
+    }
+
+    private void OpenInOfficeOnline()
+    {
+        // Would require Office 365 integration
+    }
+
+    private string GetFileIcon()
+    {
+        var fileType = Document?.FileType?.ToUpper() ?? "";
+        
+        return fileType switch
+        {
+            "PDF" => "📕",
+            "DOC" or "DOCX" => "📘",
+            "XLS" or "XLSX" => "📗",
+            "PPT" or "PPTX" => "📙",
+            "JPG" or "JPEG" or "PNG" or "GIF" or "BMP" or "WEBP" => "🖼️",
+            "DWG" or "DXF" => "📐",
+            "TXT" or "CSV" or "LOG" => "📄",
+            "XML" or "JSON" => "📋",
+            "ZIP" or "RAR" or "7Z" => "📦",
+            _ => "📄"
+        };
+    }
+
+    private string GetFileTypeName()
+    {
+        var fileType = Document?.FileType?.ToUpper() ?? "";
+        
+        return fileType switch
+        {
+            "PDF" => "PDF",
+            "DOC" or "DOCX" => "Word",
+            "XLS" or "XLSX" => "Excel",
+            "PPT" or "PPTX" => "PowerPoint",
+            "DWG" => "AutoCAD DWG",
+            "DXF" => "AutoCAD DXF",
+            _ => fileType
+        };
+    }
+
+    private string GetStatusClass()
+    {
+        return Document?.Status?.ToLower() switch
+        {
+            "active" => "active",
+            "draft" => "draft",
+            "approved" => "approved",
+            "archived" => "archived",
+            "obsolete" => "obsolete",
+            _ => "draft"
+        };
+    }
+}

@@ -1,219 +1,876 @@
-@page "/rbm/technicians"
+﻿@page "/rbm/technicians"
 @rendermode InteractiveServer
 @layout RBMLayout
 @using Microsoft.AspNetCore.Authorization
-@attribute [Authorize]
+@attribute [Authorize(Roles = "Technician,Supervisor,Admin")]
 @inject BlazorApp1.Services.DataService DataService
+@inject BlazorApp1.Services.CurrentUserService CurrentUser
+@inject NavigationManager Navigation
 @using BlazorApp1.Models
 
-<div class="rbm-page-header">
-    <h1 class="rbm-page-title">Technicians Portal</h1>
-    <p class="rbm-page-subtitle">Mobile-friendly work order management</p>
-</div>
+<PageTitle>Technician Portal | RBM CMMS</PageTitle>
 
-<div style="max-width: 800px; margin: 0 auto;">
-    <!-- Quick Actions -->
-    <div class="rbm-grid rbm-grid-2" style="margin-bottom: 24px;">
-        <button class="rbm-stat-card" style="border: none; cursor: pointer; text-align: center;">
-            <div style="font-size: 48px; margin-bottom: 12px;">??</div>
-            <div style="font-size: 16px; font-weight: 600;">Scan QR Code</div>
-            <div style="font-size: 13px; color: var(--rbm-text-light); margin-top: 8px;">Check-in to asset</div>
-        </button>
-        
-        <button class="rbm-stat-card" style="border: none; cursor: pointer; text-align: center;">
-            <div style="font-size: 48px; margin-bottom: 12px;">
+@if (!isInitialized)
+{
+    <div style="display: flex; align-items: center; justify-content: center; min-height: 400px;">
+        <div style="text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 16px; animation: spin 1s linear infinite;">⏳</div>
+            <div style="font-size: 16px; color: var(--rbm-text-light);">Loading technician portal...</div>
+        </div>
+    </div>
+}
+else
+{
+    <!-- Toast Notifications -->
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <div class="toast-notification success-toast" @onclick="() => successMessage = string.Empty">
+            <div class="toast-icon">✓</div>
+            <div class="toast-content">
+                <div class="toast-title">Success</div>
+                <div class="toast-message">@successMessage</div>
+            </div>
+            <button class="toast-close" @onclick="() => successMessage = string.Empty">&times;</button>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="toast-notification error-toast" @onclick="() => errorMessage = string.Empty">
+            <div class="toast-icon">⚠️</div>
+            <div class="toast-content">
+                <div class="toast-title">Error</div>
+                <div class="toast-message">@errorMessage</div>
+            </div>
+            <button class="toast-close" @onclick="() => errorMessage = string.Empty">&times;</button>
+        </div>
+    }
+
+    <div class="rbm-page-header">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <h1 class="rbm-page-title">👷 Technician Portal</h1>
+                <p class="rbm-page-subtitle">
+                    @if (CurrentUser.Role == "Technician")
+                    {
+                        <span>Mobile-friendly work order management for @CurrentUser.UserName</span>
+                    }
+                    else
+                    {
+                        <span>Manage technician work orders and track performance</span>
+                    }
+                </p>
+            </div>
+            <div style="font-size: 32px;">
                 @if (isOnline)
                 {
-                    <span>??</span>
+                    <span title="Online">🟢</span>
                 }
                 else
                 {
-                    <span>??</span>
+                    <span title="Offline">🔴</span>
                 }
             </div>
-            <div style="font-size: 16px; font-weight: 600;">@(isOnline ? "Online" : "Offline")</div>
-            <div style="font-size: 13px; color: var(--rbm-text-light); margin-top: 8px;">Sync Status</div>
-        </button>
+        </div>
     </div>
 
-    <!-- My Assigned Work Orders -->
-    <div class="rbm-card">
-        <div class="rbm-card-header">
-            <h3 class="rbm-card-title">My Assigned Work Orders</h3>
-            <select class="rbm-form-select" @bind="selectedTechnician" style="width: 200px;">
-                @foreach (var tech in DataService.GetUsers().Where(u => u.Role == "Technician"))
-                {
-                    <option value="@tech.Name">@tech.Name</option>
-                }
-            </select>
-        </div>
-        
-        @foreach (var wo in GetTechnicianWorkOrders().Where(w => w.Status != "Completed"))
-        {
-            <div style="padding: 20px; border-bottom: 1px solid var(--rbm-border);">
-                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
-                    <div>
-                        <div style="font-size: 18px; font-weight: 600; margin-bottom: 4px;">@wo.WorkOrderId</div>
-                        <div style="font-size: 14px; color: var(--rbm-text-light);">@wo.AssetName</div>
-                    </div>
-                    <span class="rbm-badge-pill rbm-badge-@wo.Priority.ToLower()">@wo.Priority</span>
-                </div>
-                
-                <div style="margin-bottom: 12px;">
-                    <p style="margin: 0; font-size: 14px;">@wo.Description</p>
-                </div>
-                
-                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px; font-size: 13px;">
-                    <div>
-                        <strong>Type:</strong> @wo.Type
-                    </div>
-                    <div>
-                        <strong>Due:</strong> @wo.DueDate.ToString("MMM dd, yyyy")
-                    </div>
-                    <div>
-                        <strong>Est. Downtime:</strong> @wo.EstimatedDowntime hrs
-                    </div>
-                    <div>
-                        <strong>Status:</strong> 
-                        <span class="rbm-badge-pill" style="@GetStatusStyle(wo.Status); padding: 2px 8px;">@wo.Status</span>
-                    </div>
-                </div>
-                
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    @if (wo.Status == "Open")
+    <!-- Technician Selector (for Supervisors/Admins) -->
+    @if (CurrentUser.Role != "Technician")
+    {
+        <div class="rbm-card" style="margin-bottom: 24px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <label style="font-weight: 600;">View Technician:</label>
+                <select class="rbm-form-select" @bind="selectedTechnician" style="width: 250px;">
+                    <option value="">-- Your Work Orders --</option>
+                    @foreach (var tech in allTechnicians.Where(u => u.Role == "Technician"))
                     {
-                        <button class="rbm-btn rbm-btn-success" @onclick="() => StartWork(wo)">
-                            ?? Start Work
-                        </button>
+                        <option value="@tech.Name">@tech.Name</option>
                     }
-                    @if (wo.Status == "In Progress")
-                    {
-                        <button class="rbm-btn rbm-btn-warning" @onclick="() => PauseWork(wo)">
-                            ?? Pause
-                        </button>
-                        <button class="rbm-btn rbm-btn-primary" @onclick="() => CompleteWork(wo)">
-                            ? Complete
-                        </button>
-                    }
-                    <button class="rbm-btn rbm-btn-outline">
-                        ?? Add Photo
-                    </button>
-                    <button class="rbm-btn rbm-btn-outline">
-                        ?? Add Note
-                    </button>
-                </div>
+                </select>
             </div>
-        }
-        
-        @if (!GetTechnicianWorkOrders().Any(w => w.Status != "Completed"))
+        </div>
+    }
+
+    <!-- Quick Status Cards -->
+    <div class="rbm-grid rbm-grid-3 mb-4">
+        <div class="rbm-stat-card elevated">
+            <div class="rbm-stat-icon gradient-orange">⏳</div>
+            <div class="rbm-stat-content">
+                <div class="rbm-stat-value">@GetPendingCount()</div>
+                <div class="rbm-stat-label">Pending</div>
+                <div class="rbm-stat-detail">Work Orders</div>
+            </div>
+        </div>
+        <div class="rbm-stat-card elevated">
+            <div class="rbm-stat-icon gradient-blue">▶️</div>
+            <div class="rbm-stat-content">
+                <div class="rbm-stat-value">@GetInProgressCount()</div>
+                <div class="rbm-stat-label">In Progress</div>
+                <div class="rbm-stat-detail">Active now</div>
+            </div>
+        </div>
+        <div class="rbm-stat-card elevated">
+            <div class="rbm-stat-icon gradient-green">✓</div>
+            <div class="rbm-stat-content">
+                <div class="rbm-stat-value">@GetCompletedTodayCount()</div>
+                <div class="rbm-stat-label">Completed</div>
+                <div class="rbm-stat-detail">Today</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- My Assigned Work Orders Section -->
+    <div class="rbm-card enhanced-card">
+        <div class="rbm-card-header-enhanced">
+            <h2 class="rbm-card-title-enhanced">📋 Assigned Work Orders</h2>
+            <span class="rbm-badge rbm-badge-info">@GetAssignedWorkOrders().Count items</span>
+        </div>
+
+        @if (GetAssignedWorkOrders().Count == 0)
         {
             <div style="padding: 60px 20px; text-align: center; color: var(--rbm-text-light);">
-                <div style="font-size: 48px; margin-bottom: 16px;">?</div>
+                <div style="font-size: 48px; margin-bottom: 16px;">✨</div>
                 <div style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">All Caught Up!</div>
-                <div>No pending work orders assigned to you.</div>
+                <div>No work orders assigned at this moment.</div>
             </div>
-        }
-    </div>
-
-    <!-- Completed Today -->
-    <div class="rbm-card mt-3">
-        <div class="rbm-card-header">
-            <h3 class="rbm-card-title">Completed Today</h3>
-        </div>
-        @{
-            var completedToday = GetTechnicianWorkOrders()
-                .Where(w => w.Status == "Completed" && w.CompletedDate?.Date == DateTime.Today)
-                .ToList();
-        }
-        
-        @if (completedToday.Any())
-        {
-            @foreach (var wo in completedToday)
-            {
-                <div style="padding: 16px; border-bottom: 1px solid var(--rbm-border); display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <div style="font-weight: 600;">@wo.WorkOrderId - @wo.AssetName</div>
-                        <div style="font-size: 13px; color: var(--rbm-text-light);">
-                            Completed at @wo.CompletedDate?.ToString("HH:mm")
-                        </div>
-                    </div>
-                    <span style="color: var(--rbm-success); font-size: 24px;">?</span>
-                </div>
-            }
         }
         else
         {
-            <div style="padding: 40px 20px; text-align: center; color: var(--rbm-text-light);">
-                No work orders completed today
-            </div>
+            @foreach (var wo in GetAssignedWorkOrders().OrderBy(w => GetWorkOrderPriority(w.Priority)).ThenBy(w => w.DueDate))
+            {
+                <div class="work-order-card">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                        <div>
+                            <div style="font-size: 18px; font-weight: 700; color: var(--rbm-primary); margin-bottom: 4px;">
+                                @wo.WorkOrderId
+                            </div>
+                            <div style="font-size: 14px; color: var(--rbm-text-light);">
+                                @wo.AssetName
+                            </div>
+                        </div>
+                        <span class="rbm-badge @GetPriorityClass(wo.Priority)">
+                            @wo.Priority
+                        </span>
+                    </div>
+                    
+                    <div style="margin-bottom: 12px;">
+                        <p style="margin: 0; font-size: 14px; color: var(--rbm-text);">@wo.Description</p>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px; font-size: 13px;">
+                        <div>
+                            <strong>Type:</strong> @wo.Type
+                        </div>
+                        <div>
+                            <strong>Due:</strong> @(wo.DueDate?.ToString("MMM dd, yyyy") ?? "Not set")
+                        </div>
+                        <div>
+                            <strong>Est. Downtime:</strong> @wo.EstimatedDowntime hrs
+                        </div>
+                        <div>
+                            <strong>Status:</strong> 
+                            <span class="rbm-badge @GetStatusClass(wo.Status)">
+                                @wo.Status
+                            </span>
+                        </div>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(wo.Category))
+                    {
+                        <div style="margin-bottom: 12px; font-size: 12px;">
+                            <span class="rbm-badge rbm-badge-secondary">@wo.Category</span>
+                            @if (!string.IsNullOrEmpty(wo.SubCategory))
+                            {
+                                <span class="rbm-badge rbm-badge-secondary" style="margin-left: 4px;">@wo.SubCategory</span>
+                            }
+                        </div>
+                    }
+                    
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        @if (wo.Status == "Open" && CanEditWorkOrder(wo))
+                        {
+                            <button class="rbm-btn rbm-btn-success" @onclick="() => StartWork(wo)" disabled="@isProcessing">
+                                ▶️ Start Work
+                            </button>
+                        }
+                        @if (wo.Status == "In Progress" && CanEditWorkOrder(wo))
+                        {
+                            <button class="rbm-btn rbm-btn-warning" @onclick="() => PauseWork(wo)" disabled="@isProcessing">
+                                ⏸️ Pause
+                            </button>
+                            <button class="rbm-btn rbm-btn-primary" @onclick="() => ShowCompleteModal(wo)" disabled="@isProcessing">
+                                ✓ Complete
+                            </button>
+                        }
+                        <button class="rbm-btn rbm-btn-outline" @onclick="() => ViewDetails(wo)">
+                            👁️ Details
+                        </button>
+                    </div>
+                </div>
+            }
         }
     </div>
 
-    <!-- Performance Stats -->
-    <div class="rbm-grid rbm-grid-3 mt-3">
+    <!-- Completed Today Section -->
+    <div class="rbm-card enhanced-card mt-4">
+        <div class="rbm-card-header-enhanced">
+            <h2 class="rbm-card-title-enhanced">✓ Completed Today</h2>
+            <span class="rbm-badge rbm-badge-success">@GetCompletedToday().Count items</span>
+        </div>
+
+        @if (!GetCompletedToday().Any())
+        {
+            <div style="padding: 40px 20px; text-align: center; color: var(--rbm-text-light);">
+                <div style="font-size: 24px; margin-bottom: 8px;">📭</div>
+                <div>No work orders completed today</div>
+            </div>
+        }
+        else
+        {
+            @foreach (var wo in GetCompletedToday())
+            {
+                <div class="completed-wo-item">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-weight: 700; color: var(--rbm-primary);">@wo.WorkOrderId</div>
+                            <div style="font-size: 13px; color: var(--rbm-text-light);">
+                                @wo.AssetName
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="color: var(--rbm-success); font-size: 24px; margin-bottom: 4px;">✓</div>
+                            <div style="font-size: 12px; color: var(--rbm-text-light);">
+                                @wo.CompletedDate?.ToString("HH:mm")
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+
+    <!-- Performance Statistics -->
+    <div class="rbm-grid rbm-grid-3 mt-4">
         <div class="rbm-stat-card">
-            <div class="rbm-stat-label">This Week</div>
-            <div class="rbm-stat-value">@completedToday.Count</div>
-            <div class="rbm-stat-trend">Completed</div>
+            <div class="rbm-stat-icon gradient-blue">📊</div>
+            <div class="rbm-stat-content">
+                <div class="rbm-stat-label">This Week</div>
+                <div class="rbm-stat-value">@GetCompletedThisWeek()</div>
+                <div class="rbm-stat-detail">Completed</div>
+            </div>
         </div>
         <div class="rbm-stat-card">
-            <div class="rbm-stat-label">Avg Time</div>
-            <div class="rbm-stat-value">3.2h</div>
-            <div class="rbm-stat-trend">Per Work Order</div>
+            <div class="rbm-stat-icon gradient-orange">⏱️</div>
+            <div class="rbm-stat-content">
+                <div class="rbm-stat-label">Avg Time</div>
+                <div class="rbm-stat-value">@GetAverageCompletionTime()</div>
+                <div class="rbm-stat-detail">Per Work Order</div>
+            </div>
         </div>
         <div class="rbm-stat-card">
-            <div class="rbm-stat-label">Pending</div>
-            <div class="rbm-stat-value">@GetTechnicianWorkOrders().Count(w => w.Status != "Completed")</div>
-            <div class="rbm-stat-trend">To Complete</div>
+            <div class="rbm-stat-icon gradient-green">📈</div>
+            <div class="rbm-stat-content">
+                <div class="rbm-stat-label">Performance</div>
+                <div class="rbm-stat-value">@GetOnTimePercentage()%</div>
+                <div class="rbm-stat-detail">On-Time Completion</div>
+            </div>
         </div>
     </div>
-</div>
+
+    <!-- Complete Work Order Modal -->
+    @if (showCompleteModal && selectedWorkOrder != null)
+    {
+        <div class="rbm-modal-backdrop" @onclick="CloseCompleteModal">
+            <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 600px;">
+                <div class="rbm-modal-header">
+                    <h3 class="rbm-modal-title">✓ Complete Work Order</h3>
+                    <button class="rbm-modal-close" @onclick="CloseCompleteModal">&times;</button>
+                </div>
+                <div class="rbm-modal-body">
+                    @if (!string.IsNullOrEmpty(modalErrorMessage))
+                    {
+                        <div class="alert alert-danger" style="margin-bottom: 16px;">
+                            <div style="display: flex; gap: 8px;">
+                                <div style="flex-shrink: 0;">❌</div>
+                                <div>@modalErrorMessage</div>
+                                <button type="button" class="btn-close" @onclick="() => modalErrorMessage = string.Empty" style="margin-left: auto;"></button>
+                            </div>
+                        </div>
+                    }
+
+                    <div style="background: rgba(0,0,0,0.02); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                        <div style="font-size: 13px; color: var(--rbm-text-light); margin-bottom: 4px;">Work Order</div>
+                        <div style="font-weight: 600;">@selectedWorkOrder.WorkOrderId</div>
+                        <div style="font-size: 13px; color: var(--rbm-text-light);">@selectedWorkOrder.AssetName</div>
+                    </div>
+
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Completion Notes</label>
+                        <textarea class="rbm-form-input" @bind="completionNotes" placeholder="Describe the work completed..." style="min-height: 100px;"></textarea>
+                    </div>
+
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Actual Downtime (hours)</label>
+                        <input type="number" class="rbm-form-input" @bind="actualDowntime" placeholder="0.5" step="0.5">
+                    </div>
+
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Labor Hours</label>
+                        <input type="number" class="rbm-form-input" @bind="laborHours" placeholder="1" step="0.5">
+                    </div>
+
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Parts Used</label>
+                        <textarea class="rbm-form-input" @bind="partsUsed" placeholder="List spare parts used..." style="min-height: 60px;"></textarea>
+                    </div>
+                </div>
+                <div class="rbm-modal-footer">
+                    <button class="rbm-btn rbm-btn-outline" @onclick="CloseCompleteModal">Cancel</button>
+                    <button class="rbm-btn rbm-btn-primary" @onclick="SubmitCompletion" disabled="@isProcessing">
+                        @if (isProcessing)
+                        {
+                            <span>⏳ Completing...</span>
+                        }
+                        else
+                        {
+                            <span>✓ Mark Complete</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Work Order Details Modal -->
+    @if (showDetailsModal && selectedWorkOrder != null)
+    {
+        <div class="rbm-modal-backdrop" @onclick="CloseDetailsModal">
+            <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 600px; max-height: 90vh; overflow-y: auto;">
+                <div class="rbm-modal-header">
+                    <h3 class="rbm-modal-title">👁️ Work Order Details</h3>
+                    <button class="rbm-modal-close" @onclick="CloseDetailsModal">&times;</button>
+                </div>
+                <div class="rbm-modal-body">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Work Order ID</div>
+                            <div style="font-weight: 600;">@selectedWorkOrder.WorkOrderId</div>
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Status</div>
+                            <span class="rbm-badge @GetStatusClass(selectedWorkOrder.Status)">@selectedWorkOrder.Status</span>
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Priority</div>
+                            <span class="rbm-badge @GetPriorityClass(selectedWorkOrder.Priority)">@selectedWorkOrder.Priority</span>
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Type</div>
+                            <div>@selectedWorkOrder.Type</div>
+                        </div>
+                    </div>
+
+                    <div style="border-top: 1px solid var(--rbm-border); padding-top: 16px; margin-bottom: 16px;">
+                        <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 8px;">Asset Information</div>
+                        <div style="font-weight: 600;">@selectedWorkOrder.AssetName</div>
+                        @if (!string.IsNullOrEmpty(selectedWorkOrder.Location))
+                        {
+                            <div style="font-size: 13px; color: var(--rbm-text-light);">📍 @selectedWorkOrder.Location</div>
+                        }
+                    </div>
+
+                    <div style="border-top: 1px solid var(--rbm-border); padding-top: 16px; margin-bottom: 16px;">
+                        <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 8px;">Description</div>
+                        <div style="font-size: 13px;">@selectedWorkOrder.Description</div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; border-top: 1px solid var(--rbm-border); padding-top: 16px;">
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Created Date</div>
+                            <div style="font-size: 13px;">@selectedWorkOrder.CreatedDate.ToString("MMM dd, yyyy")</div>
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Due Date</div>
+                            <div style="font-size: 13px;">
+                                @(selectedWorkOrder.DueDate?.ToString("MMM dd, yyyy") ?? "Not set")
+                                @if (selectedWorkOrder.IsOverdue)
+                                {
+                                    <span style="color: #e53935; font-weight: 600;"> (OVERDUE)</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="rbm-modal-footer">
+                    <button class="rbm-btn rbm-btn-outline" @onclick="CloseDetailsModal">Close</button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+<style>
+    .work-order-card {
+        padding: 16px;
+        background: var(--rbm-bg);
+        border-radius: 8px;
+        margin-bottom: 12px;
+        border-left: 4px solid var(--rbm-primary);
+        transition: all 0.2s ease;
+    }
+
+    .work-order-card:hover {
+        background: rgba(0, 0, 0, 0.02);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    .completed-wo-item {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--rbm-border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .completed-wo-item:last-child {
+        border-bottom: none;
+    }
+
+    .rbm-stat-card.elevated {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        border: 1px solid rgba(0,0,0,0.05);
+        transition: all 0.3s ease;
+    }
+
+    .rbm-stat-card.elevated:hover {
+        box-shadow: 0 8px 16px rgba(0,0,0,0.12);
+        transform: translateY(-2px);
+    }
+
+    .toast-notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        max-width: 400px;
+        display: flex;
+        gap: 12px;
+        padding: 16px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 9999;
+        animation: slideInRight 0.3s ease;
+    }
+
+    .success-toast {
+        background: #e8f5e9;
+        border-left: 4px solid #43a047;
+    }
+
+    .error-toast {
+        background: #ffebee;
+        border-left: 4px solid #e53935;
+    }
+
+    .toast-icon {
+        font-size: 20px;
+        flex-shrink: 0;
+    }
+
+    .toast-content {
+        flex: 1;
+    }
+
+    .toast-title {
+        font-weight: 600;
+        font-size: 14px;
+        margin: 0 0 4px 0;
+        color: var(--rbm-text);
+    }
+
+    .toast-message {
+        font-size: 13px;
+        margin: 0;
+        color: var(--rbm-text-light);
+    }
+
+    .toast-close {
+        background: none;
+        border: none;
+        font-size: 20px;
+        cursor: pointer;
+        color: var(--rbm-text-light);
+        padding: 0;
+        margin-left: 8px;
+    }
+
+    .mb-4 {
+        margin-bottom: 24px;
+    }
+
+    .mt-4 {
+        margin-top: 24px;
+    }
+
+    .mt-3 {
+        margin-top: 16px;
+    }
+
+    .alert {
+        padding: 12px 16px;
+        border-radius: 6px;
+        border-left: 4px solid;
+        display: flex;
+        gap: 8px;
+        font-size: 14px;
+    }
+
+    .alert-danger {
+        background: #ffebee;
+        border-color: #e53935;
+        color: #c62828;
+    }
+
+    .btn-close {
+        background: none;
+        border: none;
+        font-size: 16px;
+        cursor: pointer;
+        color: inherit;
+        padding: 0;
+    }
+</style>
 
 @code {
-    private List<WorkOrder> workOrders = new();
+    private List<WorkOrder> allWorkOrders = new();
+    private List<User> allTechnicians = new();
     private string selectedTechnician = "";
     private bool isOnline = true;
+    private bool isInitialized = false;
+    private bool isProcessing = false;
+    private bool showCompleteModal = false;
+    private bool showDetailsModal = false;
+    
+    private WorkOrder? selectedWorkOrder;
+    private string completionNotes = string.Empty;
+    private double actualDowntime = 0;
+    private double laborHours = 0;
+    private string partsUsed = string.Empty;
+    
+    private string successMessage = string.Empty;
+    private string errorMessage = string.Empty;
+    private string modalErrorMessage = string.Empty;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        workOrders = DataService.GetWorkOrders();
-    }
-
-    private List<WorkOrder> GetTechnicianWorkOrders()
-    {
-        return workOrders.Where(w => w.AssignedTo == selectedTechnician).ToList();
-    }
-
-    private void StartWork(WorkOrder wo)
-    {
-        wo.Status = "In Progress";
-        DataService.UpdateWorkOrder(wo);
-        workOrders = DataService.GetWorkOrders();
-    }
-
-    private void PauseWork(WorkOrder wo)
-    {
-        wo.Status = "Open";
-        DataService.UpdateWorkOrder(wo);
-        workOrders = DataService.GetWorkOrders();
-    }
-
-    private void CompleteWork(WorkOrder wo)
-    {
-        wo.Status = "Completed";
-        wo.CompletedDate = DateTime.Now;
-        DataService.UpdateWorkOrder(wo);
-        workOrders = DataService.GetWorkOrders();
-    }
-
-    private string GetStatusStyle(string status)
-    {
-        return status switch
+        try
         {
-            "Open" => "background: rgba(2, 136, 209, 0.1); color: var(--rbm-accent);",
-            "In Progress" => "background: rgba(251, 140, 0, 0.1); color: var(--rbm-warning);",
-            "Completed" => "background: rgba(67, 160, 71, 0.1); color: var(--rbm-success);",
-            _ => ""
-        };
+            await CurrentUser.InitializeAsync();
+            
+            // Only allow Technicians to access this page
+            if (CurrentUser.Role != "Technician" && CurrentUser.Role != "Supervisor" && CurrentUser.Role != "Admin")
+            {
+                errorMessage = "You don't have permission to access this page.";
+                isInitialized = true;
+                return;
+            }
+
+            await LoadDataAsync();
+            isInitialized = true;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to initialize: {ex.Message}";
+            isInitialized = true;
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            allWorkOrders = await DataService.GetWorkOrdersAsync();
+            allTechnicians = await DataService.GetUsersAsync();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading work orders: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Gets work orders based on user role and selected technician filter
+    /// Technicians: only see their own work orders
+    /// Supervisors/Admins: can see all or filter by technician
+    /// </summary>
+    private List<WorkOrder> GetAssignedWorkOrders()
+    {
+        try
+        {
+            var assigned = allWorkOrders.AsEnumerable();
+            
+            // If technician, always filter to their own work orders
+            if (CurrentUser.Role == "Technician")
+            {
+                assigned = assigned.Where(w => w.AssignedTo == CurrentUser.UserName);
+            }
+            // If supervisor/admin and a technician is selected, filter to that technician
+            else if (!string.IsNullOrEmpty(selectedTechnician))
+            {
+                assigned = assigned.Where(w => w.AssignedTo == selectedTechnician);
+            }
+            // If supervisor/admin with no filter, show all work orders
+            
+            // Exclude completed/cancelled unless viewing (show all for supervisors/admins)
+            if (CurrentUser.Role == "Technician")
+            {
+                assigned = assigned.Where(w => w.Status != "Completed" && w.Status != "Cancelled");
+            }
+            
+            return assigned.ToList();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error filtering work orders: {ex.Message}";
+            return new List<WorkOrder>();
+        }
+    }
+
+    private List<WorkOrder> GetCompletedToday()
+    {
+        return GetAssignedWorkOrders()
+            .Where(w => w.Status == "Completed" && w.CompletedDate?.Date == DateTime.Today)
+            .OrderByDescending(w => w.CompletedDate)
+            .ToList();
+    }
+
+    private int GetPendingCount() => GetAssignedWorkOrders().Count(w => w.Status == "Open");
+    private int GetInProgressCount() => GetAssignedWorkOrders().Count(w => w.Status == "In Progress");
+    private int GetCompletedTodayCount() => GetCompletedToday().Count;
+
+    private int GetCompletedThisWeek()
+    {
+        var startOfWeek = DateTime.Today.AddDays(-(int)DateTime.Today.DayOfWeek);
+        var workOrders = GetWorkOrdersForTechnician();
+        
+        return workOrders
+            .Where(w => w.Status == "Completed" && 
+                   w.CompletedDate.HasValue &&
+                   w.CompletedDate.Value.Date >= startOfWeek)
+            .Count();
+    }
+
+    private string GetAverageCompletionTime()
+    {
+        var completedWithTime = GetWorkOrdersForTechnician()
+            .Where(w => w.Status == "Completed" && w.LaborHours.HasValue && w.LaborHours.Value > 0)
+            .ToList();
+
+        if (!completedWithTime.Any()) return "N/A";
+
+        var avgHours = completedWithTime.Average(w => w.LaborHours ?? 0);
+        return avgHours < 1 ? $"{(avgHours * 60):F0}m" : $"{avgHours:F1}h";
+    }
+
+    private int GetOnTimePercentage()
+    {
+        var completed = GetWorkOrdersForTechnician()
+            .Where(w => w.Status == "Completed")
+            .ToList();
+
+        if (!completed.Any()) return 0;
+
+        var onTime = completed.Count(w => w.CompletedDate.HasValue && w.CompletedDate.Value <= w.DueDate);
+        return (int)((onTime * 100.0) / completed.Count);
+    }
+
+    /// <summary>
+    /// Gets work orders for the selected technician (or current user if is technician)
+    /// Used for statistics calculations
+    /// </summary>
+    private List<WorkOrder> GetWorkOrdersForTechnician()
+    {
+        var technicianName = CurrentUser.Role == "Technician" ? CurrentUser.UserName : selectedTechnician;
+        
+        if (string.IsNullOrEmpty(technicianName))
+        {
+            return new List<WorkOrder>();
+        }
+        
+        return allWorkOrders.Where(w => w.AssignedTo == technicianName).ToList();
+    }
+
+    private int GetWorkOrderPriority(string priority) => priority switch
+    {
+        "Critical" => 1,
+        "High" => 2,
+        "Medium" => 3,
+        "Low" => 4,
+        _ => 5
+    };
+
+    private string GetPriorityClass(string priority) => priority switch
+    {
+        "Critical" => "rbm-badge-danger",
+        "High" => "rbm-badge-warning",
+        "Medium" => "rbm-badge-info",
+        "Low" => "rbm-badge-success",
+        _ => "rbm-badge-secondary"
+    };
+
+    private string GetStatusClass(string status) => status switch
+    {
+        "Open" => "rbm-badge-info",
+        "In Progress" => "rbm-badge-warning",
+        "Completed" => "rbm-badge-success",
+        "On Hold" => "rbm-badge-secondary",
+        "Cancelled" => "rbm-badge-danger",
+        _ => "rbm-badge-secondary"
+    };
+
+    /// <summary>
+    /// Determines if current user can edit a work order
+    /// Technicians can edit only their own orders
+    /// Supervisors/Admins can edit any order
+    /// </summary>
+    private bool CanEditWorkOrder(WorkOrder wo)
+    {
+        if (CurrentUser.Role == "Technician")
+        {
+            return wo.AssignedTo == CurrentUser.UserName;
+        }
+        return true; // Supervisors/Admins can edit all
+    }
+
+    private async Task StartWork(WorkOrder wo)
+    {
+        try
+        {
+            isProcessing = true;
+            StateHasChanged();
+            
+            wo.Status = "In Progress";
+            wo.StartedDate = DateTime.Now;
+            await DataService.UpdateWorkOrderAsync(wo);
+            
+            successMessage = $"Started work on {wo.WorkOrderId}";
+            await LoadDataAsync();
+            
+            await Task.Delay(2000);
+            successMessage = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error starting work: {ex.Message}";
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task PauseWork(WorkOrder wo)
+    {
+        try
+        {
+            isProcessing = true;
+            StateHasChanged();
+            
+            wo.Status = "Open";
+            await DataService.UpdateWorkOrderAsync(wo);
+            
+            successMessage = $"Paused work on {wo.WorkOrderId}";
+            await LoadDataAsync();
+            
+            await Task.Delay(2000);
+            successMessage = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error pausing work: {ex.Message}";
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ShowCompleteModal(WorkOrder wo)
+    {
+        selectedWorkOrder = wo;
+        completionNotes = string.Empty;
+        actualDowntime = 0;
+        laborHours = 0;
+        partsUsed = string.Empty;
+        modalErrorMessage = string.Empty;
+        showCompleteModal = true;
+    }
+
+    private void CloseCompleteModal()
+    {
+        showCompleteModal = false;
+        selectedWorkOrder = null;
+        modalErrorMessage = string.Empty;
+    }
+
+    private async Task SubmitCompletion()
+    {
+        if (selectedWorkOrder == null)
+        {
+            modalErrorMessage = "No work order selected";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(completionNotes))
+        {
+            modalErrorMessage = "Completion notes are required";
+            return;
+        }
+
+        try
+        {
+            isProcessing = true;
+            StateHasChanged();
+
+            selectedWorkOrder.Status = "Completed";
+            selectedWorkOrder.CompletedDate = DateTime.Now;
+            selectedWorkOrder.CompletionNotes = completionNotes;
+            selectedWorkOrder.ActualDowntime = actualDowntime;
+            selectedWorkOrder.LaborHours = laborHours;
+            selectedWorkOrder.PartsUsed = partsUsed;
+
+            await DataService.UpdateWorkOrderAsync(selectedWorkOrder);
+            
+            successMessage = $"Work order {selectedWorkOrder.WorkOrderId} completed successfully";
+            await LoadDataAsync();
+            CloseCompleteModal();
+            
+            await Task.Delay(2000);
+            successMessage = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            modalErrorMessage = $"Error completing work: {ex.Message}";
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ViewDetails(WorkOrder wo)
+    {
+        selectedWorkOrder = wo;
+        showDetailsModal = true;
+    }
+
+    private void CloseDetailsModal()
+    {
+        showDetailsModal = false;
+        selectedWorkOrder = null;
     }
 }

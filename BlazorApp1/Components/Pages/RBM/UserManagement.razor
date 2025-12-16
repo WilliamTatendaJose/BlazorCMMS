@@ -2,403 +2,778 @@
 @rendermode InteractiveServer
 @layout RBMLayout
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using BlazorApp1.Data
+@using BlazorApp1.Services
 @attribute [Authorize(Roles = "Admin")]
-@inject BlazorApp1.Services.DataService DataService
-@inject BlazorApp1.Services.RolePermissionService PermissionService
-@using BlazorApp1.Models
+@inject UserManagementService UserService
+@inject NavigationManager Navigation
+
+<PageTitle>User Management | RBM CMMS</PageTitle>
 
 <div class="rbm-page-header">
-    <h1 class="rbm-page-title">User Management</h1>
-    <p class="rbm-page-subtitle">Manage users and role-based permissions</p>
-</div>
-
-<div class="rbm-action-bar">
-    <div></div>
-    <button class="rbm-btn rbm-btn-primary" @onclick="ShowInviteModal">
-        ➕ Add User
-    </button>
-</div>
-
-<!-- User Statistics -->
-<div class="rbm-grid rbm-grid-4">
-    <div class="rbm-stat-card">
-        <div class="rbm-stat-label">Total Users</div>
-        <div class="rbm-stat-value">@users.Count</div>
-    </div>
-    <div class="rbm-stat-card">
-        <div class="rbm-stat-label">Admins</div>
-        <div class="rbm-stat-value">@users.Count(u => u.Role == "Admin")</div>
-    </div>
-    <div class="rbm-stat-card">
-        <div class="rbm-stat-label">Engineers</div>
-        <div class="rbm-stat-value">@users.Count(u => u.Role == "Reliability Engineer")</div>
-    </div>
-    <div class="rbm-stat-card">
-        <div class="rbm-stat-label">Technicians</div>
-        <div class="rbm-stat-value">@users.Count(u => u.Role == "Technician")</div>
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+            <h1 class="rbm-page-title">👥 User Management</h1>
+            <p class="rbm-page-subtitle">Manage users, roles, and access permissions</p>
+        </div>
     </div>
 </div>
 
-<!-- Users Table -->
-<div class="rbm-card mt-3">
-    <div class="rbm-table-container">
-        <table class="rbm-table">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Department</th>
-                    <th>Phone</th>
-                    <th>Status</th>
-                    <th>Last Login</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var user in users)
+@if (!isInitialized)
+{
+    <div style="text-align: center; padding: 60px;">
+        <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
+        <div style="color: var(--rbm-text-light);">Loading users...</div>
+    </div>
+}
+else
+{
+    <!-- Statistics Cards -->
+    <div class="rbm-stats-grid" style="margin-bottom: 24px;">
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-icon" style="background: rgba(33, 150, 243, 0.1); color: #2196F3;">👥</div>
+            <div class="rbm-stat-content">
+                <div class="rbm-stat-value">@statistics.TotalUsers</div>
+                <div class="rbm-stat-label">Total Users</div>
+            </div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-icon" style="background: rgba(76, 175, 80, 0.1); color: #4CAF50;">✅</div>
+            <div class="rbm-stat-content">
+                <div class="rbm-stat-value">@statistics.ActiveUsers</div>
+                <div class="rbm-stat-label">Active Users</div>
+            </div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-icon" style="background: rgba(255, 152, 0, 0.1); color: #FF9800;">🔒</div>
+            <div class="rbm-stat-content">
+                <div class="rbm-stat-value">@statistics.LockedUsers</div>
+                <div class="rbm-stat-label">Locked Accounts</div>
+            </div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-icon" style="background: rgba(156, 39, 176, 0.1); color: #9C27B0;">🔐</div>
+            <div class="rbm-stat-content">
+                <div class="rbm-stat-value">@statistics.TwoFactorEnabled</div>
+                <div class="rbm-stat-label">2FA Enabled</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Bar -->
+    <div class="rbm-action-bar" style="margin-bottom: 24px;">
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <button class="rbm-btn rbm-btn-primary" @onclick="ShowCreateModal">
+                <span>➕</span> Add User
+            </button>
+            <div class="search-box" style="position: relative;">
+                <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%);">🔍</span>
+                <input type="text" class="rbm-form-input" @bind="searchTerm" @bind:event="oninput" 
+                       placeholder="Search users..." style="padding-left: 38px; min-width: 250px;" />
+            </div>
+        </div>
+        <div style="display: flex; gap: 12px;">
+            <select class="rbm-form-select" @bind="filterRole" style="min-width: 150px;">
+                <option value="">All Roles</option>
+                @foreach (var role in roles)
                 {
-                    <tr>
-                        <td>
-                            <div style="display: flex; align-items: center; gap: 12px;">
-                                <img src="https://ui-avatars.com/api/?name=@user.Name.Replace(" ", "+")&background=607d8b&color=fff" 
-                                     alt="@user.Name" 
-                                     style="width: 36px; height: 36px; border-radius: 50%;">
-                                <strong>@user.Name</strong>
-                            </div>
-                        </td>
-                        <td>@user.Email</td>
-                        <td>
-                            <span class="rbm-badge-pill" style="@GetRoleBadgeStyle(user.Role)">
-                                @user.Role
-                            </span>
-                        </td>
-                        <td>@user.Department</td>
-                        <td>@user.Phone</td>
-                        <td>
-                            @if (user.IsActive)
-                            {
-                                <span class="rbm-badge-pill rbm-badge-success">Active</span>
-                            }
-                            else
-                            {
-                                <span class="rbm-badge-pill" style="background: rgba(158, 158, 158, 0.1); color: #9e9e9e;">Inactive</span>
-                            }
-                        </td>
-                        <td>
-                            @if (user.LastLoginDate.HasValue)
-                            {
-                                <div>@user.LastLoginDate.Value.ToString("MMM dd, yyyy")</div>
-                                <div style="font-size: 11px; color: var(--rbm-text-light);">
-                                    @user.LastLoginDate.Value.ToString("HH:mm")
-                                </div>
-                            }
-                            else
-                            {
-                                <span style="color: var(--rbm-text-light);">Never</span>
-                            }
-                        </td>
-                        <td>
-                            <div style="display: flex; gap: 4px;">
-                                <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => EditUser(user)">
-                                    ✏️ Edit
-                                </button>
-                                @if (users.Count > 1)
-                                {
-                                    <button class="rbm-btn rbm-btn-danger rbm-btn-sm" @onclick="() => ShowDeleteConfirm(user)">
-                                        🗑️
-                                    </button>
-                                }
-                            </div>
-                        </td>
-                    </tr>
+                    <option value="@role">@role</option>
                 }
-            </tbody>
-        </table>
+            </select>
+            <select class="rbm-form-select" @bind="filterStatus" style="min-width: 150px;">
+                <option value="">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="locked">Locked</option>
+            </select>
+        </div>
     </div>
-</div>
 
-<!-- Role Descriptions -->
-<div class="rbm-card mt-3">
-    <div class="rbm-card-header">
-        <h3 class="rbm-card-title">Role Descriptions & Permissions</h3>
+    <!-- Users Table -->
+    <div class="rbm-card">
+        <div class="rbm-card-header" style="background: linear-gradient(135deg, var(--rbm-primary) 0%, rgba(55, 71, 79, 0.8) 100%); color: white;">
+            <h3 class="rbm-card-title" style="color: white; margin: 0;">📋 Users List</h3>
+            <span class="rbm-badge" style="background: rgba(255,255,255,0.2); color: white;">@GetFilteredUsers().Count users</span>
+        </div>
+        <div class="rbm-table-container">
+            @if (GetFilteredUsers().Count == 0)
+            {
+                <div style="padding: 60px; text-align: center;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📭</div>
+                    <h3 style="margin: 0 0 8px 0;">No users found</h3>
+                    <p style="color: var(--rbm-text-light); margin: 0;">Try adjusting your search or filters</p>
+                </div>
+            }
+            else
+            {
+                <table class="rbm-table">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Role</th>
+                            <th>Department</th>
+                            <th>Status</th>
+                            <th>Security</th>
+                            <th>Last Login</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var user in GetFilteredUsers())
+                        {
+                            <tr style="@(user.IsLocked ? "background: rgba(244, 67, 54, 0.05);" : !user.IsActive ? "background: rgba(158, 158, 158, 0.05);" : "")">
+                                <td>
+                                    <div style="display: flex; align-items: center; gap: 12px;">
+                                        <img src="https://ui-avatars.com/api/?name=@(user.FullName.Replace(" ", "+"))&background=607d8b&color=fff" 
+                                             alt="@user.FullName" 
+                                             style="width: 40px; height: 40px; border-radius: 50%;">
+                                        <div>
+                                            <div style="font-weight: 600;">@user.FullName</div>
+                                            <div style="font-size: 13px; color: var(--rbm-text-light);">@user.Email</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="rbm-badge-pill" style="@GetRoleBadgeStyle(user.PrimaryRole)">
+                                        @user.PrimaryRole
+                                    </span>
+                                </td>
+                                <td>@(string.IsNullOrEmpty(user.Department) ? "—" : user.Department)</td>
+                                <td>
+                                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                                        @if (user.IsLocked)
+                                        {
+                                            <span class="rbm-badge-pill rbm-badge-danger">🔒 Locked</span>
+                                        }
+                                        else if (user.IsActive)
+                                        {
+                                            <span class="rbm-badge-pill rbm-badge-success">✅ Active</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="rbm-badge-pill" style="background: rgba(158, 158, 158, 0.1); color: #9e9e9e;">Inactive</span>
+                                        }
+                                        @if (!user.EmailConfirmed)
+                                        {
+                                            <span class="rbm-badge-pill rbm-badge-warning" style="font-size: 11px;">📧 Unconfirmed</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    <div style="display: flex; gap: 8px; align-items: center;">
+                                        @if (user.TwoFactorEnabled)
+                                        {
+                                            <span title="2FA Enabled" style="cursor: help;">🔐</span>
+                                        }
+                                        @if (user.HasPasskeys)
+                                        {
+                                            <span title="@user.PasskeyCount Passkey(s)" style="cursor: help;">🔑 @user.PasskeyCount</span>
+                                        }
+                                        @if (!user.TwoFactorEnabled && !user.HasPasskeys)
+                                        {
+                                            <span style="color: var(--rbm-text-light);">Basic</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    @if (user.LastLoginDate.HasValue)
+                                    {
+                                        <div>@user.LastLoginDate.Value.ToString("MMM dd, yyyy")</div>
+                                        <div style="font-size: 11px; color: var(--rbm-text-light);">
+                                            @user.LastLoginDate.Value.ToString("HH:mm")
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: var(--rbm-text-light);">Never</span>
+                                    }
+                                </td>
+                                <td>
+                                    <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                                        <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => ShowEditModal(user)" title="Edit User">
+                                            ✏️
+                                        </button>
+                                        <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => ShowResetPasswordModal(user)" title="Reset Password">
+                                            🔑
+                                        </button>
+                                        @if (user.IsLocked)
+                                        {
+                                            <button class="rbm-btn rbm-btn-success rbm-btn-sm" @onclick="() => UnlockUser(user)" title="Unlock Account">
+                                                🔓
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button class="rbm-btn rbm-btn-warning rbm-btn-sm" @onclick="() => LockUser(user)" title="Lock Account">
+                                                🔒
+                                            </button>
+                                        }
+                                        <button class="rbm-btn rbm-btn-danger rbm-btn-sm" @onclick="() => ShowDeleteModal(user)" title="Delete User">
+                                            🗑️
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
     </div>
-    <div class="rbm-table-container">
-        <table class="rbm-table">
-            <thead>
-                <tr>
-                    <th>Role</th>
-                    <th>Description</th>
-                    <th>View</th>
-                    <th>Edit</th>
-                    <th>Delete</th>
-                    <th>Manage Users</th>
-                    <th>Modify FMEA</th>
-                    <th>Create Work Orders</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td><strong>Admin</strong></td>
-                    <td>Full system access and user management</td>
-                    <td>✓</td>
-                    <td>✓</td>
-                    <td>✓</td>
-                    <td>✓</td>
-                    <td>✓</td>
-                    <td>✓</td>
-                </tr>
-                <tr>
-                    <td><strong>Reliability Engineer</strong></td>
-                    <td>FMEA, analytics, and maintenance planning</td>
-                    <td>✓</td>
-                    <td>✓</td>
-                    <td>✓</td>
-                    <td>✗</td>
-                    <td>✓</td>
-                    <td>✓</td>
-                </tr>
-                <tr>
-                    <td><strong>Planner</strong></td>
-                    <td>Work order and schedule management</td>
-                    <td>✓</td>
-                    <td>✓</td>
-                    <td>✗</td>
-                    <td>✗</td>
-                    <td>✗</td>
-                    <td>✓</td>
-                </tr>
-                <tr>
-                    <td><strong>Technician</strong></td>
-                    <td>Execute work orders and record data</td>
-                    <td>✓</td>
-                    <td>Limited</td>
-                    <td>✗</td>
-                    <td>✗</td>
-                    <td>✗</td>
-                    <td>✗</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-</div>
 
-<!-- Add/Edit User Modal -->
+    <!-- Role Permissions Reference -->
+    <div class="rbm-card" style="margin-top: 24px;">
+        <div class="rbm-card-header">
+            <h3 class="rbm-card-title">📜 Role Permissions Reference</h3>
+        </div>
+        <div class="rbm-table-container">
+            <table class="rbm-table">
+                <thead>
+                    <tr>
+                        <th>Role</th>
+                        <th>Description</th>
+                        <th>View</th>
+                        <th>Edit</th>
+                        <th>Delete</th>
+                        <th>Manage Users</th>
+                        <th>FMEA</th>
+                        <th>Work Orders</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="rbm-badge-pill" style="@GetRoleBadgeStyle("Admin")">Admin</span></td>
+                        <td>Full system access</td>
+                        <td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td>
+                    </tr>
+                    <tr>
+                        <td><span class="rbm-badge-pill" style="@GetRoleBadgeStyle("Reliability Engineer")">Reliability Engineer</span></td>
+                        <td>FMEA & analytics</td>
+                        <td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>✅</td><td>✅</td>
+                    </tr>
+                    <tr>
+                        <td><span class="rbm-badge-pill" style="@GetRoleBadgeStyle("Planner")">Planner</span></td>
+                        <td>Scheduling & planning</td>
+                        <td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td>
+                    </tr>
+                    <tr>
+                        <td><span class="rbm-badge-pill" style="@GetRoleBadgeStyle("Technician")">Technician</span></td>
+                        <td>Execute work orders</td>
+                        <td>✅</td><td>Limited</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+<!-- Create/Edit User Modal -->
 @if (showUserModal)
 {
     <div class="rbm-modal-backdrop" @onclick="CloseUserModal">
-        <div class="rbm-modal" @onclick:stopPropagation="true">
+        <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 600px;">
             <div class="rbm-modal-header">
-                <h3 class="rbm-modal-title">@(editMode ? "Edit User" : "Add New User")</h3>
+                <h3 class="rbm-modal-title">@(editMode ? "✏️ Edit User" : "➕ Create New User")</h3>
                 <button class="rbm-modal-close" @onclick="CloseUserModal">&times;</button>
             </div>
             <div class="rbm-modal-body">
-                <div class="rbm-form-group">
-                    <label class="rbm-form-label">Full Name</label>
-                    <input type="text" class="rbm-form-input" @bind="currentUser.Name" placeholder="John Doe">
-                </div>
-                <div class="rbm-form-group">
-                    <label class="rbm-form-label">Email Address</label>
-                    <input type="email" class="rbm-form-input" @bind="currentUser.Email" placeholder="john.doe@company.com">
-                </div>
+                @if (!string.IsNullOrEmpty(modalError))
+                {
+                    <div class="alert alert-danger" style="margin-bottom: 16px;">
+                        ❌ @modalError
+                    </div>
+                }
+
                 <div class="rbm-grid rbm-grid-2">
                     <div class="rbm-form-group">
-                        <label class="rbm-form-label">Role</label>
-                        <select class="rbm-form-select" @bind="currentUser.Role">
-                            <option value="Technician">Technician</option>
-                            <option value="Planner">Planner</option>
-                            <option value="Reliability Engineer">Reliability Engineer</option>
-                            <option value="Admin">Admin</option>
+                        <label class="rbm-form-label">Full Name *</label>
+                        <input type="text" class="rbm-form-input" @bind="userForm.FullName" placeholder="John Doe">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Email Address *</label>
+                        <input type="email" class="rbm-form-input" @bind="userForm.Email" placeholder="john.doe@company.com" disabled="@editMode">
+                    </div>
+                </div>
+
+                @if (!editMode)
+                {
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Initial Password *</label>
+                        <div style="position: relative;">
+                            <input type="@(showPassword ? "text" : "password")" class="rbm-form-input" @bind="userForm.Password" placeholder="Min 6 characters">
+                            <button type="button" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer;"
+                                    @onclick="() => showPassword = !showPassword">
+                                @(showPassword ? "🙈" : "👁️")
+                            </button>
+                        </div>
+                        <small style="color: var(--rbm-text-light);">Must contain uppercase, lowercase, and a number</small>
+                    </div>
+                }
+
+                <div class="rbm-grid rbm-grid-2">
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Role *</label>
+                        <select class="rbm-form-select" @bind="userForm.Role">
+                            @foreach (var role in roles)
+                            {
+                                <option value="@role">@role</option>
+                            }
                         </select>
                     </div>
                     <div class="rbm-form-group">
                         <label class="rbm-form-label">Department</label>
-                        <input type="text" class="rbm-form-input" @bind="currentUser.Department" placeholder="Maintenance">
+                        <input type="text" class="rbm-form-input" @bind="userForm.Department" placeholder="e.g., Maintenance">
                     </div>
                 </div>
-                
+
                 <div class="rbm-form-group">
                     <label class="rbm-form-label">Phone Number</label>
-                    <input type="tel" class="rbm-form-input" @bind="currentUser.Phone" placeholder="555-0123">
+                    <input type="tel" class="rbm-form-input" @bind="userForm.PhoneNumber" placeholder="555-0123">
                 </div>
-                
-                <div class="rbm-form-group">
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <input type="checkbox" @bind="currentUser.IsActive">
-                        <span>Active User</span>
-                    </label>
-                </div>
-                
-                <div style="padding: 16px; background: var(--rbm-bg); border-radius: 8px; margin-top: 16px;">
-                    <strong style="display: block; margin-bottom: 8px;">Role Permissions</strong>
-                    <p style="font-size: 13px; color: var(--rbm-text-light); margin-bottom: 12px;">
-                        Permissions are automatically assigned based on the selected role.
-                    </p>
-                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 14px;">
-                        <div>✓ View: All roles</div>
-                        <div>@(GetPermissionText("Edit", currentUser.Role))</div>
-                        <div>@(GetPermissionText("Delete", currentUser.Role))</div>
-                        <div>@(GetPermissionText("Manage Users", currentUser.Role))</div>
-                        <div>@(GetPermissionText("Create Work Orders", currentUser.Role))</div>
-                        <div>@(GetPermissionText("Modify FMEA", currentUser.Role))</div>
-                    </div>
-                </div>
-                
-                @if (!editMode)
+
+                @if (editMode)
                 {
-                    <div style="margin-top: 16px; padding: 12px; background: rgba(2, 136, 209, 0.1); border-left: 4px solid var(--rbm-accent); border-radius: 4px;">
-                        <p style="margin: 0; font-size: 13px; color: var(--rbm-text);">
-                            ℹ️ <strong>Note:</strong> For production, this user should be created through ASP.NET Core Identity with a proper password. This demo uses simplified user creation.
-                        </p>
+                    <div class="rbm-form-group">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" @bind="userForm.IsActive">
+                            <span>Active User</span>
+                        </label>
+                    </div>
+                }
+                else
+                {
+                    <div class="rbm-form-group">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" @bind="userForm.EmailConfirmed">
+                            <span>Mark email as confirmed (skip verification)</span>
+                        </label>
                     </div>
                 }
             </div>
             <div class="rbm-modal-footer">
-                <button class="rbm-btn rbm-btn-outline" @onclick="CloseUserModal">Cancel</button>
-                <button class="rbm-btn rbm-btn-primary" @onclick="SaveUser">
-                    @(editMode ? "Save Changes" : "Add User")
+                <button class="rbm-btn rbm-btn-outline" @onclick="CloseUserModal" disabled="@isSaving">Cancel</button>
+                <button class="rbm-btn rbm-btn-primary" @onclick="SaveUser" disabled="@isSaving">
+                    @if (isSaving)
+                    {
+                        <span>⏳ Saving...</span>
+                    }
+                    else
+                    {
+                        <span>@(editMode ? "💾 Save Changes" : "➕ Create User")</span>
+                    }
                 </button>
             </div>
         </div>
     </div>
 }
 
-<!-- Delete Confirmation Modal -->
-@if (showDeleteConfirm)
+<!-- Reset Password Modal -->
+@if (showResetPasswordModal)
 {
-    <div class="rbm-modal-backdrop" @onclick="CloseDeleteConfirm">
+    <div class="rbm-modal-backdrop" @onclick="CloseResetPasswordModal">
         <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 500px;">
             <div class="rbm-modal-header">
-                <h3 class="rbm-modal-title">Confirm Delete</h3>
-                <button class="rbm-modal-close" @onclick="CloseDeleteConfirm">&times;</button>
+                <h3 class="rbm-modal-title">🔑 Reset Password</h3>
+                <button class="rbm-modal-close" @onclick="CloseResetPasswordModal">&times;</button>
             </div>
             <div class="rbm-modal-body">
-                <div style="padding: 20px; text-align: center;">
-                    <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
-                    <p style="font-size: 16px; margin-bottom: 12px;">
-                        Are you sure you want to delete <strong>@userToDelete?.Name</strong>?
-                    </p>
-                    <p style="font-size: 14px; color: var(--rbm-text-light);">
+                <div style="text-align: center; padding: 20px;">
+                    <img src="https://ui-avatars.com/api/?name=@(selectedUser?.FullName.Replace(" ", "+") ?? "U")&background=607d8b&color=fff&size=80" 
+                         alt="" style="width: 80px; height: 80px; border-radius: 50%; margin-bottom: 16px;">
+                    <h4 style="margin: 0 0 8px 0;">@selectedUser?.FullName</h4>
+                    <p style="color: var(--rbm-text-light); margin: 0;">@selectedUser?.Email</p>
+                </div>
+
+                @if (!string.IsNullOrEmpty(generatedPassword))
+                {
+                    <div style="background: rgba(76, 175, 80, 0.1); border: 1px solid rgba(76, 175, 80, 0.3); border-radius: 8px; padding: 16px; margin-top: 20px;">
+                        <div style="font-weight: 600; color: var(--rbm-success); margin-bottom: 8px;">✅ Password Reset Successfully</div>
+                        <div style="background: white; padding: 12px; border-radius: 4px; font-family: monospace; font-size: 18px; text-align: center; letter-spacing: 1px;">
+                            @generatedPassword
+                        </div>
+                        <div style="font-size: 13px; color: var(--rbm-text-light); margin-top: 8px;">
+                            ⚠️ Copy this password now. It won't be shown again.
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div style="margin-top: 20px;">
+                        <p style="color: var(--rbm-text-light); margin-bottom: 16px;">
+                            Choose an action for this user's password:
+                        </p>
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            <button class="rbm-btn rbm-btn-outline" style="justify-content: flex-start;" @onclick="GenerateNewPassword" disabled="@isSaving">
+                                <span>🎲</span> Generate New Password
+                            </button>
+                            <button class="rbm-btn rbm-btn-outline" style="justify-content: flex-start;" @onclick="SendPasswordResetEmail" disabled="@isSaving">
+                                <span>📧</span> Send Password Reset Email
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="rbm-modal-footer">
+                <button class="rbm-btn rbm-btn-outline" @onclick="CloseResetPasswordModal">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Delete Confirmation Modal -->
+@if (showDeleteModal)
+{
+    <div class="rbm-modal-backdrop" @onclick="CloseDeleteModal">
+        <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 450px;">
+            <div class="rbm-modal-header" style="background: linear-gradient(135deg, #f44336 0%, #c62828 100%); color: white;">
+                <h3 class="rbm-modal-title" style="color: white;">⚠️ Delete User</h3>
+                <button class="rbm-modal-close" @onclick="CloseDeleteModal" style="color: white;">&times;</button>
+            </div>
+            <div class="rbm-modal-body">
+                <div style="text-align: center; padding: 20px;">
+                    <div style="font-size: 64px; margin-bottom: 16px;">🗑️</div>
+                    <h4 style="margin: 0 0 8px 0;">Delete @selectedUser?.FullName?</h4>
+                    <p style="color: var(--rbm-text-light);">
+                        This will permanently delete the user account and all associated data.
                         This action cannot be undone.
                     </p>
                 </div>
             </div>
             <div class="rbm-modal-footer">
-                <button class="rbm-btn rbm-btn-outline" @onclick="CloseDeleteConfirm">Cancel</button>
-                <button class="rbm-btn rbm-btn-danger" @onclick="ConfirmDelete">Delete User</button>
+                <button class="rbm-btn rbm-btn-outline" @onclick="CloseDeleteModal" disabled="@isSaving">Cancel</button>
+                <button class="rbm-btn rbm-btn-danger" @onclick="ConfirmDelete" disabled="@isSaving">
+                    @if (isSaving)
+                    {
+                        <span>⏳ Deleting...</span>
+                    }
+                    else
+                    {
+                        <span>🗑️ Delete User</span>
+                    }
+                </button>
             </div>
         </div>
     </div>
 }
 
+<!-- Success Toast -->
 @if (showSuccessMessage)
 {
-    <div style="position: fixed; top: 80px; right: 20px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; border-left: 4px solid var(--rbm-success);">
-        <div style="display: flex; align-items: center; gap: 12px;">
-            <span style="font-size: 24px;">✓</span>
-            <div>
-                <div style="font-weight: 600; color: var(--rbm-success);">Success!</div>
-                <div style="font-size: 14px; color: var(--rbm-text-light);">@successMessage</div>
-            </div>
+    <div style="position: fixed; bottom: 20px; right: 20px; background: white; padding: 16px 24px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); z-index: 1000; border-left: 4px solid var(--rbm-success); display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 24px;">✅</span>
+        <div>
+            <div style="font-weight: 600; color: var(--rbm-success);">Success</div>
+            <div style="font-size: 14px; color: var(--rbm-text-light);">@successMessage</div>
         </div>
     </div>
 }
 
 @code {
-    private List<User> users = new();
-    private User currentUser = new();
-    private User? userToDelete;
+    private bool isInitialized = false;
+    private List<UserViewModel> users = [];
+    private List<string> roles = [];
+    private UserStatistics statistics = new();
+    
+    private string searchTerm = "";
+    private string filterRole = "";
+    private string filterStatus = "";
+    
+    // Modals
     private bool showUserModal = false;
-    private bool showDeleteConfirm = false;
+    private bool showResetPasswordModal = false;
+    private bool showDeleteModal = false;
     private bool editMode = false;
+    private bool isSaving = false;
+    private bool showPassword = false;
+    
+    private UserFormModel userForm = new();
+    private UserViewModel? selectedUser;
+    private string modalError = "";
+    private string generatedPassword = "";
+    
     private bool showSuccessMessage = false;
     private string successMessage = "";
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        users = DataService.GetUsers();
+        await LoadData();
+        isInitialized = true;
     }
 
-    private void ShowInviteModal()
+    private async Task LoadData()
     {
-        currentUser = new User 
-        { 
-            Role = "Technician", 
-            IsActive = true,
-            CreatedDate = DateTime.Now
-        };
+        users = await UserService.GetAllUsersAsync();
+        roles = await UserService.GetAllRolesAsync();
+        statistics = await UserService.GetUserStatisticsAsync();
+    }
+
+    private List<UserViewModel> GetFilteredUsers()
+    {
+        var filtered = users.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var search = searchTerm.ToLower();
+            filtered = filtered.Where(u =>
+                u.FullName.ToLower().Contains(search) ||
+                u.Email.ToLower().Contains(search) ||
+                u.Department.ToLower().Contains(search));
+        }
+
+        if (!string.IsNullOrEmpty(filterRole))
+        {
+            filtered = filtered.Where(u => u.Roles.Contains(filterRole));
+        }
+
+        if (!string.IsNullOrEmpty(filterStatus))
+        {
+            filtered = filterStatus switch
+            {
+                "active" => filtered.Where(u => u.IsActive && !u.IsLocked),
+                "inactive" => filtered.Where(u => !u.IsActive),
+                "locked" => filtered.Where(u => u.IsLocked),
+                _ => filtered
+            };
+        }
+
+        return filtered.ToList();
+    }
+
+    #region Create/Edit User
+
+    private void ShowCreateModal()
+    {
+        userForm = new UserFormModel { Role = "Technician", EmailConfirmed = true, IsActive = true };
         editMode = false;
+        modalError = "";
+        showUserModal = true;
+    }
+
+    private void ShowEditModal(UserViewModel user)
+    {
+        selectedUser = user;
+        userForm = new UserFormModel
+        {
+            Id = user.Id,
+            Email = user.Email,
+            FullName = user.FullName,
+            Department = user.Department,
+            PhoneNumber = user.PhoneNumber,
+            Role = user.PrimaryRole,
+            IsActive = user.IsActive
+        };
+        editMode = true;
+        modalError = "";
         showUserModal = true;
     }
 
     private void CloseUserModal()
     {
         showUserModal = false;
+        selectedUser = null;
     }
 
-    private void EditUser(User user)
+    private async Task SaveUser()
     {
-        currentUser = new User
-        {
-            Id = user.Id,
-            Name = user.Name,
-            Email = user.Email,
-            Role = user.Role,
-            Department = user.Department,
-            Phone = user.Phone,
-            IsActive = user.IsActive,
-            CreatedDate = user.CreatedDate,
-            LastLoginDate = user.LastLoginDate,
-            Notes = user.Notes
-        };
-        editMode = true;
-        showUserModal = true;
-    }
+        modalError = "";
 
-    private void SaveUser()
-    {
-        if (string.IsNullOrWhiteSpace(currentUser.Name) || string.IsNullOrWhiteSpace(currentUser.Email))
+        if (string.IsNullOrWhiteSpace(userForm.FullName) || string.IsNullOrWhiteSpace(userForm.Email))
         {
+            modalError = "Full name and email are required.";
             return;
         }
 
-        if (editMode)
+        if (!editMode && string.IsNullOrWhiteSpace(userForm.Password))
         {
-            DataService.UpdateUser(currentUser);
-            ShowSuccess("User updated successfully!");
+            modalError = "Password is required for new users.";
+            return;
         }
-        else
+
+        isSaving = true;
+
+        try
         {
-            DataService.AddUser(currentUser);
-            ShowSuccess($"User {currentUser.Name} added successfully!");
+            if (editMode)
+            {
+                var (success, errors) = await UserService.UpdateUserAsync(new UpdateUserModel
+                {
+                    Id = userForm.Id,
+                    FullName = userForm.FullName,
+                    Department = userForm.Department,
+                    PhoneNumber = userForm.PhoneNumber,
+                    Role = userForm.Role,
+                    IsActive = userForm.IsActive
+                });
+
+                if (!success)
+                {
+                    modalError = string.Join(", ", errors);
+                    return;
+                }
+
+                ShowSuccess("User updated successfully!");
+            }
+            else
+            {
+                var (success, errors, userId) = await UserService.CreateUserAsync(new CreateUserModel
+                {
+                    Email = userForm.Email,
+                    Password = userForm.Password,
+                    FullName = userForm.FullName,
+                    Department = userForm.Department,
+                    PhoneNumber = userForm.PhoneNumber,
+                    Role = userForm.Role,
+                    EmailConfirmed = userForm.EmailConfirmed
+                });
+
+                if (!success)
+                {
+                    modalError = string.Join(", ", errors);
+                    return;
+                }
+
+                ShowSuccess($"User {userForm.FullName} created successfully!");
+            }
+
+            await LoadData();
+            CloseUserModal();
         }
-        
-        users = DataService.GetUsers();
-        CloseUserModal();
+        finally
+        {
+            isSaving = false;
+        }
     }
 
-    private void ShowDeleteConfirm(User user)
+    #endregion
+
+    #region Password Reset
+
+    private void ShowResetPasswordModal(UserViewModel user)
     {
-        userToDelete = user;
-        showDeleteConfirm = true;
+        selectedUser = user;
+        generatedPassword = "";
+        showResetPasswordModal = true;
     }
 
-    private void CloseDeleteConfirm()
+    private void CloseResetPasswordModal()
     {
-        showDeleteConfirm = false;
-        userToDelete = null;
+        showResetPasswordModal = false;
+        selectedUser = null;
+        generatedPassword = "";
     }
 
-    private void ConfirmDelete()
+    private async Task GenerateNewPassword()
     {
-        if (userToDelete != null)
+        if (selectedUser == null) return;
+
+        isSaving = true;
+        try
         {
-            DataService.DeleteUser(userToDelete.Id);
-            users = DataService.GetUsers();
-            ShowSuccess($"User {userToDelete.Name} deleted successfully!");
+            var (success, errors, newPassword) = await UserService.AdminResetPasswordAsync(selectedUser.Id);
+            
+            if (success && newPassword != null)
+            {
+                generatedPassword = newPassword;
+            }
+            else
+            {
+                ShowSuccess("Failed to reset password: " + string.Join(", ", errors));
+            }
         }
-        CloseDeleteConfirm();
+        finally
+        {
+            isSaving = false;
+        }
     }
+
+    private async Task SendPasswordResetEmail()
+    {
+        if (selectedUser == null) return;
+
+        isSaving = true;
+        try
+        {
+            var resetUrl = Navigation.ToAbsoluteUri("Account/ResetPassword").AbsoluteUri;
+            await UserService.SendPasswordResetEmailAsync(selectedUser.Email, resetUrl);
+            ShowSuccess("Password reset email sent!");
+            CloseResetPasswordModal();
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    #endregion
+
+    #region Lock/Unlock
+
+    private async Task LockUser(UserViewModel user)
+    {
+        var (success, _) = await UserService.LockUserAsync(user.Id);
+        if (success)
+        {
+            ShowSuccess($"User {user.FullName} has been locked.");
+            await LoadData();
+        }
+    }
+
+    private async Task UnlockUser(UserViewModel user)
+    {
+        var (success, _) = await UserService.UnlockUserAsync(user.Id);
+        if (success)
+        {
+            ShowSuccess($"User {user.FullName} has been unlocked.");
+            await LoadData();
+        }
+    }
+
+    #endregion
+
+    #region Delete User
+
+    private void ShowDeleteModal(UserViewModel user)
+    {
+        selectedUser = user;
+        showDeleteModal = true;
+    }
+
+    private void CloseDeleteModal()
+    {
+        showDeleteModal = false;
+        selectedUser = null;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (selectedUser == null) return;
+
+        isSaving = true;
+        try
+        {
+            var (success, errors) = await UserService.DeleteUserAsync(selectedUser.Id);
+            
+            if (success)
+            {
+                ShowSuccess($"User {selectedUser.FullName} deleted.");
+                await LoadData();
+                CloseDeleteModal();
+            }
+            else
+            {
+                ShowSuccess("Failed to delete  the user: " + string.Join(", ", errors));
+            }
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    #endregion
+
+    #region Helpers
 
     private void ShowSuccess(string message)
     {
@@ -406,37 +781,34 @@
         showSuccessMessage = true;
         StateHasChanged();
         
-        Task.Delay(3000).ContinueWith(_ =>
+        _ = Task.Delay(3000).ContinueWith(_ =>
         {
             showSuccessMessage = false;
             InvokeAsync(StateHasChanged);
         });
     }
 
-    private string GetRoleBadgeStyle(string role)
+    private string GetRoleBadgeStyle(string role) => role switch
     {
-        return role switch
-        {
-            "Admin" => "background: rgba(229, 57, 53, 0.1); color: var(--rbm-danger);",
-            "Reliability Engineer" => "background: rgba(2, 136, 209, 0.1); color: var(--rbm-accent);",
-            "Planner" => "background: rgba(251, 140, 0, 0.1); color: var(--rbm-warning);",
-            "Technician" => "background: rgba(67, 160, 71, 0.1); color: var(--rbm-success);",
-            _ => ""
-        };
-    }
+        "Admin" => "background: rgba(229, 57, 53, 0.1); color: #e53935;",
+        "Reliability Engineer" => "background: rgba(2, 136, 209, 0.1); color: #0288d1;",
+        "Planner" => "background: rgba(251, 140, 0, 0.1); color: #fb8c00;",
+        "Technician" => "background: rgba(67, 160, 71, 0.1); color: #43a047;",
+        _ => "background: rgba(158, 158, 158, 0.1); color: #9e9e9e;"
+    };
 
-    private string GetPermissionText(string permission, string role)
+    #endregion
+
+    private class UserFormModel
     {
-        var hasPermission = permission switch
-        {
-            "Edit" => role == "Admin" || role == "Reliability Engineer" || role == "Planner" || role == "Technician",
-            "Delete" => role == "Admin" || role == "Reliability Engineer",
-            "Manage Users" => role == "Admin",
-            "Create Work Orders" => role == "Admin" || role == "Reliability Engineer" || role == "Planner",
-            "Modify FMEA" => role == "Admin" || role == "Reliability Engineer",
-            _ => false
-        };
-
-        return hasPermission ? $"✓ {permission}" : $"✗ {permission}";
+        public string Id { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string Password { get; set; } = "";
+        public string FullName { get; set; } = "";
+        public string Department { get; set; } = "";
+        public string PhoneNumber { get; set; } = "";
+        public string Role { get; set; } = "Technician";
+        public bool IsActive { get; set; } = true;
+        public bool EmailConfirmed { get; set; } = true;
     }
 }

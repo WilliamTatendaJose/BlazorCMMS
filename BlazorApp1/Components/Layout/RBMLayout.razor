@@ -1,14 +1,16 @@
 ﻿@inherits LayoutComponentBase
 @using Microsoft.AspNetCore.Authorization
+@using BlazorApp1.Services
 @attribute [Authorize]
 @inject BlazorApp1.Services.CurrentUserService CurrentUser
+@inject BlazorApp1.Services.ThemeService ThemeService
 @inject NavigationManager Navigation
 @implements IDisposable
 
 <div class="rbm-layout @(isMobileMenuOpen ? "mobile-menu-open" : "")">
     <!-- Mobile Header -->
     <div class="rbm-mobile-header">
-        <button class="rbm-mobile-menu-toggle" @onclick="ToggleMobileMenu" aria-label="Toggle menu">
+        <button class="rbm-mobile-menu-toggle" @onclick="ToggleMobileMenu" aria-label="Toggle navigation menu" title="Toggle menu">
             @if (isMobileMenuOpen)
             {
                 <span>✕</span>
@@ -27,6 +29,10 @@
             <span>RBM CMMS</span>
         </div>
         <div style="display: flex; align-items: center; gap: 8px;">
+            @if (isInitialized && !string.IsNullOrEmpty(initError))
+            {
+                <span title="@initError" style="color: #e53935; font-size: 14px;">⚠️</span>
+            }
             <form action="Account/Logout" method="post" style="margin: 0;">
                 <AntiforgeryToken />
                 <input type="hidden" name="ReturnUrl" value="~/" />
@@ -34,16 +40,16 @@
                     <span class="logout-icon">🚪</span>
                 </button>
             </form>
-            <button class="rbm-mobile-profile-btn" @onclick="ToggleRoleMenu" aria-label="User profile">
-                <img src="https://ui-avatars.com/api/?name=@CurrentUser.UserName.Replace(" ", "+")&background=607d8b&color=fff" alt="User" class="rbm-avatar-sm">
+            <button class="rbm-mobile-profile-btn" @onclick="ToggleRoleMenu" aria-label="User profile menu" title="User profile">
+                <img src="https://ui-avatars.com/api/?name=@CurrentUser.UserName.Replace(" ", "+")&background=607d8b&color=fff" alt="@CurrentUser.UserName avatar" class="rbm-avatar-sm">
             </button>
         </div>
     </div>
 
     <!-- Sidebar Navigation -->
-    <div class="rbm-sidebar">
+    <aside class="rbm-sidebar" role="navigation" aria-label="Main navigation">
         <div class="rbm-sidebar-header">
-            <div class="rbm-logo">
+            <div class="rbm-logo" title="RBM CMMS">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -54,110 +60,169 @@
         </div>
         
         <nav class="rbm-nav">
-            <NavLink class="rbm-nav-item" href="/rbm" Match="NavLinkMatch.All" @onclick="CloseMobileMenu">
-                <span class="rbm-nav-icon">📊</span>
+            <NavLink class="rbm-nav-item" href="/rbm" Match="NavLinkMatch.All" @onclick="CloseMobileMenu" title="Dashboard">
+                <span class="rbm-nav-icon" aria-hidden="true">📊</span>
                 <span class="rbm-nav-label">Dashboard</span>
             </NavLink>
             
-            <NavLink class="rbm-nav-item" href="/rbm/assets" @onclick="CloseMobileMenu">
-                <span class="rbm-nav-icon">⚙️</span>
+            <NavLink class="rbm-nav-item" href="/rbm/assets" @onclick="CloseMobileMenu" title="Assets management">
+                <span class="rbm-nav-icon" aria-hidden="true">⚙️</span>
                 <span class="rbm-nav-label">Assets</span>
             </NavLink>
             
-            <NavLink class="rbm-nav-item" href="/rbm/condition-monitoring" @onclick="CloseMobileMenu">
-                <span class="rbm-nav-icon">📈</span>
+            <NavLink class="rbm-nav-item" href="/rbm/condition-monitoring" @onclick="CloseMobileMenu" title="Condition monitoring">
+                <span class="rbm-nav-icon" aria-hidden="true">📈</span>
                 <span class="rbm-nav-label">Condition Monitoring</span>
             </NavLink>
             
-            <NavLink class="rbm-nav-item" href="/rbm/failure-modes" @onclick="CloseMobileMenu">
-                <span class="rbm-nav-icon">⚠️</span>
+            <NavLink class="rbm-nav-item" href="/rbm/failure-modes" @onclick="CloseMobileMenu" title="Failure modes analysis">
+                <span class="rbm-nav-icon" aria-hidden="true">⚠️</span>
                 <span class="rbm-nav-label">Failure Modes (FMEA)</span>
             </NavLink>
             
-            <NavLink class="rbm-nav-item" href="/rbm/work-orders" @onclick="CloseMobileMenu">
-                <span class="rbm-nav-icon">📋</span>
+            <NavLink class="rbm-nav-item" href="/rbm/work-orders" @onclick="CloseMobileMenu" title="Work orders">
+                <span class="rbm-nav-icon" aria-hidden="true">📋</span>
                 <span class="rbm-nav-label">Work Orders</span>
             </NavLink>
             
-            <NavLink class="rbm-nav-item" href="/rbm/maintenance-planning" @onclick="CloseMobileMenu">
-                <span class="rbm-nav-icon">📅</span>
+            <NavLink class="rbm-nav-item" href="/rbm/maintenance-planning" @onclick="CloseMobileMenu" title="Maintenance planning">
+                <span class="rbm-nav-icon" aria-hidden="true">📅</span>
                 <span class="rbm-nav-label">Maintenance Planning</span>
             </NavLink>
             
-            <NavLink class="rbm-nav-item" href="/rbm/analytics" @onclick="CloseMobileMenu">
-                <span class="rbm-nav-icon">📉</span>
+            <NavLink class="rbm-nav-item" href="/rbm/spare-parts" @onclick="CloseMobileMenu" title="Spare parts inventory">
+                <span class="rbm-nav-icon" aria-hidden="true">📦</span>
+                <span class="rbm-nav-label">Spare Parts</span>
+            </NavLink>
+            
+            <NavLink class="rbm-nav-item" href="/rbm/documents" @onclick="CloseMobileMenu" title="Document management">
+                <span class="rbm-nav-icon" aria-hidden="true">📄</span>
+                <span class="rbm-nav-label">Documents</span>
+            </NavLink>
+            
+            <NavLink class="rbm-nav-item" href="/rbm/analytics" @onclick="CloseMobileMenu" title="Reliability analytics">
+                <span class="rbm-nav-icon" aria-hidden="true">📉</span>
                 <span class="rbm-nav-label">Reliability Analytics</span>
             </NavLink>
             
-            <NavLink class="rbm-nav-item" href="/rbm/technicians" @onclick="CloseMobileMenu">
-                <span class="rbm-nav-icon">👷</span>
+            <NavLink class="rbm-nav-item" href="/rbm/technicians" @onclick="CloseMobileMenu" title="Technician portal">
+                <span class="rbm-nav-icon" aria-hidden="true">👷</span>
                 <span class="rbm-nav-label">Technicians Portal</span>
+            </NavLink>
+
+            <div class="rbm-nav-divider"></div>
+            
+            <NavLink class="rbm-nav-item" href="/rbm/profile" @onclick="CloseMobileMenu" title="My profile">
+                <span class="rbm-nav-icon" aria-hidden="true">👤</span>
+                <span class="rbm-nav-label">My Profile</span>
             </NavLink>
             
             @if (CurrentUser.IsAdmin)
             {
-                <NavLink class="rbm-nav-item" href="/rbm/users" @onclick="CloseMobileMenu">
-                    <span class="rbm-nav-icon">👥</span>
+                <NavLink class="rbm-nav-item" href="/rbm/users" @onclick="CloseMobileMenu" title="User management">
+                    <span class="rbm-nav-icon" aria-hidden="true">👥</span>
                     <span class="rbm-nav-label">User Management</span>
                 </NavLink>
                 
-                <NavLink class="rbm-nav-item" href="/rbm/settings" @onclick="CloseMobileMenu">
-                    <span class="rbm-nav-icon">⚙️</span>
+                <NavLink class="rbm-nav-item" href="/rbm/tenants" @onclick="CloseMobileMenu" title="Tenant management">
+                    <span class="rbm-nav-icon" aria-hidden="true">🏢</span>
+                    <span class="rbm-nav-label">Tenants</span>
+                </NavLink>
+                
+                <NavLink class="rbm-nav-item" href="/rbm/settings" @onclick="CloseMobileMenu" title="System settings">
+                    <span class="rbm-nav-icon" aria-hidden="true">⚙️</span>
                     <span class="rbm-nav-label">Settings</span>
+                </NavLink>
+
+                <NavLink class="rbm-nav-item" href="/rbm/export" @onclick="CloseMobileMenu" title="Export data">
+                    <span class="rbm-nav-icon" aria-hidden="true">📊</span>
+                    <span class="rbm-nav-label">Data Export</span>
                 </NavLink>
             }
         </nav>
-    </div>
+    </aside>
 
     <div class="rbm-main">
-        <div class="rbm-topbar">
+        <!-- Top App Bar -->
+        <header class="rbm-topbar" role="banner">
             <div class="rbm-search">
-                <input type="text" placeholder="Search assets, work orders..." class="rbm-search-input">
-                <span class="rbm-search-icon">🔍</span>
+                <input type="text" placeholder="Search assets, work orders..." class="rbm-search-input" aria-label="Search">
+                <span class="rbm-search-icon" aria-hidden="true">🔍</span>
             </div>
             
             <div class="rbm-topbar-actions">
-                <button class="rbm-icon-button" title="Notifications" @onclick="ShowNotifications">
-                    <span class="rbm-badge">3</span>
-                    <span class="notification-icon">🔔</span>
+                <!-- Notifications -->
+                <button class="rbm-icon-button" title="Notifications" @onclick="ShowNotifications" aria-label="Notifications (@notificationCount unread)">
+                    <span class="rbm-badge">@notificationCount</span>
+                    <span class="notification-icon" aria-hidden="true">🔔</span>
                 </button>
-                <button class="rbm-user-menu" @onclick="ToggleRoleMenu">
-                    <img src="https://ui-avatars.com/api/?name=@CurrentUser.UserName.Replace(" ", "+")&background=607d8b&color=fff" alt="User" class="rbm-avatar">
+
+                <!-- Theme Toggle -->
+                <ThemeToggle />
+
+                <!-- User Menu -->
+                <button class="rbm-user-menu" @onclick="ToggleRoleMenu" aria-label="@CurrentUser.UserName (@CurrentUser.Role)">
+                    <img src="https://ui-avatars.com/api/?name=@CurrentUser.UserName.Replace(" ", "+")&background=607d8b&color=fff" alt="@CurrentUser.UserName avatar" class="rbm-avatar">
                     <div class="rbm-user-info">
                         <div class="rbm-user-name">@CurrentUser.UserName</div>
                         <div class="rbm-user-role">@CurrentUser.Role</div>
                     </div>
                 </button>
+
+                <!-- Logout Button -->
                 <form action="Account/Logout" method="post" style="margin: 0;">
                     <AntiforgeryToken />
                     <input type="hidden" name="ReturnUrl" value="~/" />
-                    <button type="submit" class="rbm-btn rbm-btn-outline rbm-btn-sm" title="Sign out" style="border-color: var(--rbm-danger); color: var(--rbm-danger);">
-                        <span class="logout-icon">🚪</span> Logout
+                    <button type="submit" class="rbm-btn rbm-btn-outline rbm-btn-sm" title="Sign out" aria-label="Sign out">
+                        <span class="logout-icon" aria-hidden="true">🚪</span> <span class="logout-text">Logout</span>
                     </button>
                 </form>
             </div>
-        </div>
+        </header>
 
-        <div class="rbm-content">
-            @Body
-        </div>
+        <!-- Main Content -->
+        <main class="rbm-content" role="main">
+            @if (!isInitialized)
+            {
+                <div style="display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 48px; margin-bottom: 16px; animation: spin 1s linear infinite;">⏳</div>
+                        <div style="font-size: 16px; color: var(--rbm-text-light);">Initializing layout...</div>
+                    </div>
+                </div>
+            }
+            else if (!string.IsNullOrEmpty(initError))
+            {
+                <div style="padding: 20px; margin: 20px; background: #ffebee; border: 1px solid #e53935; border-radius: 8px; color: #c62828;">
+                    <div style="font-weight: 600; margin-bottom: 8px;">⚠️ Layout Initialization Error</div>
+                    <div style="font-size: 14px; margin-bottom: 12px;">@initError</div>
+                    <button class="rbm-btn rbm-btn-primary" @onclick="() => { initError = null; StateHasChanged(); }">
+                        🔄 Retry
+                    </button>
+                </div>
+            }
+            else
+            {
+                @Body
+            }
+        </main>
     </div>
 </div>
 
 <!-- Mobile Menu Overlay -->
 @if (isMobileMenuOpen)
 {
-    <div class="rbm-mobile-overlay" @onclick="CloseMobileMenu"></div>
+    <div class="rbm-mobile-overlay" @onclick="CloseMobileMenu" role="presentation"></div>
 }
 
 <!-- User Profile Modal -->
 @if (showRoleMenu)
 {
-    <div class="rbm-modal-backdrop" @onclick="ToggleRoleMenu">
-        <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 400px;">
+    <div class="rbm-modal-backdrop" @onclick="ToggleRoleMenu" role="presentation">
+        <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 400px;" role="dialog" aria-labelledby="profile-modal-title">
             <div class="rbm-modal-header">
-                <h3 class="rbm-modal-title">User Profile</h3>
-                <button class="rbm-modal-close" @onclick="ToggleRoleMenu">&times;</button>
+                <h2 class="rbm-modal-title" id="profile-modal-title">User Profile</h2>
+                <button class="rbm-modal-close" @onclick="ToggleRoleMenu" aria-label="Close dialog">&times;</button>
             </div>
             <div class="rbm-modal-body">
                 <div style="margin-bottom: 20px;">
@@ -172,33 +237,37 @@
                     <p style="font-size: 14px; color: var(--rbm-text-light); margin-bottom: 12px;">
                         <strong>Demo Mode:</strong> Switch roles to see different permissions
                     </p>
-                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <div style="display: flex; flex-direction: column, gap: 8px;">
                         <button class="rbm-btn @(CurrentUser.Role == "Admin" ? "rbm-btn-primary" : "rbm-btn-outline")" 
-                                @onclick='() => SwitchRole("Admin User", "Admin", "admin@company.com", "Management")'>
-                            <span class="role-icon">👑</span> Admin (Full Access)
+                                @onclick='() => SwitchRole("Admin User", "Admin", "admin@company.com", "Management")'
+                                title="Switch to Admin role">
+                            <span class="role-icon" aria-hidden="true">👑</span> Admin (Full Access)
                         </button>
                         <button class="rbm-btn @(CurrentUser.Role == "Reliability Engineer" ? "rbm-btn-primary" : "rbm-btn-outline")" 
-                                @onclick='() => SwitchRole("Sarah Johnson", "Reliability Engineer", "sarah.johnson@company.com", "Engineering")'>
-                            <span class="role-icon">🔧</span> Reliability Engineer
+                                @onclick='() => SwitchRole("Sarah Johnson", "Reliability Engineer", "sarah.johnson@company.com", "Engineering")'
+                                title="Switch to Reliability Engineer role">
+                            <span class="role-icon" aria-hidden="true">🔧</span> Reliability Engineer
                         </button>
                         <button class="rbm-btn @(CurrentUser.Role == "Planner" ? "rbm-btn-primary" : "rbm-btn-outline")" 
-                                @onclick='() => SwitchRole("Emily Brown", "Planner", "emily.brown@company.com", "Planning")'>
-                            <span class="role-icon">📋</span> Planner
+                                @onclick='() => SwitchRole("Emily Brown", "Planner", "emily.brown@company.com", "Planning")'
+                                title="Switch to Planner role">
+                            <span class="role-icon" aria-hidden="true">📋</span> Planner
                         </button>
                         <button class="rbm-btn @(CurrentUser.Role == "Technician" ? "rbm-btn-primary" : "rbm-btn-outline")" 
-                                @onclick='() => SwitchRole("John Smith", "Technician", "john.smith@company.com", "Maintenance")'>
-                            <span class="role-icon">👷</span> Technician (Limited Access)
+                                @onclick='() => SwitchRole("John Smith", "Technician", "john.smith@company.com", "Maintenance")'
+                                title="Switch to Technician role">
+                            <span class="role-icon" aria-hidden="true">👷</span> Technician (Limited Access)
                         </button>
                     </div>
                 </div>
                 
                 <div style="margin-top: 20px;">
-                    <a href="/Account/Manage" class="rbm-btn rbm-btn-outline" style="width: 100%; text-align: center; display: inline-block; text-decoration: none;">
-                        <span class="settings-icon">⚙️</span> Account Settings
+                    <a href="/Account/Manage" class="rbm-btn rbm-btn-outline" style="width: 100%; text-align: center; display: inline-block; text-decoration: none;" title="Manage account settings">
+                        <span class="settings-icon" aria-hidden="true">⚙️</span> Account Settings
                     </a>
                     <form action="/Account/Logout" method="post" style="margin-top: 8px;">
-                        <button type="submit" class="rbm-btn rbm-btn-outline" style="width: 100%; color: var(--rbm-danger);">
-                            <span class="logout-icon">🚪</span> Logout
+                        <button type="submit" class="rbm-btn rbm-btn-outline" style="width: 100%; color: var(--rbm-danger);" title="Sign out">
+                            <span class="logout-icon" aria-hidden="true">🚪</span> Logout
                         </button>
                     </form>
                 </div>
@@ -207,7 +276,7 @@
     </div>
 }
 
-<div id="blazor-error-ui" data-nosnippet>
+<div id="blazor-error-ui" data-nosnippet role="alert">
     An unhandled error has occurred.
     <a href="." class="reload">Reload</a>
     <span class="dismiss">🗙</span>
@@ -216,22 +285,73 @@
 @code {
     private bool showRoleMenu = false;
     private bool isMobileMenuOpen = false;
+    private int notificationCount = 3;
+    private bool isInitialized = false;
+    private string? initError = null;
 
     protected override async Task OnInitializedAsync()
     {
-        await CurrentUser.InitializeAsync();
-        Navigation.LocationChanged += OnLocationChanged;
+        try
+        {
+            // Initialize current user
+            await CurrentUser.InitializeAsync();
+            
+            // Initialize theme globally - this applies to all pages using RBMLayout
+            await ThemeService.InitializeThemeAsync();
+            
+            // Subscribe to theme changes
+            ThemeService.OnThemeChanged += OnThemeChanged;
+            
+            Navigation.LocationChanged += OnLocationChanged;
+            
+            isInitialized = true;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error initializing RBMLayout: {ex.Message}");
+            initError = $"Failed to initialize layout: {ex.Message}";
+            isInitialized = true;
+        }
     }
 
-    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    private void OnThemeChanged()
     {
-        CloseMobileMenu();
-        StateHasChanged();
+        try
+        {
+            // Theme changed, update UI if needed
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error updating theme: {ex.Message}");
+        }
+    }
+
+    private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        try
+        {
+            CloseMobileMenu();
+            await ThemeService.InitializeThemeAsync(); // Re-apply theme on navigation
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error on location changed: {ex.Message}");
+        }
     }
 
     private void ToggleMobileMenu()
     {
-        isMobileMenuOpen = !isMobileMenuOpen;
+        try
+        {
+            isMobileMenuOpen = !isMobileMenuOpen;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error toggling mobile menu: {ex.Message}");
+        }
     }
 
     private void CloseMobileMenu()
@@ -241,27 +361,64 @@
 
     private void ToggleRoleMenu()
     {
-        showRoleMenu = !showRoleMenu;
-        if (showRoleMenu)
+        try
         {
-            CloseMobileMenu();
+            showRoleMenu = !showRoleMenu;
+            if (showRoleMenu)
+            {
+                CloseMobileMenu();
+            }
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error toggling role menu: {ex.Message}");
         }
     }
 
     private void ShowNotifications()
     {
-        // TODO: Implement notifications
+        try
+        {
+            // TODO: Implement notifications panel
+            System.Diagnostics.Debug.WriteLine("ShowNotifications called - not yet implemented");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error showing notifications: {ex.Message}");
+        }
     }
 
     private void SwitchRole(string userName, string role, string email, string department)
     {
-        CurrentUser.SetUser(userName, role, email, department);
-        showRoleMenu = false;
-        StateHasChanged();
+        try
+        {
+            if (string.IsNullOrWhiteSpace(userName) || string.IsNullOrWhiteSpace(role))
+            {
+                throw new ArgumentException("User name and role are required");
+            }
+
+            CurrentUser.SetUser(userName, role, email, department);
+            showRoleMenu = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error switching role: {ex.Message}");
+            initError = $"Failed to switch role: {ex.Message}";
+        }
     }
 
     public void Dispose()
     {
-        Navigation.LocationChanged -= OnLocationChanged;
+        try
+        {
+            Navigation.LocationChanged -= OnLocationChanged;
+            ThemeService.OnThemeChanged -= OnThemeChanged;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error during dispose: {ex.Message}");
+        }
     }
 }

@@ -5,7 +5,26 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="RBM CMMS - Reliability-Based Maintenance Management System" />
+    <meta name="theme-color" content="#0288d1" />
+    
+    <!-- Theme initialization - MUST be before any content renders -->
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('rbm-theme');
+            if (savedTheme === 'dark') {
+                document.documentElement.classList.add('dark-mode');
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        })();
+    </script>
+    
     <link rel="stylesheet" href="css/rbm-styles.css" />
+    <title>RBM CMMS - Reliability-Based Maintenance Management System</title>
+    
+    <!-- Load theme manager for interactive features -->
+    <script src="js/theme-manager.js"></script>
+    
     <style>
         :root {
             --rbm-primary: #37474f;
@@ -27,15 +46,56 @@
             box-sizing: border-box;
         }
 
+        html {
+            scroll-behavior: smooth;
+        }
+
         body {
             margin: 0;
-            font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
             background: var(--rbm-bg);
             color: var(--rbm-text);
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        input, button, textarea, select {
+            font-family: inherit;
+        }
+
+        :focus-visible {
+            outline: 2px solid var(--rbm-accent);
+            outline-offset: 2px;
+        }
+
+        .skip-to-content {
+            position: absolute;
+            top: -40px;
+            left: 0;
+            background: var(--rbm-accent);
+            color: white;
+            padding: 8px;
+            text-decoration: none;
+            z-index: 100;
+        }
+
+        .skip-to-content:focus {
+            top: 0;
         }
     </style>
 </head>
 <body>
-    @Body
+    <a href="#main-content" class="skip-to-content">Skip to main content</a>
+    <main id="main-content">
+        @Body
+    </main>
+
+    <!-- Error boundary -->
+    <noscript>
+        <div style="padding: 20px; text-align: center; background: #fff3cd; border: 1px solid #ffc107;">
+            <p>JavaScript is required to use this application. Please enable JavaScript in your browser settings.</p>
+        </div>
+    </noscript>
 </body>
 </html>

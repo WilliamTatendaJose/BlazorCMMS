@@ -1,0 +1,367 @@
+@page "/rbm/tenants-diagnostics"
+@using BlazorApp1.Services
+@using BlazorApp1.Models
+@using BlazorApp1.Data
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+
+@layout RBMLayout
+
+@inject ITenantManagementService TenantManagementService
+@inject ITenantService TenantService
+@inject IDbContextFactory<ApplicationDbContext> ContextFactory
+@inject CurrentUserService CurrentUser
+
+@attribute [Authorize(Roles = "SuperAdmin")]
+
+<div class="container-fluid p-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="mb-3">?? Tenant System Diagnostics</h2>
+            <button class="btn btn-secondary me-2" @onclick="RunDiagnostics">Run All Diagnostics</button>
+            <button class="btn btn-secondary" @onclick="ClearResults">Clear Results</button>
+        </div>
+    </div>
+
+    @if (isRunningDiagnostics)
+    {
+        <div class="alert alert-info">
+            <span class="spinner-border spinner-border-sm me-2"></span> Running diagnostics...
+        </div>
+    }
+
+    @if (diagnosticResults != null && diagnosticResults.Count > 0)
+    {
+        <div class="row">
+            @foreach (var result in diagnosticResults)
+            {
+                <div class="col-12 mb-3">
+                    <div class="card">
+                        <div class="card-header bg-@(result.IsSuccess ? "success" : "warning") text-white">
+                            <h5 class="mb-0">
+                                @(result.IsSuccess ? "?" : "??") @result.TestName
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <p>@result.Message</p>
+                            @if (!string.IsNullOrEmpty(result.Details))
+                            {
+                                <pre class="bg-light p-3 rounded">@result.Details</pre>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @if (showTestForm)
+    {
+        <div class="card mt-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">?? Test Tenant Creation</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="testCode" class="form-label">Tenant Code</label>
+                    <input type="text" class="form-control" id="testCode" @bind="testTenantCode" placeholder="TEST_CODE_@(DateTime.Now.Ticks % 10000)" />
+                </div>
+                <div class="mb-3">
+                    <label for="testName" class="form-label">Tenant Name</label>
+                    <input type="text" class="form-control" id="testName" @bind="testTenantName" placeholder="Test Tenant" />
+                </div>
+                <button class="btn btn-primary" @onclick="TestCreateTenant" disabled="@isTestingCreation">
+                    @if (isTestingCreation)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                        <span>Creating...</span>
+                    }
+                    else
+                    {
+                        <span>Test Tenant Creation</span>
+                    }
+                </button>
+
+                @if (!string.IsNullOrEmpty(testResult))
+                {
+                    <div class="alert @(testResultSuccess ? "alert-success" : "alert-danger") mt-3">
+                        @testResult
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<DiagnosticResult> diagnosticResults = new();
+    private bool isRunningDiagnostics = false;
+    private bool showTestForm = true;
+    private bool isTestingCreation = false;
+    private string? testTenantCode;
+    private string? testTenantName;
+    private string? testResult;
+    private bool testResultSuccess = false;
+
+    private class DiagnosticResult
+    {
+        public string TestName { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+        public string? Details { get; set; }
+        public bool IsSuccess { get; set; }
+    }
+
+    private async Task RunDiagnostics()
+    {
+        isRunningDiagnostics = true;
+        diagnosticResults.Clear();
+        StateHasChanged();
+
+        try
+        {
+            // Test 1: Check authorization
+            await TestAuthorization();
+            StateHasChanged();
+
+            // Test 2: Check database connection
+            await TestDatabaseConnection();
+            StateHasChanged();
+
+            // Test 3: Check Tenants table
+            await TestTenantsTable();
+            StateHasChanged();
+
+            // Test 4: Check TenantManagementService
+            await TestTenantService();
+            StateHasChanged();
+
+            // Test 5: Test create operation
+            await TestCreateOperation();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            diagnosticResults.Add(new DiagnosticResult
+            {
+                TestName = "Fatal Error",
+                Message = ex.Message,
+                Details = ex.StackTrace,
+                IsSuccess = false
+            });
+            StateHasChanged();
+        }
+        finally
+        {
+            isRunningDiagnostics = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task TestAuthorization()
+    {
+        try
+        {
+            var result = new DiagnosticResult { TestName = "Authorization Check" };
+            await CurrentUser.InitializeAsync();
+
+            if (CurrentUser.IsAdmin)
+            {
+                result.IsSuccess = true;
+                result.Message = $"? Logged in as: {CurrentUser.UserName}";
+                result.Details = $"Role: {CurrentUser.Role}\nEmail: {CurrentUser.Email}";
+            }
+            else
+            {
+                result.IsSuccess = false;
+                result.Message = "? User is not SuperAdmin";
+                result.Details = $"Current role: {CurrentUser.Role}";
+            }
+
+            diagnosticResults.Add(result);
+        }
+        catch (Exception ex)
+        {
+            diagnosticResults.Add(new DiagnosticResult
+            {
+                TestName = "Authorization Check",
+                Message = $"? Error: {ex.Message}",
+                IsSuccess = false
+            });
+        }
+    }
+
+    private async Task TestDatabaseConnection()
+    {
+        try
+        {
+            var result = new DiagnosticResult { TestName = "Database Connection" };
+
+            using var context = ContextFactory.CreateDbContext();
+            // Test connection by trying to count tenants
+            var count = await context.Tenants.CountAsync();
+
+            result.IsSuccess = true;
+            result.Message = "? Database connection successful";
+            result.Details = $"Successfully queried Tenants table";
+
+            diagnosticResults.Add(result);
+        }
+        catch (Exception ex)
+        {
+            diagnosticResults.Add(new DiagnosticResult
+            {
+                TestName = "Database Connection",
+                Message = $"? Error: {ex.Message}",
+                Details = ex.InnerException?.Message,
+                IsSuccess = false
+            });
+        }
+    }
+
+    private async Task TestTenantsTable()
+    {
+        try
+        {
+            var result = new DiagnosticResult { TestName = "Tenants Table" };
+
+            using var context = ContextFactory.CreateDbContext();
+            var count = await context.Tenants.CountAsync();
+
+            result.IsSuccess = true;
+            result.Message = $"? Tenants table accessible";
+            result.Details = $"Total tenants in database: {count}";
+
+            diagnosticResults.Add(result);
+        }
+        catch (Exception ex)
+        {
+            diagnosticResults.Add(new DiagnosticResult
+            {
+                TestName = "Tenants Table",
+                Message = $"? Error accessing Tenants table",
+                Details = ex.Message,
+                IsSuccess = false
+            });
+        }
+    }
+
+    private async Task TestTenantService()
+    {
+        try
+        {
+            var result = new DiagnosticResult { TestName = "Tenant Service" };
+
+            var tenants = await TenantManagementService.GetAllTenantsAsync();
+
+            result.IsSuccess = true;
+            result.Message = $"? TenantManagementService working";
+            result.Details = $"Service returned {tenants.Count} tenants";
+
+            diagnosticResults.Add(result);
+        }
+        catch (Exception ex)
+        {
+            diagnosticResults.Add(new DiagnosticResult
+            {
+                TestName = "Tenant Service",
+                Message = $"? Error: {ex.Message}",
+                IsSuccess = false
+            });
+        }
+    }
+
+    private async Task TestCreateOperation()
+    {
+        try
+        {
+            var result = new DiagnosticResult { TestName = "Create Operation Simulation" };
+
+            // Try to create a test tenant with unique code
+            var testCode = $"DIAG_{DateTime.Now.Ticks}";
+            var testName = "Diagnostic Test";
+
+            var createdTenant = await TenantManagementService.CreateTenantAsync(testCode, testName, "DiagnosticTest");
+
+            if (createdTenant != null)
+            {
+                result.IsSuccess = true;
+                result.Message = "? Tenant creation works";
+                result.Details = $"Created tenant ID: {createdTenant.Id}\nCode: {createdTenant.TenantCode}";
+
+                // Clean up - delete the test tenant
+                await TenantManagementService.DeleteTenantAsync(createdTenant.Id);
+            }
+            else
+            {
+                result.IsSuccess = false;
+                result.Message = "? CreateTenantAsync returned null";
+            }
+
+            diagnosticResults.Add(result);
+        }
+        catch (Exception ex)
+        {
+            diagnosticResults.Add(new DiagnosticResult
+            {
+                TestName = "Create Operation Simulation",
+                Message = $"? Error: {ex.Message}",
+                Details = ex.StackTrace,
+                IsSuccess = false
+            });
+        }
+    }
+
+    private async Task TestCreateTenant()
+    {
+        if (string.IsNullOrWhiteSpace(testTenantCode) || string.IsNullOrWhiteSpace(testTenantName))
+        {
+            testResult = "? Please fill in all fields";
+            testResultSuccess = false;
+            StateHasChanged();
+            return;
+        }
+
+        isTestingCreation = true;
+        testResult = null;
+        StateHasChanged();
+
+        try
+        {
+            var created = await TenantManagementService.CreateTenantAsync(
+                testTenantCode.Trim(),
+                testTenantName.Trim(),
+                "SuperAdmin");
+
+            if (created != null)
+            {
+                testResult = $"? Success! Created tenant ID: {created.Id}";
+                testResultSuccess = true;
+                testTenantCode = string.Empty;
+                testTenantName = string.Empty;
+            }
+            else
+            {
+                testResult = "? Failed to create tenant (null response)";
+                testResultSuccess = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            testResult = $"? Error: {ex.Message}";
+            testResultSuccess = false;
+        }
+        finally
+        {
+            isTestingCreation = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ClearResults()
+    {
+        diagnosticResults.Clear();
+        testResult = null;
+        StateHasChanged();
+    }
+}
+

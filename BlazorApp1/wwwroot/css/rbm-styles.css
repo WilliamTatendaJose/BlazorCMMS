@@ -1,4 +1,4 @@
-/* RBM CMMS - Industrial Blue-Grey Theme */
+/* RBM CMMS - Industrial Blue-Grey Theme with Dark Mode Support */
 
 :root {
     --rbm-primary: #37474f;
@@ -14,8 +14,28 @@
     --rbm-border: #cfd8dc;
     --rbm-text: #263238;
     --rbm-text-light: #607d8b;
+    --rbm-bg-primary: #f5f5f5;
     --rbm-sidebar-width: 240px;
     --rbm-topbar-height: 64px;
+}
+
+/* Dark Mode */
+html.dark-mode,
+html[data-theme="dark"] {
+    --rbm-primary: #1a1a1a;
+    --rbm-primary-light: #2d2d2d;
+    --rbm-primary-dark: #0d0d0d;
+    --rbm-accent: #42a5f5;
+    --rbm-accent-light: #64b5f6;
+    --rbm-success: #66bb6a;
+    --rbm-warning: #ffa726;
+    --rbm-danger: #ef5350;
+    --rbm-bg: #121212;
+    --rbm-card-bg: #1e1e1e;
+    --rbm-border: #333333;
+    --rbm-text: #e0e0e0;
+    --rbm-text-light: #b0b0b0;
+    --rbm-bg-primary: #1a1a1a;
 }
 
 * {
@@ -27,6 +47,7 @@ body {
     font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: var(--rbm-bg);
     color: var(--rbm-text);
+    transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* Layout */
@@ -44,6 +65,7 @@ body {
     flex-direction: column;
     box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
     z-index: 100;
+    transition: background-color 0.3s ease;
 }
 
 .rbm-sidebar-header {
@@ -118,6 +140,11 @@ body {
     justify-content: space-between;
     padding: 0 24px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+html.dark-mode .rbm-topbar {
+    background: var(--rbm-card-bg);
 }
 
 .rbm-search {
@@ -133,6 +160,8 @@ body {
     font-size: 14px;
     outline: none;
     transition: border-color 0.2s;
+    background: var(--rbm-card-bg);
+    color: var(--rbm-text);
 }
 
 .rbm-search-input:focus {
@@ -163,6 +192,7 @@ body {
     cursor: pointer;
     font-size: 20px;
     transition: background 0.2s;
+    color: var(--rbm-text);
 }
 
 .rbm-icon-button:hover {
@@ -189,6 +219,9 @@ body {
     border-radius: 8px;
     cursor: pointer;
     transition: background 0.2s;
+    background: transparent;
+    border: none;
+    color: var(--rbm-text);
 }
 
 .rbm-user-menu:hover {
@@ -205,6 +238,8 @@ body {
     flex: 1;
     overflow-y: auto;
     padding: 24px;
+    background: var(--rbm-bg);
+    transition: background-color 0.3s ease;
 }
 
 /* Cards */
@@ -214,6 +249,11 @@ body {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     padding: 20px;
     margin-bottom: 24px;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+html.dark-mode .rbm-card {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .rbm-card-header {
@@ -228,12 +268,14 @@ body {
     font-weight: 600;
     color: var(--rbm-text);
     margin: 0;
+    transition: color 0.3s ease;
 }
 
 .rbm-card-subtitle {
     font-size: 14px;
     color: var(--rbm-text-light);
     margin-top: 4px;
+    transition: color 0.3s ease;
 }
 
 /* Grid */
@@ -260,12 +302,20 @@ body {
     border-radius: 12px;
     padding: 20px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    transition: transform 0.2s, box-shadow 0.2s;
+    transition: transform 0.2s, box-shadow 0.2s, background-color 0.3s ease;
+}
+
+html.dark-mode .rbm-stat-card {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .rbm-stat-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+html.dark-mode .rbm-stat-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .rbm-stat-label {
@@ -275,6 +325,7 @@ body {
     margin-bottom: 8px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    transition: color 0.3s ease;
 }
 
 .rbm-stat-value {
@@ -282,6 +333,7 @@ body {
     font-weight: 700;
     color: var(--rbm-text);
     margin-bottom: 8px;
+    transition: color 0.3s ease;
 }
 
 .rbm-stat-trend {
@@ -344,10 +396,13 @@ body {
     background: transparent;
     border: 1px solid var(--rbm-border);
     color: var(--rbm-text);
+    transition: all 0.2s;
 }
 
 .rbm-btn-outline:hover {
     background: var(--rbm-bg);
+    border-color: var(--rbm-accent);
+    color: var(--rbm-accent);
 }
 
 .rbm-btn-sm {
@@ -367,6 +422,7 @@ body {
 
 .rbm-table thead {
     background: var(--rbm-bg);
+    transition: background-color 0.3s ease;
 }
 
 .rbm-table th {
@@ -377,11 +433,15 @@ body {
     color: var(--rbm-text-light);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    transition: color 0.3s ease;
 }
 
 .rbm-table td {
     padding: 16px 12px;
     border-bottom: 1px solid var(--rbm-border);
+    transition: border-color 0.3s ease;
+    color: var(--rbm-text);
+    transition: color 0.3s ease;
 }
 
 .rbm-table tbody tr:hover {
@@ -440,6 +500,7 @@ body {
     font-weight: 500;
     color: var(--rbm-text);
     margin-bottom: 8px;
+    transition: color 0.3s ease;
 }
 
 .rbm-form-input,
@@ -452,7 +513,9 @@ body {
     font-size: 14px;
     font-family: inherit;
     outline: none;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s, background-color 0.3s ease, color 0.3s ease;
+    background: var(--rbm-card-bg);
+    color: var(--rbm-text);
 }
 
 .rbm-form-input:focus,
@@ -472,6 +535,7 @@ body {
     align-items: center;
     gap: 8px;
     font-weight: 600;
+    color: var(--rbm-text);
 }
 
 .rbm-health-dot {
@@ -503,11 +567,17 @@ body {
     justify-content: center;
     color: var(--rbm-text-light);
     font-size: 14px;
+    transition: background-color 0.3s ease;
 }
 
 /* Page Header */
 .rbm-page-header {
     margin-bottom: 24px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
 }
 
 .rbm-page-title {
@@ -515,11 +585,13 @@ body {
     font-weight: 700;
     color: var(--rbm-text);
     margin: 0 0 8px 0;
+    transition: color 0.3s ease;
 }
 
 .rbm-page-subtitle {
     font-size: 16px;
     color: var(--rbm-text-light);
+    transition: color 0.3s ease;
 }
 
 /* Action Bar */
@@ -550,13 +622,18 @@ body {
 }
 
 .rbm-modal {
-    background: white;
+    background: var(--rbm-card-bg);
     border-radius: 12px;
     max-width: 600px;
     width: 90%;
     max-height: 90vh;
     overflow-y: auto;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    transition: background-color 0.3s ease;
+}
+
+html.dark-mode .rbm-modal {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
 .rbm-modal-header {
@@ -565,12 +642,15 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    transition: border-color 0.3s ease;
 }
 
 .rbm-modal-title {
     font-size: 20px;
     font-weight: 600;
     margin: 0;
+    color: var(--rbm-text);
+    transition: color 0.3s ease;
 }
 
 .rbm-modal-close {
@@ -579,10 +659,12 @@ body {
     font-size: 24px;
     cursor: pointer;
     color: var(--rbm-text-light);
+    transition: color 0.3s ease;
 }
 
 .rbm-modal-body {
     padding: 20px;
+    color: var(--rbm-text);
 }
 
 .rbm-modal-footer {
@@ -591,6 +673,7 @@ body {
     display: flex;
     gap: 12px;
     justify-content: flex-end;
+    transition: border-color 0.3s ease;
 }
 
 /* Mobile Navigation */
@@ -604,6 +687,7 @@ body {
     padding: 0 16px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     z-index: 150;
+    transition: background-color 0.3s ease;
 }
 
 .rbm-mobile-menu-toggle {
@@ -692,11 +776,14 @@ body {
 .rbm-user-name {
     font-weight: 600;
     font-size: 14px;
+    color: var(--rbm-text);
+    transition: color 0.3s ease;
 }
 
 .rbm-user-role {
     font-size: 11px;
     color: var(--rbm-text-light);
+    transition: color 0.3s ease;
 }
 
 /* Make buttons clickable */
@@ -710,6 +797,26 @@ body {
 .rbm-user-menu {
     background: transparent;
     transition: background 0.2s;
+}
+
+/* Theme Toggle Button */
+.theme-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 18px;
+    transition: background 0.2s;
+    color: var(--rbm-text);
+}
+
+.theme-toggle-btn:hover {
+    background: var(--rbm-bg);
 }
 
 /* Responsive */

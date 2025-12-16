@@ -1,0 +1,1122 @@
+﻿@page "/rbm/documents"
+@rendermode InteractiveServer
+@layout RBMLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject BlazorApp1.Services.DataService DataService
+@inject BlazorApp1.Services.CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@using BlazorApp1.Models
+@using BlazorApp1.Components.Shared
+@using Microsoft.AspNetCore.Components.Forms
+
+<PageTitle>Documents | RBM CMMS</PageTitle>
+
+<div class="rbm-page-header">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+            <h1 class="rbm-page-title">📄 Document Management</h1>
+            <p class="rbm-page-subtitle">Centralized repository for manuals, procedures, drawings, and technical documents</p>
+        </div>
+    </div>
+</div>
+
+<!-- Enhanced Stats Grid -->
+<div class="rbm-stats-grid enhanced-stats">
+    <div class="rbm-stat-card elevated">
+        <div class="rbm-stat-icon gradient-blue">📄</div>
+        <div class="rbm-stat-content">
+            <div class="rbm-stat-value">@totalDocuments</div>
+            <div class="rbm-stat-label">Total Documents</div>
+            <div class="rbm-stat-detail">In repository</div>
+        </div>
+    </div>
+    <div class="rbm-stat-card elevated">
+        <div class="rbm-stat-icon gradient-orange">⏰</div>
+        <div class="rbm-stat-content">
+            <div class="rbm-stat-value">@needsReviewCount</div>
+            <div class="rbm-stat-label">Needs Review</div>
+            <div class="rbm-stat-detail">@(needsReviewCount > 0 ? "Review due" : "All up to date")</div>
+        </div>
+    </div>
+    <div class="rbm-stat-card elevated">
+        <div class="rbm-stat-icon gradient-red">⚠️</div>
+        <div class="rbm-stat-content">
+            <div class="rbm-stat-value">@expiredCount</div>
+            <div class="rbm-stat-label">Expired</div>
+            <div class="rbm-stat-detail">@(expiredCount > 0 ? "Update needed" : "None")</div>
+        </div>
+    </div>
+    <div class="rbm-stat-card elevated">
+        <div class="rbm-stat-icon gradient-green">✅</div>
+        <div class="rbm-stat-content">
+            <div class="rbm-stat-value">@activeCount</div>
+            <div class="rbm-stat-label">Active</div>
+            <div class="rbm-stat-detail">Current versions</div>
+        </div>
+    </div>
+</div>
+
+<!-- Enhanced Action Bar -->
+<div class="rbm-action-bar-enhanced">
+    <div class="rbm-action-buttons">
+        @if (CurrentUser.CanEdit)
+        {
+            <button class="rbm-btn rbm-btn-primary enhanced-btn" @onclick="ShowUploadModal">
+                <span class="btn-icon">⬆️</span>
+                <span class="btn-text">Upload Document</span>
+            </button>
+        }
+        <button class="rbm-btn @(showExpiredOnly ? "rbm-btn-danger" : "rbm-btn-outline") enhanced-btn" @onclick="ToggleExpired">
+            <span class="btn-icon">@(showExpiredOnly ? "✓" : "⚠️")</span>
+            <span class="btn-text">@(showExpiredOnly ? "Showing Expired" : "Expired Only")</span>
+        </button>
+        <button class="rbm-btn @(showReviewOnly ? "rbm-btn-warning" : "rbm-btn-outline") enhanced-btn" @onclick="ToggleReview">
+            <span class="btn-icon">@(showReviewOnly ? "✓" : "⏰")</span>
+            <span class="btn-text">@(showReviewOnly ? "Showing Review" : "Needs Review")</span>
+        </button>
+    </div>
+    <div class="rbm-filter-group-enhanced">
+        <div class="filter-item">
+            <label class="filter-label">Category</label>
+            <select class="rbm-form-select enhanced-select" @bind="filterCategory">
+                <option value="All">All Categories</option>
+                <option value="Manual">Manuals</option>
+                <option value="SOP">SOPs</option>
+                <option value="Drawing">Drawings</option>
+                <option value="Certificate">Certificates</option>
+                <option value="Report">Reports</option>
+                <option value="Photo">Photos</option>
+                <option value="Specification">Specifications</option>
+                <option value="Invoice">Invoices</option>
+                <option value="Warranty">Warranties</option>
+            </select>
+        </div>
+        <div class="filter-item">
+            <label class="filter-label">Status</label>
+            <select class="rbm-form-select enhanced-select" @bind="filterStatus">
+                <option value="All">All Status</option>
+                <option value="Draft">Draft</option>
+                <option value="Under Review">Under Review</option>
+                <option value="Approved">Approved</option>
+                <option value="Active">Active</option>
+                <option value="Archived">Archived</option>
+                <option value="Obsolete">Obsolete</option>
+            </select>
+        </div>
+        <div class="filter-item">
+            <label class="filter-label">Search</label>
+            <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="text" class="rbm-form-input" @bind="searchTerm" @bind:event="oninput" placeholder="Search documents..." />
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Enhanced Documents Table -->
+<div class="rbm-card enhanced-card">
+    <div class="rbm-card-header-enhanced">
+        <h2 class="rbm-card-title-enhanced">📋 Documents List</h2>
+        <span class="rbm-badge rbm-badge-info">@GetFilteredDocuments().Count items</span>
+    </div>
+    <div class="rbm-table-container-enhanced">
+        @if (GetFilteredDocuments().Count == 0)
+        {
+            <div class="empty-state">
+                <div class="empty-icon">📭</div>
+                <h3>No documents found!</h3>
+                <p>Try adjusting your filters or upload new documents to get started</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="rbm-table enhanced-table">
+                    <thead>
+                        <tr>
+                            <th>📄 Document</th>
+                            <th>📌 Info</th>
+                            <th>🔗 Linked</th>
+                            <th>📊 Stats</th>
+                            <th>⚙️ Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var doc in GetFilteredDocuments())
+                        {
+                            <tr class="@(doc.IsExpired ? "expired-row" : doc.NeedsReview ? "review-row" : "")">
+                                <td>
+                                    <div class="doc-info">
+                                        <div class="doc-number">@doc.DocumentNumber</div>
+                                        <div class="doc-title">@doc.Title</div>
+                                        @if (!string.IsNullOrEmpty(doc.Description))
+                                        {
+                                            <div class="doc-description">@(doc.Description.Length > 50 ? doc.Description.Substring(0, 50) + "..." : doc.Description)</div>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="doc-meta">
+                                        <div><span class="rbm-badge rbm-badge-secondary">@doc.Category</span></div>
+                                        @if (!string.IsNullOrEmpty(doc.SubCategory))
+                                        {
+                                            <div style="font-size: 11px; margin-top: 4px; color: var(--rbm-text-light);">@doc.SubCategory</div>
+                                        }
+                                        <div style="margin-top: 6px; font-size: 12px;">
+                                            <strong>v@doc.Version</strong>
+                                            <span style="color: var(--rbm-text-light); margin-left: 4px;">Rev@doc.RevisionNumber</span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="doc-links">
+                                        @if (doc.AssetId.HasValue && doc.Asset != null)
+                                        {
+                                            <div><span class="rbm-badge rbm-badge-primary">⚙️ @doc.Asset.AssetId</span></div>
+                                        }
+                                        @if (doc.WorkOrderId.HasValue && doc.WorkOrder != null)
+                                        {
+                                            <div style="margin-top: 4px;"><span class="rbm-badge rbm-badge-secondary">📋 @doc.WorkOrder.WorkOrderId</span></div>
+                                        }
+                                        @if (!doc.AssetId.HasValue && !doc.WorkOrderId.HasValue)
+                                        {
+                                            <span style="color: var(--rbm-text-light); font-size: 12px;">Generic</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="doc-stats">
+                                        <div class="stat-item">
+                                            <span class="stat-icon">👁️</span>
+                                            <span class="stat-value">@doc.ViewCount</span>
+                                        </div>
+                                        <div class="stat-item">
+                                            <span class="stat-icon">⬇️</span>
+                                            <span class="stat-value">@doc.DownloadCount</span>
+                                        </div>
+                                        <div class="status-badge">
+                                            <span class="rbm-badge @GetStatusClass(doc.Status)">@doc.Status</span>
+                                            @if (doc.IsExpired)
+                                            {
+                                                <span class="rbm-badge rbm-badge-danger" style="margin-left: 4px;">Expired</span>
+                                            }
+                                            @if (doc.NeedsReview)
+                                            {
+                                                <span class="rbm-badge rbm-badge-warning" style="margin-left: 4px;">Review</span>
+                                            }
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="action-buttons">
+                                        <button class="rbm-btn rbm-btn-primary rbm-btn-sm action-btn" @onclick="() => OpenDocumentViewer(doc)" title="View Document">
+                                            👁️ View
+                                        </button>
+                                        <button class="rbm-btn rbm-btn-outline rbm-btn-sm action-btn" @onclick="() => ViewDocumentDetails(doc)" title="Details">
+                                            ℹ️
+                                        </button>
+                                        @if (CurrentUser.CanEdit)
+                                        {
+                                            <button class="rbm-btn rbm-btn-outline rbm-btn-sm action-btn" @onclick="() => EditDocument(doc)" title="Edit">
+                                                ✏️
+                                            </button>
+                                        }
+                                        @if (CurrentUser.CanDelete)
+                                        {
+                                            <button class="rbm-btn rbm-btn-danger rbm-btn-sm action-btn" @onclick="() => ConfirmDeleteDocument(doc)" title="Delete">
+                                                🗑️
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Document Viewer Modal -->
+@if (showDocumentViewer && viewerDocument != null)
+{
+    <div class="rbm-modal-backdrop document-viewer-backdrop" @onclick="CloseDocumentViewer">
+        <div class="document-viewer-modal" @onclick:stopPropagation="true">
+            <DocumentViewer Document="viewerDocument" 
+                           ShowCloseButton="true" 
+                           OnClose="CloseDocumentViewer"
+                           OnDownload="HandleDocumentDownload" />
+        </div>
+    </div>
+}
+
+<!-- Upload Document Modal -->
+@if (showUploadModal)
+{
+    <div class="rbm-modal-backdrop" @onclick="CloseUploadModal">
+        <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+            <div class="rbm-modal-header">
+                <h3 class="rbm-modal-title">@(editMode ? "✏️ Edit" : "⬆️ Upload") Document</h3>
+                <button class="rbm-modal-close" @onclick="CloseUploadModal">&times;</button>
+            </div>
+            <div class="rbm-modal-body">
+                @if (!string.IsNullOrEmpty(uploadMessage))
+                {
+                    <div class="alert @(uploadMessage.Contains("Error") ? "alert-danger" : uploadMessage.Contains("successfully") ? "alert-success" : "alert-info")" style="margin-bottom: 16px;">
+                        @uploadMessage
+                    </div>
+                }
+                
+                <div class="rbm-grid rbm-grid-2">
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Document Number *</label>
+                        <input type="text" class="rbm-form-input" @bind="currentDocument.DocumentNumber" placeholder="DOC-2024-001" readonly>
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Title *</label>
+                        <input type="text" class="rbm-form-input" @bind="currentDocument.Title" placeholder="Enter document title">
+                    </div>
+                </div>
+                
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Description</label>
+                    <textarea class="rbm-form-input" @bind="currentDocument.Description" rows="2" placeholder="Brief description of the document"></textarea>
+                </div>
+                
+                <div class="rbm-grid rbm-grid-3">
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Category *</label>
+                        <select class="rbm-form-select" @bind="currentDocument.Category">
+                            <option value="">-- Select Category --</option>
+                            <option value="Manual">Manual</option>
+                            <option value="SOP">SOP</option>
+                            <option value="Drawing">Drawing</option>
+                            <option value="Certificate">Certificate</option>
+                            <option value="Report">Report</option>
+                            <option value="Photo">Photo</option>
+                            <option value="Specification">Specification</option>
+                            <option value="Invoice">Invoice</option>
+                            <option value="Warranty">Warranty</option>
+                        </select>
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Sub-Category</label>
+                        <input type="text" class="rbm-form-input" @bind="currentDocument.SubCategory" placeholder="Optional subcategory">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Status</label>
+                        <select class="rbm-form-select" @bind="currentDocument.Status">
+                            <option value="Draft">Draft</option>
+                            <option value="Under Review">Under Review</option>
+                            <option value="Approved">Approved</option>
+                            <option value="Active">Active</option>
+                            <option value="Archived">Archived</option>
+                            <option value="Obsolete">Obsolete</option>
+                        </select>
+                    </div>
+                </div>
+                
+                @if (!editMode)
+                {
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">File Upload * (Max 50MB)</label>
+                        <div class="file-upload-zone @(isDragOver ? "drag-over" : "")" 
+                             @ondragenter="HandleDragEnter" 
+                             @ondragleave="HandleDragLeave"
+                             @ondragover:preventDefault="true">
+                            <InputFile OnChange="HandleFileSelected" class="file-input" 
+                                      accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.dwg,.dxf,.txt,.csv" />
+                            <div class="upload-content">
+                                <span class="upload-icon">📁</span>
+                                <p>Drag & drop files here or click to browse</p>
+                                <span class="upload-hint">PDF, Word, Excel, Images, CAD files (max 50MB)</span>
+                            </div>
+                        </div>
+                        @if (selectedFile != null)
+                        {
+                            <div class="selected-file">
+                                <span class="file-icon">@GetFileTypeIcon(selectedFile.Name)</span>
+                                <div class="file-details">
+                                    <strong>@selectedFile.Name</strong>
+                                    <span>@FormatFileSize(selectedFile.Size)</span>
+                                </div>
+                                <button class="remove-file" @onclick="RemoveSelectedFile">✕</button>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Current File</label>
+                        <div class="current-file-info">
+                            <span class="file-icon">@GetFileTypeIcon(currentDocument.FileName)</span>
+                            <div class="file-details">
+                                <strong>@currentDocument.FileName</strong>
+                                <span>@FormatFileSize(currentDocument.FileSize)</span>
+                            </div>
+                        </div>
+                    </div>
+                }
+                
+                <div class="rbm-grid rbm-grid-2">
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Version</label>
+                        <input type="text" class="rbm-form-input" @bind="currentDocument.Version" placeholder="1.0">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Revision Number</label>
+                        <input type="number" class="rbm-form-input" @bind="currentDocument.RevisionNumber" min="1">
+                    </div>
+                </div>
+                
+                <div class="rbm-grid rbm-grid-2">
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Link to Asset</label>
+                        <select class="rbm-form-select" @bind="currentDocument.AssetId">
+                            <option value="">-- None --</option>
+                            @foreach (var asset in assets)
+                            {
+                                <option value="@asset.Id">@asset.AssetId - @asset.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Link to Work Order</label>
+                        <select class="rbm-form-select" @bind="currentDocument.WorkOrderId">
+                            <option value="">-- None --</option>
+                            @foreach (var wo in workOrders)
+                            {
+                                <option value="@wo.Id">@wo.WorkOrderId - @wo.AssetName</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="rbm-grid rbm-grid-3">
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Author</label>
+                        <input type="text" class="rbm-form-input" @bind="currentDocument.Author" placeholder="Author name">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Department</label>
+                        <input type="text" class="rbm-form-input" @bind="currentDocument.Department" placeholder="e.g., Maintenance">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Access Level</label>
+                        <select class="rbm-form-select" @bind="currentDocument.AccessLevel">
+                            <option value="Public">Public</option>
+                            <option value="Restricted">Restricted</option>
+                            <option value="Confidential">Confidential</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="rbm-grid rbm-grid-3">
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Effective Date</label>
+                        <input type="date" class="rbm-form-input" @bind="currentDocument.EffectiveDate">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Expiry Date</label>
+                        <input type="date" class="rbm-form-input" @bind="currentDocument.ExpiryDate">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Review Date</label>
+                        <input type="date" class="rbm-form-input" @bind="currentDocument.ReviewDate">
+                    </div>
+                </div>
+                
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Tags (comma-separated)</label>
+                    <input type="text" class="rbm-form-input" @bind="currentDocument.Tags" placeholder="maintenance, pump, safety">
+                </div>
+                
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Notes</label>
+                    <textarea class="rbm-form-input" @bind="currentDocument.Notes" rows="2" placeholder="Additional notes"></textarea>
+                </div>
+            </div>
+            <div class="rbm-modal-footer">
+                <button class="rbm-btn rbm-btn-outline" @onclick="CloseUploadModal" disabled="@isUploading">Cancel</button>
+                <button class="rbm-btn rbm-btn-primary" @onclick="SaveDocument" disabled="@(isUploading || (!editMode && selectedFile == null))">
+                    @if (isUploading)
+                    {
+                        <span>⏳ @(editMode ? "Saving..." : "Uploading...")</span>
+                    }
+                    else
+                    {
+                        <span>@(editMode ? "💾 Update" : "⬆️ Upload")</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- View Document Details Modal -->
+@if (showViewModal && selectedDocument != null)
+{
+    <div class="rbm-modal-backdrop" @onclick="CloseViewModal">
+        <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 1000px; max-height: 90vh; overflow-y: auto;">
+            <div class="rbm-modal-header">
+                <h3 class="rbm-modal-title">📄 @selectedDocument.DocumentNumber - @selectedDocument.Title</h3>
+                <button class="rbm-modal-close" @onclick="CloseViewModal">&times;</button>
+            </div>
+            <div class="rbm-modal-body">
+                <div class="rbm-grid rbm-grid-4" style="margin-bottom: 20px;">
+                    <div class="rbm-stat-card">
+                        <div class="rbm-stat-content">
+                            <div class="rbm-stat-value">@selectedDocument.ViewCount</div>
+                            <div class="rbm-stat-label">Views</div>
+                        </div>
+                    </div>
+                    <div class="rbm-stat-card">
+                        <div class="rbm-stat-content">
+                            <div class="rbm-stat-value">@selectedDocument.DownloadCount</div>
+                            <div class="rbm-stat-label">Downloads</div>
+                        </div>
+                    </div>
+                    <div class="rbm-stat-card">
+                        <div class="rbm-stat-content">
+                            <div class="rbm-stat-value">@selectedDocument.Version</div>
+                            <div class="rbm-stat-label">Version</div>
+                        </div>
+                    </div>
+                    <div class="rbm-stat-card">
+                        <div class="rbm-stat-content">
+                            <div class="rbm-stat-value">@selectedDocument.FileSizeFormatted</div>
+                            <div class="rbm-stat-label">File Size</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="rbm-grid rbm-grid-2" style="margin-bottom: 20px;">
+                    <div>
+                        <h4>📋 Document Information</h4>
+                        <table class="info-table">
+                            <tr><td><strong>Category:</strong></td><td>@selectedDocument.Category @(!string.IsNullOrEmpty(selectedDocument.SubCategory) ? $"/ {selectedDocument.SubCategory}" : "")</td></tr>
+                            <tr><td><strong>Status:</strong></td><td><span class="rbm-badge @GetStatusClass(selectedDocument.Status)">@selectedDocument.Status</span></td></tr>
+                            <tr><td><strong>File Name:</strong></td><td>@selectedDocument.FileName</td></tr>
+                            <tr><td><strong>File Type:</strong></td><td>@selectedDocument.FileType</td></tr>
+                            @if (!string.IsNullOrEmpty(selectedDocument.Department))
+                            {
+                                <tr><td><strong>Department:</strong></td><td>@selectedDocument.Department</td></tr>
+                            }
+                            @if (!string.IsNullOrEmpty(selectedDocument.Tags))
+                            {
+                                <tr><td><strong>Tags:</strong></td><td>@selectedDocument.Tags</td></tr>
+                            }
+                        </table>
+                    </div>
+                    <div>
+                        <h4>📅 Dates & Review</h4>
+                        <table class="info-table">
+                            <tr><td><strong>Created:</strong></td><td>@selectedDocument.CreatedDate.ToString("MMM dd, yyyy") by @selectedDocument.CreatedBy</td></tr>
+                            @if (selectedDocument.EffectiveDate.HasValue)
+                            {
+                                <tr><td><strong>Effective:</strong></td><td>@selectedDocument.EffectiveDate.Value.ToString("MMM dd, yyyy")</td></tr>
+                            }
+                            @if (selectedDocument.ExpiryDate.HasValue)
+                            {
+                                <tr><td><strong>Expiry:</strong></td><td>@selectedDocument.ExpiryDate.Value.ToString("MMM dd, yyyy") @(selectedDocument.IsExpired ? "⚠️" : "")</td></tr>
+                            }
+                            @if (selectedDocument.ReviewDate.HasValue)
+                            {
+                                <tr><td><strong>Review Due:</strong></td><td>@selectedDocument.ReviewDate.Value.ToString("MMM dd, yyyy") @(selectedDocument.NeedsReview ? "⏰" : "")</td></tr>
+                            }
+                        </table>
+                    </div>
+                </div>
+                
+                @if (selectedDocument.AssetId.HasValue || selectedDocument.WorkOrderId.HasValue)
+                {
+                    <div style="margin-bottom: 20px;">
+                        <h4>🔗 Linked Items</h4>
+                        @if (selectedDocument.AssetId.HasValue && selectedDocument.Asset != null)
+                        {
+                            <div><span class="rbm-badge rbm-badge-primary">⚙️ Asset: @selectedDocument.Asset.AssetId - @selectedDocument.Asset.Name</span></div>
+                        }
+                        @if (selectedDocument.WorkOrderId.HasValue && selectedDocument.WorkOrder != null)
+                        {
+                            <div style="margin-top: 8px;"><span class="rbm-badge rbm-badge-secondary">📋 Work Order: @selectedDocument.WorkOrder.WorkOrderId</span></div>
+                        }
+                    </div>
+                }
+                
+                @if (!string.IsNullOrEmpty(selectedDocument.Description))
+                {
+                    <div style="margin-bottom: 20px;">
+                        <h4>📝 Description</h4>
+                        <p>@selectedDocument.Description</p>
+                    </div>
+                }
+                
+                <h4>📊 Recent Access History</h4>
+                <div class="rbm-table-container">
+                    <table class="rbm-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Action</th>
+                                <th>User</th>
+                                <th>Role</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (accessLogs.Count == 0)
+                            {
+                                <tr><td colspan="4" style="text-align: center; color: var(--rbm-text-light);">No access history</td></tr>
+                            }
+                            else
+                            {
+                                @foreach (var log in accessLogs.Take(10))
+                                {
+                                    <tr>
+                                        <td>@log.AccessDate.ToString("MMM dd, yyyy HH:mm")</td>
+                                        <td><span class="rbm-badge @GetActionClass(log.ActionType)">@log.ActionType</span></td>
+                                        <td>@log.AccessedBy</td>
+                                        <td>@log.UserRole</td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="rbm-modal-footer">
+                <button class="rbm-btn rbm-btn-outline" @onclick="CloseViewModal">Close</button>
+                <button class="rbm-btn rbm-btn-primary" @onclick="() => OpenDocumentViewer(selectedDocument)">
+                    👁️ Open Viewer
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Delete Confirmation Modal -->
+@if (showDeleteModal && documentToDelete != null)
+{
+    <div class="rbm-modal-backdrop" @onclick="CloseDeleteModal">
+        <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 450px;">
+            <div class="rbm-modal-header" style="background: linear-gradient(135deg, #e53935 0%, #c62828 100%); color: white;">
+                <h3 class="rbm-modal-title" style="color: white;">⚠️ Delete Document</h3>
+                <button class="rbm-modal-close" @onclick="CloseDeleteModal" style="color: white;">&times;</button>
+            </div>
+            <div class="rbm-modal-body">
+                <div style="text-align: center; padding: 20px;">
+                    <div style="font-size: 64px; margin-bottom: 16px;">🗑️</div>
+                    <h4 style="margin: 0 0 8px 0;">Delete @documentToDelete.Title?</h4>
+                    <p style="color: var(--rbm-text-light);">
+                        This will permanently delete the document and its file.
+                        This action cannot be undone.
+                    </p>
+                </div>
+            </div>
+            <div class="rbm-modal-footer">
+                <button class="rbm-btn rbm-btn-outline" @onclick="CloseDeleteModal">Cancel</button>
+                <button class="rbm-btn rbm-btn-danger" @onclick="DeleteDocumentConfirmed">
+                    🗑️ Delete Document
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Enhanced Styles -->
+<style>
+    /* (Styles moved to Documents.razor.css) */
+    .document-viewer-backdrop {
+        background: rgba(0, 0, 0, 0.9);
+    }
+
+    .document-viewer-modal {
+        width: 95%;
+        max-width: 1400px;
+        height: 90vh;
+        margin: auto;
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    /* File Upload Zone */
+    .file-upload-zone {
+        position: relative;
+        border: 2px dashed #cfd8dc;
+        border-radius: 12px;
+        padding: 40px 20px;
+        text-align: center;
+        transition: all 0.3s;
+        cursor: pointer;
+        background: #f8f9fa;
+    }
+
+    .file-upload-zone:hover {
+        border-color: #0288d1;
+        background: rgba(2, 136, 209, 0.05);
+    }
+
+    .file-upload-zone.drag-over {
+        border-color: #0288d1;
+        background: rgba(2, 136, 209, 0.1);
+        transform: scale(1.02);
+    }
+
+    .file-input {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        cursor: pointer;
+    }
+
+    .upload-content {
+        pointer-events: none;
+    }
+
+    .upload-icon {
+        font-size: 48px;
+        display: block;
+        margin-bottom: 12px;
+    }
+
+    .upload-content p {
+        margin: 0 0 8px 0;
+        color: #37474f;
+        font-weight: 500;
+    }
+
+    .upload-hint {
+        font-size: 13px;
+        color: #78909c;
+    }
+
+    /* Selected File */
+    .selected-file, .current-file-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        background: linear-gradient(135deg, rgba(67, 160, 71, 0.1) 0%, rgba(67, 160, 71, 0.05) 100%);
+        border: 1px solid rgba(67, 160, 71, 0.3);
+        border-radius: 8px;
+        margin-top: 12px;
+    }
+
+    .selected-file .file-icon, .current-file-info .file-icon {
+        font-size: 32px;
+    }
+
+    .file-details {
+        flex: 1;
+    }
+
+    .file-details strong {
+        display: block;
+        color: #37474f;
+    }
+
+    .file-details span {
+        font-size: 13px;
+        color: #78909c;
+    }
+
+    .remove-file {
+        background: none;
+        border: none;
+        color: #e53935;
+        font-size: 20px;
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: 4px;
+    }
+
+    .remove-file:hover {
+        background: rgba(229, 57, 53, 0.1);
+    }
+
+    /* Info Table */
+    .info-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .info-table td {
+        padding: 8px 0;
+        border-bottom: 1px solid #eceff1;
+        vertical-align: top;
+    }
+
+    .info-table td:first-child {
+        width: 120px;
+        color: #78909c;
+    }
+</style>
+
+@code {
+    private List<Document> documents = new();
+    private List<Asset> assets = new();
+    private List<WorkOrder> workOrders = new();
+    private List<DocumentAccessLog> accessLogs = new();
+    
+    private Document currentDocument = new();
+    private Document? selectedDocument;
+    private Document? viewerDocument;
+    private Document? documentToDelete;
+    private IBrowserFile? selectedFile;
+    
+    private bool showUploadModal = false;
+    private bool showViewModal = false;
+    private bool showDocumentViewer = false;
+    private bool showDeleteModal = false;
+    private bool editMode = false;
+    private bool showExpiredOnly = false;
+    private bool showReviewOnly = false;
+    private bool isDragOver = false;
+    
+    private string filterCategory = "All";
+    private string filterStatus = "All";
+    private string searchTerm = "";
+    
+    private int totalDocuments = 0;
+    private int expiredCount = 0;
+    private int needsReviewCount = 0;
+    private int activeCount = 0;
+    
+    private string uploadMessage = "";
+    private bool isUploading = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CurrentUser.InitializeAsync();
+        await LoadDataAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Load document viewer JS
+            await JS.InvokeVoidAsync("eval", "console.log('Document viewer ready')");
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            documents = await DataService.GetDocumentsAsync();
+            assets = await DataService.GetAssetsAsync();
+            workOrders = await DataService.GetWorkOrdersAsync();
+            
+            totalDocuments = documents.Count;
+            expiredCount = documents.Count(d => d.IsExpired);
+            needsReviewCount = documents.Count(d => d.NeedsReview);
+            activeCount = documents.Count(d => d.Status == "Active");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading documents: {ex.Message}");
+        }
+    }
+
+    private List<Document> GetFilteredDocuments()
+    {
+        var filtered = documents.AsEnumerable();
+        
+        if (showExpiredOnly)
+            filtered = filtered.Where(d => d.IsExpired);
+        
+        if (showReviewOnly)
+            filtered = filtered.Where(d => d.NeedsReview);
+        
+        if (filterCategory != "All")
+            filtered = filtered.Where(d => d.Category == filterCategory);
+        
+        if (filterStatus != "All")
+            filtered = filtered.Where(d => d.Status == filterStatus);
+        
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var search = searchTerm.ToLower();
+            filtered = filtered.Where(d => 
+                d.DocumentNumber.ToLower().Contains(search) ||
+                d.Title.ToLower().Contains(search) ||
+                d.Description.ToLower().Contains(search) ||
+                d.Tags.ToLower().Contains(search));
+        }
+        
+        return filtered.ToList();
+    }
+
+    private void ToggleExpired()
+    {
+        showExpiredOnly = !showExpiredOnly;
+        showReviewOnly = false;
+    }
+
+    private void ToggleReview()
+    {
+        showReviewOnly = !showReviewOnly;
+        showExpiredOnly = false;
+    }
+
+    private void OpenDocumentViewer(Document doc)
+    {
+        viewerDocument = doc;
+        
+        // Log view access
+        DataService.LogDocumentAccessAsync(new DocumentAccessLog
+        {
+            DocumentId = doc.Id,
+            ActionType = "View",
+            AccessedBy = CurrentUser.UserName,
+            UserRole = CurrentUser.Role
+        }).ConfigureAwait(false);
+        
+        showViewModal = false;
+        showDocumentViewer = true;
+    }
+
+    private void CloseDocumentViewer()
+    {
+        showDocumentViewer = false;
+        viewerDocument = null;
+    }
+
+    private async Task HandleDocumentDownload()
+    {
+        if (viewerDocument != null)
+        {
+            // Log download
+            await DataService.LogDocumentAccessAsync(new DocumentAccessLog
+            {
+                DocumentId = viewerDocument.Id,
+                ActionType = "Download",
+                AccessedBy = CurrentUser.UserName,
+                UserRole = CurrentUser.Role
+            });
+            
+            await LoadDataAsync();
+        }
+    }
+
+    private void ViewDocumentDetails(Document doc)
+    {
+        selectedDocument = doc;
+        showViewModal = true;
+    }
+
+    private void ConfirmDeleteDocument(Document doc)
+    {
+        documentToDelete = doc;
+        showDeleteModal = true;
+    }
+
+    private void CloseDeleteModal()
+    {
+        showDeleteModal = false;
+        documentToDelete = null;
+    }
+
+    private async Task SaveDocument()
+    {
+        if (string.IsNullOrWhiteSpace(currentDocument.Title))
+        {
+            uploadMessage = "Error: Title is required!";
+            return;
+        }
+        
+        if (string.IsNullOrWhiteSpace(currentDocument.Category))
+        {
+            uploadMessage = "Error: Category is required!";
+            return;
+        }
+        
+        if (!editMode && selectedFile == null)
+        {
+            uploadMessage = "Error: Please select a file to upload!";
+            return;
+        }
+        
+        try
+        {
+            isUploading = true;
+            uploadMessage = editMode ? "Saving..." : "Uploading...";
+            StateHasChanged();
+            
+            if (!editMode && selectedFile != null)
+            {
+                var uploadsPath = Path.Combine("wwwroot", "uploads", "documents");
+                Directory.CreateDirectory(uploadsPath);
+                
+                var fileName = $"{Guid.NewGuid()}_{selectedFile.Name}";
+                var filePath = Path.Combine(uploadsPath, fileName);
+                
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await selectedFile.OpenReadStream(maxAllowedSize: 52428800).CopyToAsync(stream);
+                }
+                
+                currentDocument.FilePath = filePath;
+            }
+            
+            currentDocument.ModifiedBy = CurrentUser.UserName;
+            currentDocument.ModifiedDate = DateTime.Now;
+            
+            if (editMode)
+            {
+                await DataService.UpdateDocumentAsync(currentDocument);
+                uploadMessage = "Document updated successfully!";
+            }
+            else
+            {
+                await DataService.AddDocumentAsync(currentDocument);
+                uploadMessage = "Document uploaded successfully!";
+            }
+            
+            await Task.Delay(1000);
+            await LoadDataAsync();
+            CloseUploadModal();
+        }
+        catch (Exception ex)
+        {
+            uploadMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isUploading = false;
+        }
+    }
+
+    private async Task DeleteDocumentConfirmed()
+    {
+        if (documentToDelete != null)
+        {
+            await DataService.DeleteDocumentAsync(documentToDelete.Id);
+            await LoadDataAsync();
+        }
+        CloseDeleteModal();
+    }
+
+    private void HandleDragEnter() => isDragOver = true;
+    private void HandleDragLeave() => isDragOver = false;
+
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        isDragOver = false;
+        selectedFile = e.File;
+        uploadMessage = "";
+        
+        if (selectedFile != null)
+        {
+            if (selectedFile.Size > 52428800)
+            {
+                uploadMessage = "Error: File size exceeds 50MB limit!";
+                selectedFile = null;
+                return;
+            }
+            
+            currentDocument.FileName = selectedFile.Name;
+            currentDocument.FileSize = selectedFile.Size;
+            currentDocument.FileType = Path.GetExtension(selectedFile.Name).TrimStart('.').ToUpper();
+        }
+    }
+
+    private void RemoveSelectedFile()
+    {
+        selectedFile = null;
+        currentDocument.FileName = "";
+        currentDocument.FileSize = 0;
+        currentDocument.FileType = "";
+    }
+
+    private string GenerateDocumentNumber()
+    {
+        var count = documents.Count + 1;
+        return $"DOC-{DateTime.Now:yyyy}-{count:000}";
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private string GetFileTypeIcon(string fileName)
+    {
+        var ext = Path.GetExtension(fileName).ToUpper().TrimStart('.');
+        return ext switch
+        {
+            "PDF" => "📕",
+            "DOC" or "DOCX" => "📘",
+            "XLS" or "XLSX" => "📗",
+            "PPT" or "PPTX" => "📙",
+            "JPG" or "JPEG" or "PNG" or "GIF" => "🖼️",
+            "DWG" or "DXF" => "📐",
+            "TXT" or "CSV" => "📄",
+            _ => "📄"
+        };
+    }
+
+    private string GetStatusClass(string status) => status switch
+    {
+        "Draft" => "rbm-badge-secondary",
+        "Under Review" => "rbm-badge-warning",
+        "Approved" => "rbm-badge-info",
+        "Active" => "rbm-badge-success",
+        "Archived" => "rbm-badge-secondary",
+        "Obsolete" => "rbm-badge-danger",
+        _ => "rbm-badge-secondary"
+    };
+
+    private string GetActionClass(string action) => action switch
+    {
+        "View" => "rbm-badge-info",
+        "Download" => "rbm-badge-success",
+        "Edit" => "rbm-badge-warning",
+        "Delete" => "rbm-badge-danger",
+        _ => "rbm-badge-secondary"
+    };
+
+    private void ShowUploadModal()
+    {
+        currentDocument = new() { DocumentNumber = GenerateDocumentNumber() };
+        selectedFile = null;
+        editMode = false;
+        showUploadModal = true;
+    }
+
+    private void EditDocument(Document doc)
+    {
+        currentDocument = doc;
+        editMode = true;
+        showUploadModal = true;
+    }
+
+    private void CloseUploadModal()
+    {
+        showUploadModal = false;
+        editMode = false;
+        selectedFile = null;
+        uploadMessage = "";
+    }
+
+    private void CloseViewModal()
+    {
+        showViewModal = false;
+        selectedDocument = null;
+    }
+}

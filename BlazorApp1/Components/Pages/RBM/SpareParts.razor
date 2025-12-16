@@ -1,0 +1,1087 @@
+﻿@page "/rbm/spare-parts"
+@rendermode InteractiveServer
+@layout RBMLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject BlazorApp1.Services.DataService DataService
+@inject BlazorApp1.Services.CurrentUserService CurrentUser
+@using BlazorApp1.Models
+
+<PageTitle>Spare Parts Inventory | RBM CMMS</PageTitle>
+
+@if (!isInitialized)
+{
+    <div style="display: flex; align-items: center; justify-content: center; min-height: 400px;">
+        <div style="text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 16px; animation: spin 1s linear infinite;">⏳</div>
+            <div style="font-size: 16px; color: var(--rbm-text-light);">Loading spare parts inventory...</div>
+        </div>
+    </div>
+}
+else
+{
+    <!-- Toast Notifications -->
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <div class="toast-notification success-toast" @onclick="() => successMessage = string.Empty">
+            <div class="toast-icon">✓</div>
+            <div class="toast-content">
+                <div class="toast-title">Success</div>
+                <div class="toast-message">@successMessage</div>
+            </div>
+            <button class="toast-close" @onclick="() => successMessage = string.Empty">&times;</button>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="toast-notification error-toast" @onclick="() => errorMessage = string.Empty">
+            <div class="toast-icon">⚠️</div>
+            <div class="toast-content">
+                <div class="toast-title">Error</div>
+                <div class="toast-message">@errorMessage</div>
+            </div>
+            <button class="toast-close" @onclick="() => errorMessage = string.Empty">&times;</button>
+        </div>
+    }
+}
+    <div class="rbm-page-header">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <h1 class="rbm-page-title">📦 Spare Parts Inventory</h1>
+                <p class="rbm-page-subtitle">Manage and track your spare parts inventory with real-time stock monitoring</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Enhanced Stats Grid -->
+    <div class="rbm-stats-grid enhanced-stats">
+        <div class="rbm-stat-card elevated">
+            <div class="rbm-stat-icon gradient-blue">📦</div>
+            <div class="rbm-stat-content">
+                <div class="rbm-stat-value">@totalParts</div>
+                <div class="rbm-stat-label">Total Parts</div>
+                <div class="rbm-stat-detail">In inventory</div>
+            </div>
+        </div>
+        <div class="rbm-stat-card elevated">
+            <div class="rbm-stat-icon gradient-orange">⚠️</div>
+            <div class="rbm-stat-content">
+                <div class="rbm-stat-value">@lowStockCount</div>
+                <div class="rbm-stat-label">Low Stock</div>
+                <div class="rbm-stat-detail">@(lowStockCount > 0 ? "Action needed" : "All good")</div>
+            </div>
+        </div>
+        <div class="rbm-stat-card elevated">
+            <div class="rbm-stat-icon gradient-green">💰</div>
+            <div class="rbm-stat-content">
+                <div class="rbm-stat-value">@inventoryValue.ToString("C0")</div>
+                <div class="rbm-stat-label">Total Value</div>
+                <div class="rbm-stat-detail">Inventory worth</div>
+            </div>
+        </div>
+        <div class="rbm-stat-card elevated">
+            <div class="rbm-stat-icon gradient-purple">🔄</div>
+            <div class="rbm-stat-content">
+                <div class="rbm-stat-value">@recentTransactions.Count</div>
+                <div class="rbm-stat-label">Transactions</div>
+                <div class="rbm-stat-detail">Last 10 records</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Bar with improved styling -->
+    <div class="rbm-action-bar-enhanced">
+        <div class="rbm-action-buttons">
+            <button class="rbm-btn rbm-btn-primary enhanced-btn" @onclick="ShowAddModal" disabled="@(!CurrentUser.CanEdit)">
+                <span class="btn-icon">➕</span>
+                <span class="btn-text">Add Spare Part</span>
+            </button>
+            <button class="rbm-btn rbm-btn-success enhanced-btn" @onclick="ShowTransactionModal" disabled="@(!CurrentUser.CanEdit || spareParts.Count == 0)">
+                <span class="btn-icon">📝</span>
+                <span class="btn-text">Record Transaction</span>
+            </button>
+            <button class="rbm-btn @(showLowStockOnly ? "rbm-btn-warning" : "rbm-btn-outline") enhanced-btn" @onclick="ToggleLowStock">
+                <span class="btn-icon">@(showLowStockOnly ? "✓" : "⚠️")</span>
+                <span class="btn-text">@(showLowStockOnly ? "Showing Low Stock" : "Low Stock Filter")</span>
+            </button>
+            <button class="rbm-btn rbm-btn-outline enhanced-btn" @onclick="RefreshData" disabled="@isRefreshing">
+                <span class="btn-icon" style="animation: @(isRefreshing ? "spin 1s linear infinite" : "none");">🔄</span>
+                <span class="btn-text">@(isRefreshing ? "Refreshing..." : "Refresh")</span>
+            </button>
+        </div>
+        <div class="rbm-filter-group-enhanced">
+            <div class="filter-item">
+                <label class="filter-label">Part Type</label>
+                <select class="rbm-form-select enhanced-select" @bind="filterType">
+                    <option value="All">All Parts</option>
+                    <option value="Generic">Generic Parts</option>
+                    <option value="Asset-Specific">Asset-Specific</option>
+                </select>
+            </div>
+            <div class="filter-item">
+                <label class="filter-label">Category</label>
+                <select class="rbm-form-select enhanced-select" @bind="filterCategory">
+                    <option value="All">All Categories</option>
+                    <option value="Bearings">Bearings</option>
+                    <option value="Motors">Motors</option>
+                    <option value="Seals">Seals</option>
+                    <option value="Electrical">Electrical</option>
+                    <option value="Hydraulic">Hydraulic</option>
+                    <option value="Pneumatic">Pneumatic</option>
+                    <option value="Mechanical">Mechanical</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Enhanced Spare Parts Table -->
+    <div class="rbm-card enhanced-card">
+        <div class="rbm-card-header-enhanced">
+            <h2 class="rbm-card-title-enhanced">📋 Spare Parts List</h2>
+            <span class="rbm-badge rbm-badge-info">@GetFilteredParts().Count items</span>
+        </div>
+        <div class="rbm-table-container-enhanced">
+            @if (GetFilteredParts().Count == 0)
+            {
+                <div class="empty-state">
+                    <div class="empty-icon">📭</div>
+                    <h3>No parts found</h3>
+                    <p>Try adjusting your filters or add new spare parts to get started</p>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="rbm-table enhanced-table">
+                        <thead>
+                            <tr>
+                                <th>📍 Part Info</th>
+                                <th>📦 Stock Status</th>
+                                <th>💵 Pricing</th>
+                                <th>📍 Location</th>
+                                <th>⚙️ Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var part in GetFilteredParts())
+                            {
+                                <tr class="@(part.NeedsReorder ? "low-stock-row" : "")">
+                                    <td>
+                                        <div class="part-info">
+                                            <div class="part-number">@part.PartNumber</div>
+                                            <div class="part-name">@part.Name</div>
+                                            @if (!string.IsNullOrEmpty(part.Manufacturer))
+                                            {
+                                                <div class="part-manufacturer">@part.Manufacturer</div>
+                                            }
+                                            <div class="part-category">
+                                                <span class="rbm-badge rbm-badge-secondary">@part.Category</span>
+                                                @if (part.IsGeneric)
+                                                {
+                                                    <span class="rbm-badge rbm-badge-info" style="margin-left: 4px;">Generic</span>
+                                                }
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="stock-status">
+                                            <div class="stock-quantity">
+                                                <span class="stock-value">@part.QuantityInStock</span>
+                                                <span class="stock-unit">@part.Unit</span>
+                                            </div>
+                                            <div class="stock-badge">
+                                                <span class="rbm-badge @GetStockStatusClass(part.StockStatus)">
+                                                    @part.StockStatus
+                                                </span>
+                                            </div>
+                                            <div class="stock-min">Min: @part.MinimumStockLevel</div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="pricing-info">
+                                            <div class="unit-price">
+                                                <span class="label">Unit:</span>
+                                                <span class="value">@part.UnitCost.ToString("C")</span>
+                                            </div>
+                                            <div class="total-value">
+                                                <span class="label">Total:</span>
+                                                <span class="value">@((part.QuantityInStock * part.UnitCost).ToString("C"))</span>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="location-info">📍 @part.Location</div>
+                                    </td>
+                                    <td>
+                                        <div class="action-buttons">
+                                            <button class="rbm-btn rbm-btn-outline rbm-btn-sm action-btn" @onclick="() => ViewPart(part)" title="View Details">
+                                                👁️
+                                            </button>
+                                            @if (CurrentUser.CanEdit)
+                                            {
+                                                <button class="rbm-btn rbm-btn-outline rbm-btn-sm action-btn" @onclick="() => EditPart(part)" title="Edit">
+                                                    ✏️
+                                                </button>
+                                                <button class="rbm-btn rbm-btn-success rbm-btn-sm action-btn" @onclick="() => IssuePart(part)" title="Issue Part">
+                                                    📤
+                                                </button>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Recent Transactions Section -->
+    <div class="rbm-card enhanced-card" style="margin-top: 24px;">
+        <div class="rbm-card-header-enhanced">
+            <h2 class="rbm-card-title-enhanced">🔄 Recent Transactions</h2>
+            <span class="rbm-badge rbm-badge-info">@recentTransactions.Count records</span>
+        </div>
+        <div class="rbm-table-container-enhanced">
+            @if (recentTransactions.Count == 0)
+            {
+                <div class="empty-state">
+                    <div class="empty-icon">📊</div>
+                    <h3>No transactions yet</h3>
+                    <p>Transactions will appear here as you record spare part movements</p>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="rbm-table enhanced-table">
+                        <thead>
+                            <tr>
+                                <th>📅 Date/Time</th>
+                                <th>📦 Part</th>
+                                <th>📌 Type</th>
+                                <th>🔢 Quantity</th>
+                                <th>📊 Stock Change</th>
+                                <th>📋 Work Order</th>
+                                <th>👤 By</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var txn in recentTransactions)
+                            {
+                                <tr class="@GetTransactionRowClass(txn.TransactionType)">
+                                    <td>
+                                        <span class="transaction-date">@txn.TransactionDate.ToString("MMM dd")</span>
+                                        <span class="transaction-time">@txn.TransactionDate.ToString("HH:mm")</span>
+                                    </td>
+                                    <td>
+                                        <div class="transaction-part">
+                                            <strong>@txn.SparePart?.PartNumber</strong>
+                                            <div style="font-size: 12px; color: var(--rbm-text-light);">@txn.SparePart?.Name</div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="rbm-badge @GetTransactionTypeClass(txn.TransactionType)">
+                                            @txn.TransactionType
+                                        </span>
+                                    </td>
+                                    <td><strong>@txn.Quantity</strong></td>
+                                    <td>
+                                        <div class="stock-change">
+                                            <span class="stock-before">@txn.StockBefore</span>
+                                            <span class="arrow">→</span>
+                                            <span class="stock-after">@txn.StockAfter</span>
+                                        </div>
+                                    </td>
+                                    <td>@(txn.WorkOrder?.WorkOrderId ?? "-")</td>
+                                    <td>@txn.TransactionBy</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Enhanced Styles -->
+    <style>
+        /* (Styles moved to SpareParts.razor.css) */
+    </style>
+
+    <!-- Add/Edit Spare Part Modal -->
+    @if (showModal)
+    {
+        <div class="rbm-modal-backdrop" @onclick="CloseModal">
+            <div class="rbm-modal" @onclick:stopPropagation="true" style="max-height: 90vh; overflow-y: auto;">
+                <div class="rbm-modal-header">
+                    <h3 class="rbm-modal-title">@(editMode ? "✏️ Edit Spare Part" : "➕ Add New Spare Part")</h3>
+                    <button class="rbm-modal-close" @onclick="CloseModal">&times;</button>
+                </div>
+                <div class="rbm-modal-body">
+                    @if (!string.IsNullOrEmpty(modalErrorMessage))
+                    {
+                        <div class="alert alert-danger" style="margin-bottom: 16px;">
+                            <div style="display: flex; gap: 8px;">
+                                <div style="flex-shrink: 0;">❌</div>
+                                <div>@modalErrorMessage</div>
+                                <button type="button" class="btn-close" @onclick="() => modalErrorMessage = string.Empty" style="margin-left: auto;"></button>
+                            </div>
+                        </div>
+                    }
+
+                    <div class="rbm-grid rbm-grid-2">
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Part Number <span class="required">*</span></label>
+                            <input type="text" class="rbm-form-input" @bind="currentPart.PartNumber" placeholder="e.g., BRG-001">
+                            @if (string.IsNullOrWhiteSpace(currentPart.PartNumber) && showValidationErrors)
+                            {
+                                <small class="text-danger">Part number is required</small>
+                            }
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Name <span class="required">*</span></label>
+                            <input type="text" class="rbm-form-input" @bind="currentPart.Name" placeholder="e.g., SKF Bearing 6205">
+                            @if (string.IsNullOrWhiteSpace(currentPart.Name) && showValidationErrors)
+                            {
+                                <small class="text-danger">Name is required</small>
+                            }
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Category <span class="required">*</span></label>
+                            <select class="rbm-form-select" @bind="currentPart.Category">
+                                <option value="">-- Select Category --</option>
+                                <option value="Bearings">Bearings</option>
+                                <option value="Motors">Motors</option>
+                                <option value="Seals">Seals</option>
+                                <option value="Electrical">Electrical</option>
+                                <option value="Hydraulic">Hydraulic</option>
+                                <option value="Pneumatic">Pneumatic</option>
+                                <option value="Mechanical">Mechanical</option>
+                                <option value="Filters">Filters</option>
+                                <option value="Belts">Belts</option>
+                                <option value="Other">Other</option>
+                            </select>
+                            @if (string.IsNullOrWhiteSpace(currentPart.Category) && showValidationErrors)
+                            {
+                                <small class="text-danger">Category is required</small>
+                            }
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Manufacturer</label>
+                            <input type="text" class="rbm-form-input" @bind="currentPart.Manufacturer" placeholder="e.g., SKF">
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Manufacturer Part Number</label>
+                            <input type="text" class="rbm-form-input" @bind="currentPart.ManufacturerPartNumber" placeholder="e.g., 6205-2RS1">
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Supplier</label>
+                            <input type="text" class="rbm-form-input" @bind="currentPart.Supplier" placeholder="e.g., Industrial Supplies Co">
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Unit Cost <span class="required">*</span></label>
+                            <input type="number" step="0.01" class="rbm-form-input" @bind="currentPart.UnitCost" placeholder="0.00">
+                            @if (currentPart.UnitCost <= 0 && showValidationErrors)
+                            {
+                                <small class="text-danger">Unit cost must be greater than 0</small>
+                            }
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Unit</label>
+                            <input type="text" class="rbm-form-input" @bind="currentPart.Unit" placeholder="e.g., Each, Liter">
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Quantity in Stock <span class="required">*</span></label>
+                            <input type="number" class="rbm-form-input" @bind="currentPart.QuantityInStock" placeholder="0">
+                            @if (currentPart.QuantityInStock < 0 && showValidationErrors)
+                            {
+                                <small class="text-danger">Quantity cannot be negative</small>
+                            }
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Minimum Stock Level</label>
+                            <input type="number" class="rbm-form-input" @bind="currentPart.MinimumStockLevel" placeholder="5">
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Reorder Point</label>
+                            <input type="number" class="rbm-form-input" @bind="currentPart.ReorderPoint" placeholder="10">
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Reorder Quantity</label>
+                            <input type="number" class="rbm-form-input" @bind="currentPart.ReorderQuantity" placeholder="20">
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Location</label>
+                            <input type="text" class="rbm-form-input" @bind="currentPart.Location" placeholder="e.g., Shelf A-12">
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Compatible Assets</label>
+                            <input type="text" class="rbm-form-input" @bind="currentPart.CompatibleAssets" placeholder="e.g., PMP-001, MTR-002">
+                        </div>
+                        <div class="rbm-form-group" style="grid-column: 1 / -1;">
+                            <label class="rbm-form-label">Description</label>
+                            <textarea class="rbm-form-input" @bind="currentPart.Description" placeholder="Part description..." style="min-height: 80px;"></textarea>
+                        </div>
+                        <div class="rbm-form-group" style="grid-column: 1 / -1;">
+                            <label class="rbm-form-label">Notes</label>
+                            <textarea class="rbm-form-input" @bind="currentPart.Notes" placeholder="Additional notes..." style="min-height: 60px;"></textarea>
+                        </div>
+                        <div class="rbm-form-group">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" @bind="currentPart.IsGeneric">
+                                <span>Generic Part (usable on multiple assets)</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="rbm-modal-footer">
+                    <button class="rbm-btn rbm-btn-outline" @onclick="CloseModal">Cancel</button>
+                    <button class="rbm-btn rbm-btn-primary" @onclick="SavePart" disabled="@isSaving">
+                        @if (isSaving)
+                        {
+                            <span>⏳ @(editMode ? "Updating..." : "Adding...")</span>
+                        }
+                        else
+                        {
+                            <span>@(editMode ? "✓ Update" : "➕ Add")</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Record Transaction Modal -->
+    @if (showTransactionModal)
+    {
+        <div class="rbm-modal-backdrop" @onclick="CloseTransactionModal">
+            <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 500px;">
+                <div class="rbm-modal-header">
+                    <h3 class="rbm-modal-title">📝 Record Transaction</h3>
+                    <button class="rbm-modal-close" @onclick="CloseTransactionModal">&times;</button>
+                </div>
+                <div class="rbm-modal-body">
+                    @if (!string.IsNullOrEmpty(modalErrorMessage))
+                    {
+                        <div class="alert alert-danger" style="margin-bottom: 16px;">
+                            <div style="display: flex; gap: 8px;">
+                                <div style="flex-shrink: 0;">❌</div>
+                                <div>@modalErrorMessage</div>
+                                <button type="button" class="btn-close" @onclick="() => modalErrorMessage = string.Empty" style="margin-left: auto;"></button>
+                            </div>
+                        </div>
+                    }
+
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Spare Part <span class="required">*</span></label>
+                        <select class="rbm-form-select" @bind="currentTransaction.SparePartId">
+                            <option value="0">-- Select Part --</option>
+                            @foreach (var part in spareParts)
+                            {
+                                <option value="@part.Id">@part.PartNumber - @part.Name</option>
+                            }
+                        </select>
+                        @if (currentTransaction.SparePartId == 0 && showValidationErrors)
+                        {
+                            <small class="text-danger">Please select a spare part</small>
+                        }
+                    </div>
+
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Transaction Type <span class="required">*</span></label>
+                        <select class="rbm-form-select" @bind="currentTransaction.TransactionType">
+                            <option value="">-- Select Type --</option>
+                            <option value="Issue">📤 Issue</option>
+                            <option value="Restock">📥 Restock</option>
+                            <option value="Return">↩️ Return</option>
+                            <option value="Adjustment">⚙️ Adjustment</option>
+                        </select>
+                        @if (string.IsNullOrEmpty(currentTransaction.TransactionType) && showValidationErrors)
+                        {
+                            <small class="text-danger">Please select transaction type</small>
+                        }
+                    </div>
+
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Quantity <span class="required">*</span></label>
+                        <input type="number" class="rbm-form-input" @bind="currentTransaction.Quantity" placeholder="1" min="1">
+                        @if (currentTransaction.Quantity <= 0 && showValidationErrors)
+                        {
+                            <small class="text-danger">Quantity must be at least 1</small>
+                        }
+                    </div>
+
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Work Order (Optional)</label>
+                        <select class="rbm-form-select" @bind="currentTransaction.WorkOrderId">
+                            <option value="0">-- None --</option>
+                            @foreach (var wo in workOrders)
+                            {
+                                <option value="@wo.Id">@wo.WorkOrderId - @wo.Description?.Substring(0, Math.Min(30, wo.Description?.Length ?? 0))</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Issued To / Reason</label>
+                        <input type="text" class="rbm-form-input" @bind="currentTransaction.IssuedTo" placeholder="e.g., John Smith, Equipment A">
+                    </div>
+
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Reason</label>
+                        <input type="text" class="rbm-form-input" @bind="currentTransaction.Reason" placeholder="e.g., Preventive maintenance">
+                    </div>
+
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Notes</label>
+                        <textarea class="rbm-form-input" @bind="currentTransaction.Notes" placeholder="Additional details..." style="min-height: 60px;"></textarea>
+                    </div>
+                </div>
+                <div class="rbm-modal-footer">
+                    <button class="rbm-btn rbm-btn-outline" @onclick="CloseTransactionModal">Cancel</button>
+                    <button class="rbm-btn rbm-btn-primary" @onclick="SaveTransaction" disabled="@isSaving">
+                        @if (isSaving)
+                        {
+                            <span>⏳ Recording...</span>
+                        }
+                        else
+                        {
+                            <span>📝 Record Transaction</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- View Part Details Modal -->
+    @if (showViewModal && selectedPart != null)
+    {
+        <div class="rbm-modal-backdrop" @onclick="CloseViewModal">
+            <div class="rbm-modal" @onclick:stopPropagation="true">
+                <div class="rbm-modal-header">
+                    <h3 class="rbm-modal-title">👁️ Part Details</h3>
+                    <button class="rbm-modal-close" @onclick="CloseViewModal">&times;</button>
+                </div>
+                <div class="rbm-modal-body">
+                    <div class="rbm-grid rbm-grid-2">
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Part Number</div>
+                            <div>@selectedPart.PartNumber</div>
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Name</div>
+                            <div>@selectedPart.Name</div>
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Category</div>
+                            <div>@selectedPart.Category</div>
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Manufacturer</div>
+                            <div>@(selectedPart.Manufacturer ?? "N/A")</div>
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Unit Cost</div>
+                            <div>@selectedPart.UnitCost.ToString("C")</div>
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Stock Status</div>
+                            <span class="rbm-badge @GetStockStatusClass(selectedPart.StockStatus)">@selectedPart.StockStatus</span>
+                        </div>
+                        <div style="grid-column: 1 / -1;">
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Description</div>
+                            <div>@(selectedPart.Description ?? "No description")</div>
+                        </div>
+                    </div>
+
+                    @if (partTransactions.Any())
+                    {
+                        <div style="margin-top: 24px;">
+                            <h4 style="font-weight: 600; margin-bottom: 12px;">📜 Transaction History</h4>
+                            <div style="max-height: 300px; overflow-y: auto;">
+                                <table class="rbm-table" style="font-size: 12px;">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Type</th>
+                                            <th>Qty</th>
+                                            <th>By</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var txn in partTransactions.Take(10))
+                                        {
+                                            <tr>
+                                                <td>@txn.TransactionDate.ToString("MMM dd, HH:mm")</td>
+                                                <td>@txn.TransactionType</td>
+                                                <td>@txn.Quantity</td>
+                                                <td>@txn.TransactionBy</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="rbm-modal-footer">
+                    <button class="rbm-btn rbm-btn-outline" @onclick="CloseViewModal">Close</button>
+                    @if (CurrentUser.CanEdit)
+                    {
+                        <button class="rbm-btn rbm-btn-primary" @onclick="() => { EditPart(selectedPart); CloseViewModal(); }">✏️ Edit Part</button>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    @code {
+        private List<SparePart> spareParts = new();
+        private List<Asset> assets = new();
+        private List<WorkOrder> workOrders = new();
+        private List<SparePartTransaction> recentTransactions = new();
+        private List<SparePartTransaction> partTransactions = new();
+        
+        private SparePart currentPart = new();
+        private SparePart? selectedPart;
+        private SparePartTransaction currentTransaction = new();
+        
+        private bool showModal = false;
+        private bool showTransactionModal = false;
+        private bool showViewModal = false;
+        private bool editMode = false;
+        private bool showLowStockOnly = false;
+        private bool isInitialized = false;
+        private bool isSaving = false;
+        private bool isRefreshing = false;
+        private bool showValidationErrors = false;
+        
+        private string filterType = "All";
+        private string filterCategory = "All";
+        private string successMessage = string.Empty;
+        private string errorMessage = string.Empty;
+        private string modalErrorMessage = string.Empty;
+        
+        private int totalParts = 0;
+        private int lowStockCount = 0;
+        private decimal inventoryValue = 0;
+
+        protected override async Task OnInitializedAsync()
+        {
+            try
+            {
+                await CurrentUser.InitializeAsync();
+                await LoadDataAsync();
+                isInitialized = true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Failed to initialize page: {ex.Message}";
+                isInitialized = true;
+            }
+        }
+
+        private async Task LoadDataAsync()
+        {
+            try
+            {
+                spareParts = await DataService.GetSparePartsAsync();
+                assets = await DataService.GetAssetsAsync();
+                workOrders = await DataService.GetWorkOrdersAsync();
+                recentTransactions = await DataService.GetRecentTransactionsAsync(10);
+                
+                totalParts = spareParts.Count;
+                lowStockCount = spareParts.Count(s => s.NeedsReorder);
+                inventoryValue = spareParts.Sum(s => s.QuantityInStock * s.UnitCost);
+                
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Error loading data: {ex.Message}";
+                StateHasChanged();
+            }
+        }
+
+        private async Task RefreshData()
+        {
+            try
+            {
+                isRefreshing = true;
+                StateHasChanged();
+                await Task.Delay(500); // Simulate loading
+                await LoadDataAsync();
+                successMessage = "Data refreshed successfully";
+                await Task.Delay(3000);
+                successMessage = string.Empty;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Failed to refresh data: {ex.Message}";
+            }
+            finally
+            {
+                isRefreshing = false;
+                StateHasChanged();
+            }
+        }
+
+        private List<SparePart> GetFilteredParts()
+        {
+            try
+            {
+                var filtered = spareParts.AsEnumerable();
+                
+                if (showLowStockOnly)
+                {
+                    filtered = filtered.Where(p => p.NeedsReorder);
+                }
+                
+                if (filterType != "All")
+                {
+                    filtered = filterType == "Generic" 
+                        ? filtered.Where(p => p.IsGeneric)
+                        : filtered.Where(p => !p.IsGeneric);
+                }
+                
+                if (filterCategory != "All")
+                {
+                    filtered = filtered.Where(p => p.Category == filterCategory);
+                }
+                
+                return filtered.ToList();
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Error filtering parts: {ex.Message}";
+                return new List<SparePart>();
+            }
+        }
+
+        private void ToggleLowStock()
+        {
+            showLowStockOnly = !showLowStockOnly;
+            StateHasChanged();
+        }
+
+        private void ShowAddModal()
+        {
+            try
+            {
+                currentPart = new SparePart 
+                { 
+                    IsGeneric = true, 
+                    QuantityInStock = 0, 
+                    MinimumStockLevel = 5, 
+                    ReorderPoint = 10, 
+                    ReorderQuantity = 20,
+                    Unit = "Each"
+                };
+                editMode = false;
+                showValidationErrors = false;
+                modalErrorMessage = string.Empty;
+                showModal = true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Error opening modal: {ex.Message}";
+            }
+        }
+
+        private void EditPart(SparePart part)
+        {
+            try
+            {
+                currentPart = new SparePart
+                {
+                    Id = part.Id,
+                    PartNumber = part.PartNumber,
+                    Name = part.Name,
+                    Description = part.Description,
+                    Category = part.Category,
+                    Manufacturer = part.Manufacturer,
+                    ManufacturerPartNumber = part.ManufacturerPartNumber,
+                    Supplier = part.Supplier,
+                    QuantityInStock = part.QuantityInStock,
+                    MinimumStockLevel = part.MinimumStockLevel,
+                    ReorderPoint = part.ReorderPoint,
+                    ReorderQuantity = part.ReorderQuantity,
+                    UnitCost = part.UnitCost,
+                    Unit = part.Unit,
+                    Location = part.Location,
+                    IsGeneric = part.IsGeneric,
+                    AssetId = part.AssetId,
+                    CompatibleAssets = part.CompatibleAssets,
+                    Notes = part.Notes
+                };
+                editMode = true;
+                showValidationErrors = false;
+                modalErrorMessage = string.Empty;
+                showModal = true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Error loading part for editing: {ex.Message}";
+            }
+        }
+
+        private async Task ViewPart(SparePart part)
+        {
+            try
+            {
+                selectedPart = await DataService.GetSparePartAsync(part.Id);
+                partTransactions = await DataService.GetSparePartTransactionsAsync(part.Id);
+                showViewModal = true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Error loading part details: {ex.Message}";
+            }
+        }
+
+        private bool ValidatePart()
+        {
+            showValidationErrors = true;
+            
+            if (string.IsNullOrWhiteSpace(currentPart.PartNumber))
+            {
+                modalErrorMessage = "Part number is required";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(currentPart.Name))
+            {
+                modalErrorMessage = "Name is required";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(currentPart.Category))
+            {
+                modalErrorMessage = "Category is required";
+                return false;
+            }
+
+            if (currentPart.UnitCost <= 0)
+            {
+                modalErrorMessage = "Unit cost must be greater than 0";
+                return false;
+            }
+
+            if (currentPart.QuantityInStock < 0)
+            {
+                modalErrorMessage = "Quantity cannot be negative";
+                return false;
+            }
+
+            return true;
+        }
+
+        private async Task SavePart()
+        {
+            if (!ValidatePart())
+            {
+                return;
+            }
+
+            try
+            {
+                isSaving = true;
+                StateHasChanged();
+                
+                currentPart.CreatedBy = CurrentUser.UserName;
+                currentPart.Unit = string.IsNullOrEmpty(currentPart.Unit) ? "Each" : currentPart.Unit;
+                currentPart.Status = "In Stock";
+                
+                if (currentPart.AssetId == 0)
+                {
+                    currentPart.AssetId = null;
+                }
+                
+                if (editMode)
+                {
+                    await DataService.UpdateSparePartAsync(currentPart);
+                    successMessage = "Spare part updated successfully";
+                }
+                else
+                {
+                    await DataService.AddSparePartAsync(currentPart);
+                    successMessage = "Spare part added successfully";
+                }
+                
+                await LoadDataAsync();
+                CloseModal();
+                
+                await Task.Delay(2000);
+                successMessage = string.Empty;
+            }
+            catch (Exception ex)
+            {
+                modalErrorMessage = $"Error saving part: {ex.Message}";
+            }
+            finally
+            {
+                isSaving = false;
+                StateHasChanged();
+            }
+        }
+
+        private void CloseModal()
+        {
+            showModal = false;
+            showValidationErrors = false;
+            modalErrorMessage = string.Empty;
+        }
+
+        private void CloseViewModal()
+        {
+            showViewModal = false;
+            selectedPart = null;
+            partTransactions = new();
+        }
+
+        private void ShowTransactionModal()
+        {
+            try
+            {
+                currentTransaction = new SparePartTransaction();
+                showValidationErrors = false;
+                modalErrorMessage = string.Empty;
+                showTransactionModal = true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Error opening transaction modal: {ex.Message}";
+            }
+        }
+
+        private void IssuePart(SparePart part)
+        {
+            try
+            {
+                currentTransaction = new SparePartTransaction
+                {
+                    SparePartId = part.Id,
+                    TransactionType = "Issue",
+                    Quantity = 1
+                };
+                showValidationErrors = false;
+                modalErrorMessage = string.Empty;
+                showTransactionModal = true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Error preparing transaction: {ex.Message}";
+            }
+        }
+
+        private bool ValidateTransaction()
+        {
+            showValidationErrors = true;
+            
+            if (currentTransaction.SparePartId == 0)
+            {
+                modalErrorMessage = "Please select a spare part";
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(currentTransaction.TransactionType))
+            {
+                modalErrorMessage = "Please select transaction type";
+                return false;
+            }
+
+            if (currentTransaction.Quantity <= 0)
+            {
+                modalErrorMessage = "Quantity must be at least 1";
+                return false;
+            }
+
+            return true;
+        }
+
+        private async Task SaveTransaction()
+        {
+            if (!ValidateTransaction())
+            {
+                return;
+            }
+
+            try
+            {
+                isSaving = true;
+                StateHasChanged();
+                
+                currentTransaction.TransactionBy = CurrentUser.UserName;
+                currentTransaction.TransactionDate = DateTime.Now;
+                
+                if (currentTransaction.WorkOrderId == 0)
+                {
+                    currentTransaction.WorkOrderId = null;
+                }
+
+                await DataService.AddSparePartTransactionAsync(currentTransaction);
+                successMessage = "Transaction recorded successfully";
+                
+                await LoadDataAsync();
+                CloseTransactionModal();
+                
+                await Task.Delay(2000);
+                successMessage = string.Empty;
+            }
+            catch (Exception ex)
+            {
+                modalErrorMessage = $"Error recording transaction: {ex.Message}";
+            }
+            finally
+            {
+                isSaving = false;
+                StateHasChanged();
+            }
+        }
+
+        private void CloseTransactionModal()
+        {
+            showTransactionModal = false;
+            showValidationErrors = false;
+            modalErrorMessage = string.Empty;
+        }
+
+        private string GetStockStatusClass(string status)
+        {
+            return status switch
+            {
+                "Out of Stock" => "rbm-badge-danger",
+                "Low Stock" => "rbm-badge-warning",
+                "Reorder Soon" => "rbm-badge-warning",
+                _ => "rbm-badge-success"
+            };
+        }
+
+        private string GetTransactionTypeClass(string type)
+        {
+            return type switch
+            {
+                "Issue" => "rbm-badge-danger",
+                "Return" => "rbm-badge-success",
+                "Restock" => "rbm-badge-success",
+                "Adjustment" => "rbm-badge-info",
+                _ => "rbm-badge-secondary"
+            };
+        }
+
+        private string GetTransactionRowClass(string type)
+        {
+            return type switch
+            {
+                "Issue" => "issue-row",
+                "Return" => "return-row",
+                "Restock" => "restock-row",
+                "Adjustment" => "adjustment-row",
+                _ => ""
+            };
+        }
+    }

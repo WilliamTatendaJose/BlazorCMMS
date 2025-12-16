@@ -1,0 +1,266 @@
+/* Work Order Edit Modal Styles */
+
+.edit-modal {
+    max-width: 800px !important;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
+}
+
+.rbm-modal-body {
+    max-height: calc(90vh - 200px);
+    overflow-y: auto;
+    padding: 24px;
+}
+
+.edit-form {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* Form Sections */
+.form-section {
+    padding: 16px;
+    background: var(--rbm-bg);
+    border-radius: 8px;
+    border-left: 4px solid var(--rbm-accent);
+}
+
+.form-section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--rbm-text);
+    margin: 0 0 16px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Form Groups */
+.rbm-form-group {
+    margin-bottom: 16px;
+}
+
+.rbm-form-group:last-child {
+    margin-bottom: 0;
+}
+
+.rbm-form-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--rbm-text);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.rbm-form-input,
+.rbm-form-select,
+.rbm-form-textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--rbm-border);
+    border-radius: 6px;
+    font-size: 14px;
+    color: var(--rbm-text);
+    background: white;
+    font-family: inherit;
+    transition: all 0.2s ease;
+}
+
+.rbm-form-input:focus,
+.rbm-form-select:focus,
+.rbm-form-textarea:focus {
+    outline: none;
+    border-color: var(--rbm-accent);
+    box-shadow: 0 0 0 3px rgba(2, 136, 209, 0.1);
+}
+
+.rbm-form-input:disabled,
+.rbm-form-select:disabled {
+    background: var(--rbm-bg);
+    color: var(--rbm-text-light);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.rbm-form-textarea {
+    resize: vertical;
+    min-height: 100px;
+    font-family: inherit;
+}
+
+/* Grid Layouts */
+.rbm-grid {
+    display: grid;
+    gap: 16px;
+}
+
+.rbm-grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+.rbm-grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+/* Input with Prefix */
+.input-with-prefix {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-with-prefix .prefix {
+    position: absolute;
+    left: 12px;
+    font-weight: 600;
+    color: var(--rbm-text-light);
+    pointer-events: none;
+}
+
+.input-with-prefix input {
+    padding-left: 32px;
+}
+
+/* Checkbox Group */
+.checkbox-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 16px 0;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--rbm-text);
+    user-select: none;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--rbm-accent);
+}
+
+.checkbox-label span {
+    display: flex;
+    align-items: center;
+    height: 18px;
+}
+
+/* Modal Footer */
+.rbm-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px;
+    background: var(--rbm-bg);
+    border-top: 1px solid var(--rbm-border);
+}
+
+/* Buttons */
+.rbm-btn {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.rbm-btn-primary {
+    background: var(--rbm-accent);
+    color: white;
+}
+
+.rbm-btn-primary:hover:not(:disabled) {
+    background: #0277bd;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(2, 136, 209, 0.3);
+}
+
+.rbm-btn-primary:disabled {
+    background: var(--rbm-text-light);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.rbm-btn-outline {
+    background: white;
+    color: var(--rbm-accent);
+    border: 1px solid var(--rbm-border);
+}
+
+.rbm-btn-outline:hover {
+    background: var(--rbm-bg);
+    border-color: var(--rbm-accent);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .edit-modal {
+        max-width: 95vw !important;
+    }
+
+    .rbm-grid-2 {
+        grid-template-columns: 1fr;
+    }
+
+    .rbm-grid-3 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .rbm-modal-footer {
+        flex-direction: column-reverse;
+    }
+
+    .rbm-modal-footer .rbm-btn {
+        width: 100%;
+    }
+
+    .checkbox-group {
+        flex-direction: column;
+    }
+}
+
+@media (max-width: 480px) {
+    .rbm-grid-3 {
+        grid-template-columns: 1fr;
+    }
+
+    .form-section {
+        padding: 12px;
+    }
+
+    .edit-form {
+        gap: 16px;
+    }
+}
+
+/* Scrollbar Styling */
+.rbm-modal-body::-webkit-scrollbar {
+    width: 8px;
+}
+
+.rbm-modal-body::-webkit-scrollbar-track {
+    background: var(--rbm-bg);
+}
+
+.rbm-modal-body::-webkit-scrollbar-thumb {
+    background: var(--rbm-text-light);
+    border-radius: 4px;
+}
+
+.rbm-modal-body::-webkit-scrollbar-thumb:hover {
+    background: var(--rbm-text);
+}

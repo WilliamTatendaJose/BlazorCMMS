@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using BlazorApp1.Models;
 
 namespace BlazorApp1.Data;
 
@@ -20,5 +22,15 @@ public class ApplicationUser : IdentityUser
     public DateTime CreatedDate { get; set; } = DateTime.Now;
     
     public DateTime? LastLoginDate { get; set; }
+
+    // Multi-tenancy support
+    [ForeignKey("Tenant")]
+    public int? PrimaryTenantId { get; set; }
+    
+    public bool IsSuperAdmin { get; set; } = false;
+    
+    // Navigation properties
+    public virtual Tenant? Tenant { get; set; }
+    public virtual ICollection<TenantUserMapping> TenantMappings { get; set; } = new List<TenantUserMapping>();
 }
 

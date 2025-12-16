@@ -1,4 +1,4 @@
-@page "/Account/Login"
+ï»¿@page "/Account/Login"
 @layout BlazorApp1.Components.Account.Shared.AccountLayout
 
 @using System.ComponentModel.DataAnnotations
@@ -16,77 +16,117 @@
 
 <div class="login-container">
     <div class="login-card">
+        <!-- Header Section -->
         <div class="login-header">
             <div class="login-logo">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="#0288d1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M2 17L12 22L22 17" stroke="#0288d1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M2 12L12 17L22 12" stroke="#0288d1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
             </div>
             <h1 class="login-title">RBM CMMS</h1>
-            <p class="login-subtitle">Reliability-Based Maintenance System</p>
+            <p class="login-subtitle">Reliability-Based Maintenance Management System</p>
         </div>
 
-        <StatusMessage Message="@errorMessage" />
+        <!-- Form Section -->
+        <div class="login-form-section">
+            <StatusMessage Message="@errorMessage" />
 
-        <EditForm EditContext="editContext" method="post" OnSubmit="LoginUser" FormName="login" class="login-form">
-            <DataAnnotationsValidator />
+            <EditForm EditContext="editContext" method="post" OnSubmit="LoginUser" FormName="login" class="login-form">
+                <DataAnnotationsValidator />
 
-            <div class="rbm-form-group">
-                <label for="Input.Email" class="rbm-form-label">Email Address</label>
-                <InputText @bind-Value="Input.Email" id="Input.Email" class="rbm-form-input" autocomplete="username" aria-required="true" placeholder="your.email@company.com" />
-                <ValidationMessage For="() => Input.Email" class="validation-error" />
+                <div class="rbm-form-group">
+                    <label for="Input.Email" class="rbm-form-label">Email Address</label>
+                    <InputText 
+                        @bind-Value="Input.Email" 
+                        id="Input.Email" 
+                        class="rbm-form-input" 
+                        autocomplete="username" 
+                        aria-required="true" 
+                        placeholder="your.email@company.com"
+                        disabled="@isLoggingIn" />
+                    <ValidationMessage For="() => Input.Email" class="validation-error" />
+                </div>
+
+                <div class="rbm-form-group">
+                    <label for="Input.Password" class="rbm-form-label">Password</label>
+                    <InputText 
+                        type="password" 
+                        @bind-Value="Input.Password" 
+                        id="Input.Password" 
+                        class="rbm-form-input" 
+                        autocomplete="current-password" 
+                        aria-required="true" 
+                        placeholder="Enter your password"
+                        disabled="@isLoggingIn" />
+                    <ValidationMessage For="() => Input.Password" class="validation-error" />
+                </div>
+
+                <div class="rbm-form-group">
+                    <label class="remember-me-label">
+                        <InputCheckbox @bind-Value="Input.RememberMe" class="remember-me-checkbox" disabled="@isLoggingIn" />
+                        <span>Remember me</span>
+                    </label>
+                </div>
+
+                <button type="submit" class="rbm-btn rbm-btn-primary rbm-btn-block login-button" disabled="@isLoggingIn">
+                    @if (isLoggingIn)
+                    {
+                        <span class="login-spinner"></span>
+                        <span>Signing In...</span>
+                    }
+                    else
+                    {
+                        <span>Sign In</span>
+                    }
+                </button>
+
+                <div class="login-links">
+                    <a href="/Account/ForgotPassword" class="login-link" aria-label="Forgot password">
+                        <span>ðŸ”‘</span> Forgot password?
+                    </a>
+                    <span class="login-link-separator">â€¢</span>
+                    <a href="@(NavigationManager.GetUriWithQueryParameters("/Account/Register", new Dictionary<string, object?> { ["ReturnUrl"] = ReturnUrl }))" class="login-link" aria-label="Create new account">
+                        <span>âž•</span> Create account
+                    </a>
+                </div>
+            </EditForm>
+        </div>
+
+        <!-- Demo Credentials Section -->
+        @* <div class="demo-credentials">
+            <div class="demo-header">
+                <span>ðŸ“‹</span> Demo Credentials
             </div>
-
-            <div class="rbm-form-group">
-                <label for="Input.Password" class="rbm-form-label">Password</label>
-                <InputText type="password" @bind-Value="Input.Password" id="Input.Password" class="rbm-form-input" autocomplete="current-password" aria-required="true" placeholder="••••••••" />
-                <ValidationMessage For="() => Input.Password" class="validation-error" />
-            </div>
-
-            <div class="rbm-form-group">
-                <label class="remember-me-label">
-                    <InputCheckbox @bind-Value="Input.RememberMe" class="remember-me-checkbox" />
-                    <span>Remember me</span>
-                </label>
-            </div>
-
-            <button type="submit" class="rbm-btn rbm-btn-primary rbm-btn-block">
-                Sign In
-            </button>
-
-            <div class="login-links">
-                <a href="/Account/ForgotPassword" class="login-link">Forgot password?</a>
-                <span class="login-link-separator">•</span>
-                <a href="@(NavigationManager.GetUriWithQueryParameters("/Account/Register", new Dictionary<string, object?> { ["ReturnUrl"] = ReturnUrl }))" class="login-link">Create account</a>
-            </div>
-        </EditForm>
-
-        <div class="demo-credentials">
-            <div class="demo-header">Demo Credentials</div>
+            <p class="demo-description">Use these credentials to explore the system:</p>
             <div class="demo-grid">
-                <div class="demo-credential">
-                    <div class="demo-role admin">?? Admin</div>
+                <div class="demo-credential admin-demo">
+                    <div class="demo-role">ðŸ‘‘ Admin</div>
                     <div class="demo-email">admin@company.com</div>
                     <div class="demo-password">Admin123!</div>
                 </div>
-                <div class="demo-credential">
-                    <div class="demo-role engineer">?? Engineer</div>
+                <div class="demo-credential engineer-demo">
+                    <div class="demo-role">ðŸ”§ Engineer</div>
                     <div class="demo-email">sarah.johnson@company.com</div>
                     <div class="demo-password">Sarah123!</div>
                 </div>
-                <div class="demo-credential">
-                    <div class="demo-role planner">?? Planner</div>
+                <div class="demo-credential planner-demo">
+                    <div class="demo-role">ðŸ“‹ Planner</div>
                     <div class="demo-email">emily.brown@company.com</div>
                     <div class="demo-password">Emily123!</div>
                 </div>
-                <div class="demo-credential">
-                    <div class="demo-role technician">?? Technician</div>
+                <div class="demo-credential technician-demo">
+                    <div class="demo-role">ðŸ‘· Technician</div>
                     <div class="demo-email">john.smith@company.com</div>
                     <div class="demo-password">John123!</div>
                 </div>
             </div>
+        </div> *@
+
+        <!-- Footer -->
+        <div class="login-footer">
+            <p>&copy; 2024 RBM CMMS. All rights reserved. | <a href="#" class="footer-link">Privacy Policy</a></p>
         </div>
     </div>
 </div>
@@ -99,47 +139,168 @@
         justify-content: center;
         background: linear-gradient(135deg, #37474f 0%, #607d8b 100%);
         padding: 20px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
     }
 
     .login-card {
         background: white;
         border-radius: 16px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-        max-width: 480px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+        max-width: 500px;
         width: 100%;
         overflow: hidden;
+        animation: slideUp 0.4s ease-out;
+    }
+
+    @@keyframes slideUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
 
     .login-header {
         background: linear-gradient(135deg, #0288d1 0%, #37474f 100%);
         color: white;
-        padding: 40px 40px 32px;
+        padding: 48px 40px 40px;
         text-align: center;
     }
 
     .login-logo {
         margin-bottom: 16px;
+        display: inline-block;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+    }
+
+    .login-logo svg {
+        display: block;
     }
 
     .login-title {
-        font-size: 28px;
+        font-size: 32px;
         font-weight: 700;
-        margin: 0 0 8px 0;
+        margin: 16px 0 8px 0;
+        letter-spacing: -0.5px;
     }
 
     .login-subtitle {
         font-size: 14px;
-        opacity: 0.9;
+        opacity: 0.95;
         margin: 0;
+        font-weight: 500;
     }
 
-    .login-form {
+    .login-form-section {
         padding: 40px;
     }
 
-    .rbm-btn-block {
+    .login-form {
+        margin: 0;
+    }
+
+    .rbm-form-group {
+        margin-bottom: 20px;
+    }
+
+    .rbm-form-label {
+        display: block;
+        font-size: 14px;
+        font-weight: 600;
+        color: #263238;
+        margin-bottom: 8px;
+    }
+
+    .rbm-form-input {
         width: 100%;
-        margin-top: 8px;
+        padding: 12px 14px;
+        border: 1px solid #cfd8dc;
+        border-radius: 8px;
+        font-size: 14px;
+        transition: all 0.2s;
+        font-family: inherit;
+    }
+
+    .rbm-form-input:focus {
+        outline: none;
+        border-color: #0288d1;
+        box-shadow: 0 0 0 3px rgba(2, 136, 209, 0.1);
+    }
+
+    .rbm-form-input:disabled {
+        background: #f5f5f5;
+        cursor: not-allowed;
+    }
+
+    .validation-error {
+        color: #e53935;
+        font-size: 12px;
+        margin-top: 6px;
+        display: block;
+    }
+
+    .remember-me-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        color: #263238;
+        user-select: none;
+    }
+
+    .remember-me-checkbox {
+        cursor: pointer;
+        width: 18px;
+        height: 18px;
+        accent-color: #0288d1;
+    }
+
+    .remember-me-checkbox:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+    }
+
+    .login-button {
+        width: 100%;
+        padding: 12px;
+        margin-top: 24px;
+        font-size: 16px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: all 0.3s;
+    }
+
+    .login-button:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(2, 136, 209, 0.3);
+    }
+
+    .login-button:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+
+    .login-spinner {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
     }
 
     .login-links {
@@ -149,51 +310,42 @@
     }
 
     .login-link {
-        color: var(--rbm-accent);
+        color: #0288d1;
         text-decoration: none;
-        transition: color 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s;
+        padding: 4px 0;
     }
 
     .login-link:hover {
-        color: var(--rbm-accent-light);
-        text-decoration: underline;
+        color: #03a9f4;
     }
 
     .login-link-separator {
-        color: var(--rbm-text-light);
+        color: #cfd8dc;
         margin: 0 12px;
     }
 
-    .remember-me-label {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        cursor: pointer;
-        font-size: 14px;
-        color: var(--rbm-text);
-    }
-
-    .remember-me-checkbox {
-        cursor: pointer;
-    }
-
-    .validation-error {
-        color: var(--rbm-danger);
-        font-size: 13px;
-        margin-top: 4px;
-    }
-
     .demo-credentials {
-        background: var(--rbm-bg);
-        padding: 24px;
-        border-top: 1px solid var(--rbm-border);
+        background: #f5f5f5;
+        padding: 28px 24px;
+        border-top: 1px solid #e0e0e0;
     }
 
     .demo-header {
-        font-weight: 600;
+        font-weight: 700;
+        margin-bottom: 12px;
+        color: #263238;
+        font-size: 15px;
+    }
+
+    .demo-description {
+        font-size: 13px;
+        color: #607d8b;
         margin-bottom: 16px;
-        color: var(--rbm-text);
-        text-align: center;
+        margin-top: 0;
     }
 
     .demo-grid {
@@ -204,45 +356,181 @@
 
     .demo-credential {
         background: white;
-        padding: 12px;
-        border-radius: 8px;
+        padding: 14px;
+        border-radius: 10px;
         font-size: 12px;
-        text-align: center;
+        border: 1px solid #e0e0e0;
+        transition: all 0.2s;
+    }
+
+    .demo-credential:hover {
+        border-color: #0288d1;
+        box-shadow: 0 2px 8px rgba(2, 136, 209, 0.1);
     }
 
     .demo-role {
-        font-weight: 600;
-        margin-bottom: 6px;
+        font-weight: 700;
+        margin-bottom: 8px;
+        font-size: 13px;
     }
-
-    .demo-role.admin { color: #e53935; }
-    .demo-role.engineer { color: #0288d1; }
-    .demo-role.planner { color: #fb8c00; }
-    .demo-role.technician { color: #43a047; }
 
     .demo-email, .demo-password {
-        color: var(--rbm-text-light);
-        font-family: 'Courier New', monospace;
+        color: #607d8b;
+        font-family: 'Menlo', 'Courier New', monospace;
         margin-top: 4px;
+        word-break: break-all;
     }
 
-    @@media (max-width: 600px) {
+    .login-footer {
+        background: #fafafa;
+        padding: 16px;
+        text-align: center;
+        font-size: 12px;
+        color: #607d8b;
+        border-top: 1px solid #e0e0e0;
+    }
+
+    .login-footer p {
+        margin: 0;
+    }
+
+    .footer-link {
+        color: #0288d1;
+        text-decoration: none;
+        transition: color 0.2s;
+    }
+
+    .footer-link:hover {
+        color: #03a9f4;
+        text-decoration: underline;
+    }
+
+    @@media (max-width: 640px) {
+        .login-container {
+            padding: 16px;
+        }
+
         .login-header {
             padding: 32px 24px 24px;
         }
 
-        .login-form {
+        .login-title {
+            font-size: 24px;
+        }
+
+        .login-form-section {
             padding: 24px;
         }
 
         .demo-grid {
             grid-template-columns: 1fr;
         }
+
+        .login-logo {
+            width: 44px;
+            height: 44px;
+        }
+    }
+
+    @@media (max-width: 480px) {
+        .login-card {
+            border-radius: 12px;
+        }
+
+        .login-form-section {
+            padding: 20px;
+        }
+
+        .login-header {
+            padding: 24px 20px;
+        }
+
+        .rbm-form-input {
+            padding: 10px 12px;
+            font-size: 16px;
+        }
+
+        .login-title {
+            font-size: 20px;
+        }
+
+        .login-subtitle {
+            font-size: 12px;
+        }
+    }
+
+    .rbm-form-input:focus-visible {
+        outline: 2px solid #0288d1;
+        outline-offset: 2px;
+    }
+
+    button:focus-visible {
+        outline: 2px solid #0288d1;
+        outline-offset: 2px;
+    }
+
+    @@media (prefers-color-scheme: dark) {
+        .login-container {
+            background: linear-gradient(135deg, #263238 0%, #455a64 100%);
+        }
+
+        .login-card {
+            background: #1e1e1e;
+            color: #e0e0e0;
+        }
+
+        .rbm-form-label {
+            color: #e0e0e0;
+        }
+
+        .rbm-form-input {
+            background: #2d2d2d;
+            color: #e0e0e0;
+            border-color: #404040;
+        }
+
+        .rbm-form-input:focus {
+            border-color: #42a5f5;
+            box-shadow: 0 0 0 3px rgba(66, 165, 245, 0.1);
+        }
+
+        .remember-me-label {
+            color: #e0e0e0;
+        }
+
+        .demo-credentials {
+            background: #252525;
+            border-top-color: #404040;
+        }
+
+        .demo-header {
+            color: #e0e0e0;
+        }
+
+        .demo-description {
+            color: #b0b0b0;
+        }
+
+        .demo-credential {
+            background: #2d2d2d;
+            border-color: #404040;
+        }
+
+        .demo-email, .demo-password {
+            color: #b0b0b0;
+        }
+
+        .login-footer {
+            background: #252525;
+            border-top-color: #404040;
+            color: #b0b0b0;
+        }
     }
 </style>
 
 @code {
     private string? errorMessage;
+    private bool isLoggingIn = false;
     private EditContext editContext = default!;
 
     [CascadingParameter]
@@ -272,37 +560,51 @@
             return;
         }
 
-        var result = await SignInManager.PasswordSignInAsync(Input.Email, Input.Password, Input.RememberMe, lockoutOnFailure: false);
+        try
+        {
+            isLoggingIn = true;
+            errorMessage = null;
 
-        if (result.Succeeded)
-        {
-            Logger.LogInformation("User logged in.");
-            RedirectManager.RedirectTo(ReturnUrl ?? "/rbm");
+            var result = await SignInManager.PasswordSignInAsync(
+                Input.Email, 
+                Input.Password, 
+                Input.RememberMe, 
+                lockoutOnFailure: false);
+
+            if (result.Succeeded)
+            {
+                Logger.LogInformation("User logged in successfully. Email: {Email}", Input.Email);
+                RedirectManager.RedirectTo(ReturnUrl ?? "/rbm");
+            }
+            else if (result.RequiresTwoFactor)
+            {
+                RedirectManager.RedirectTo(
+                    "Account/LoginWith2fa",
+                    new() { ["returnUrl"] = ReturnUrl, ["rememberMe"] = Input.RememberMe });
+            }
+            else if (result.IsLockedOut)
+            {
+                Logger.LogWarning("User account locked out. Email: {Email}", Input.Email);
+                RedirectManager.RedirectTo("Account/Lockout");
+            }
+            else
+            {
+                errorMessage = "Invalid email or password. Please try again.";
+            }
         }
-        else if (result.RequiresTwoFactor)
+        finally
         {
-            RedirectManager.RedirectTo(
-                "Account/LoginWith2fa",
-                new() { ["returnUrl"] = ReturnUrl, ["rememberMe"] = Input.RememberMe });
-        }
-        else if (result.IsLockedOut)
-        {
-            Logger.LogWarning("User account locked out.");
-            RedirectManager.RedirectTo("Account/Lockout");
-        }
-        else
-        {
-            errorMessage = "Error: Invalid email or password.";
+            isLoggingIn = false;
         }
     }
 
     private sealed class InputModel
     {
-        [Required]
-        [EmailAddress]
+        [Required(ErrorMessage = "Email is required")]
+        [EmailAddress(ErrorMessage = "Invalid email format")]
         public string Email { get; set; } = "";
 
-        [Required]
+        [Required(ErrorMessage = "Password is required")]
         [DataType(DataType.Password)]
         public string Password { get; set; } = "";
 

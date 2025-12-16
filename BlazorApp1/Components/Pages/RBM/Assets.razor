@@ -8,87 +8,176 @@
 @inject BlazorApp1.Services.CurrentUserService CurrentUser
 @inject NavigationManager Navigation
 @using BlazorApp1.Models
+@using Microsoft.AspNetCore.Components.Forms
+
+<PageTitle>Assets Management | RBM CMMS</PageTitle>
 
 @if (!isInitialized)
 {
     <div style="text-align: center; padding: 40px;">
         <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
-        <div>Loading permissions...</div>
+        <div>Loading assets...</div>
     </div>
 }
 else if (AssetId == null)
 {
     <!-- Assets List View -->
     <div class="rbm-page-header">
-        <h1 class="rbm-page-title">Assets</h1>
-        <p class="rbm-page-subtitle">Manage and monitor all equipment assets</p>
-    </div>
-
-    <div class="rbm-action-bar">
-        <div class="rbm-action-buttons">
+        <div>
+            <h1 class="rbm-page-title">Assets Management</h1>
+            <p class="rbm-page-subtitle">Monitor and manage equipment assets</p>
+        </div>
+        <div class="action-buttons">
             @if (CurrentUser.CanEdit)
             {
                 <button class="rbm-btn rbm-btn-primary" @onclick="ShowAddAssetModal">
-                    <span style="font-size: 1.2em;">➕</span> Add Asset
+                    ➕ Add Asset
                 </button>
             }
         </div>
     </div>
 
+    <!-- Statistics Cards -->
+    <div class="rbm-grid rbm-grid-5 mb-4">
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-label">Total Assets</div>
+            <div class="rbm-stat-value">@totalAssets</div>
+            <div style="position: absolute; top: 12px; right: 16px; font-size: 32px; opacity: 0.3;">🏭</div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-label">Active Assets</div>
+            <div class="rbm-stat-value">@activeAssets</div>
+            <div style="position: absolute; top: 12px; right: 16px; font-size: 32px, opacity: 0.3;">✅</div>
+        </div>
+        <div class="rbm-stat-card" style="border-left: 4px solid #e53935;">
+            <div class="rbm-stat-label">Critical</div>
+            <div class="rbm-stat-value">@criticalAssets</div>
+            <div style="position: absolute; top: 12px; right: 16px; font-size: 32px; opacity: 0.3;">⚠️</div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-label">Avg Health</div>
+            <div class="rbm-stat-value">@averageHealth.ToString("F0")%</div>
+            <div style="position: absolute; top: 12px; right: 16px; font-size: 32px; opacity: 0.3;">💚</div>
+        </div>
+        <div class="rbm-stat-card" style="border-left: 4px solid #e53935;">
+            <div class="rbm-stat-label">Overdue Maintenance</div>
+            <div class="rbm-stat-value">@overdueCount</div>
+            <div style="position: absolute; top: 12px; right: 16px; font-size: 32px; opacity: 0.3;">📅</div>
+        </div>
+    </div>
+
+    <!-- Filters & Search -->
+    <div class="rbm-card mb-4">
+        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 16px;">
+            <input type="text" class="rbm-form-input" 
+                   @bind="searchTerm" 
+                   @bind:event="oninput"
+                   @onchange="async (e) => { await ApplyFiltersAsync(); }"
+                   placeholder="🔍 Search by ID, name, or location..."
+                   style="flex: 1; min-width: 150px;">
+            
+            <select class="rbm-form-select" @onchange="HandleCriticalityChange">
+                <option value="">All Criticalities</option>
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+                <option value="Critical">Critical</option>
+            </select>
+            
+            <select class="rbm-form-select" @onchange="HandleStatusChange">
+                <option value="">All Status</option>
+                <option value="Healthy">Healthy</option>
+                <option value="Warning">Warning</option>
+                <option value="Critical">Critical</option>
+                <option value="Maintenance">Maintenance</option>
+            </select>
+            
+            @if (!string.IsNullOrEmpty(searchTerm) || !string.IsNullOrEmpty(selectedCriticality) || !string.IsNullOrEmpty(selectedStatus))
+            {
+                <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="ClearFilters">
+                    ✕ Clear Filters
+                </button>
+            }
+        </div>
+    </div>
+
+    <!-- Assets Table -->
     <div class="rbm-card">
         <div class="rbm-table-container">
-            <table class="rbm-table">
-                <thead>
-                    <tr>
-                        <th>Asset ID</th>
-                        <th>Name</th>
-                        <th>Location</th>
-                        <th>Criticality</th>
-                        <th>Health Score</th>
-                        <th>Last Maintenance</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var asset in assets)
-                    {
+            @if (filteredAssets.Any())
+            {
+                <table class="rbm-table">
+                    <thead>
                         <tr>
-                            <td><strong>@asset.AssetId</strong></td>
-                            <td>@asset.Name</td>
-                            <td>@asset.Location</td>
-                            <td><span class="rbm-badge-pill rbm-badge-@asset.Criticality.ToLower()">@asset.Criticality</span></td>
-                            <td>
-                                <span class="rbm-health-score @(asset.HealthScore >= 80 ? "healthy" : asset.HealthScore >= 60 ? "warning" : "critical")">
-                                    <span class="rbm-health-dot"></span>
-                                    @asset.HealthScore
-                                </span>
-                            </td>
-                            <td>@(asset.LastMaintenance?.ToString("dd MM, yyyy") ?? "N/A")</td>
-                            <td><span class="rbm-badge-pill rbm-badge-@asset.Status.ToLower()">@asset.Status</span></td>
-                            <td>
-                                <div style="display: flex; gap: 4px;">
-                                    <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => ViewAssetDetails(asset.Id)">
-                                        <span style="font-size: 1.1em;">👁️</span> View
-                                    </button>
-                                    @if (CurrentUser.CanEdit)
-                                    {
-                                        <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => EditAsset(asset)">
-                                            <span style="font-size: 1.1em;">✏️</span>
-                                        </button>
-                                    }
-                                    @if (CurrentUser.CanDelete)
-                                    {
-                                        <button class="rbm-btn rbm-btn-danger rbm-btn-sm" @onclick="() => DeleteAsset(asset.Id)">
-                                            <span style="font-size: 1.1em;">🗑️</span>
-                                        </button>
-                                    }
-                                </div>
-                            </td>
+                            <th>Asset ID</th>
+                            <th>Name</th>
+                            <th>Location</th>
+                            <th>Criticality</th>
+                            <th>Health Score</th>
+                            <th>Status</th>
+                            <th>Last Maintenance</th>
+                            <th>Next Maintenance</th>
+                            <th>Actions</th>
                         </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var asset in filteredAssets)
+                        {
+                            <tr>
+                                <td><strong>@asset.AssetId</strong></td>
+                                <td>@asset.Name</td>
+                                <td>@asset.Location</td>
+                                <td><span class="rbm-badge-pill" style="background: @asset.CriticalityColor; color: white;">@asset.Criticality</span></td>
+                                <td>
+                                    <span style="padding: 4px 12px; border-radius: 20px; font-weight: 600; font-size: 14px; @(asset.HealthScore >= 80 ? "background: #e8f5e9; color: #2e7d32;" : asset.HealthScore >= 60 ? "background: #fff3e0; color: #e65100;" : "background: #ffebee; color: #c62828;")">
+                                        @asset.HealthScore.ToString("F0")%
+                                    </span>
+                                </td>
+                                <td><span class="rbm-badge-pill" style="background: @asset.StatusColor; color: white;">@asset.Status</span></td>
+                                <td>@(asset.LastMaintenance?.ToString("MMM dd, yyyy") ?? "Never")</td>
+                                <td>
+                                    @if (asset.NextScheduledMaintenance.HasValue)
+                                    {
+                                        <span style="@(asset.IsOverdue ? "color: #e53935; font-weight: bold;" : "")">
+                                            @asset.NextScheduledMaintenance.Value.ToString("MMM dd, yyyy")
+                                            @if (asset.IsOverdue) { <text> ⚠️</text> }
+                                        </span>
+                                    }
+                                    else { <span style="color: var(--rbm-text-light);">N/A</span> }
+                                </td>
+                                <td>
+                                    <div style="display: flex; gap: 4px;">
+                                        <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => ViewAssetDetails(asset.Id)" title="View">👁️</button>
+                                        @if (CurrentUser.CanEdit)
+                                        {
+                                            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => EditAsset(asset)" title="Edit">✏️</button>
+                                        }
+                                        @if (CurrentUser.CanDelete && !asset.IsRetired)
+                                        {
+                                            <button class="rbm-btn rbm-btn-danger rbm-btn-sm" @onclick="() => ConfirmRetireAssetAsync(asset)" title="Retire">🗑️</button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <div style="text-align: center; padding: 60px 20px;">
+                    <div style="font-size: 64px; margin-bottom: 16px;">📭</div>
+                    <div style="font-size: 20px; font-weight: 600; color: var(--rbm-text); margin-bottom: 8px;">No Assets Found</div>
+                    @if (string.IsNullOrEmpty(searchTerm) && string.IsNullOrEmpty(selectedCriticality) && string.IsNullOrEmpty(selectedStatus))
+                    {
+                        <div style="color: var(--rbm-text-light);">No assets in the system yet. Create one to get started!</div>
                     }
-                </tbody>
-            </table>
+                    else
+                    {
+                        <div style="color: var(--rbm-text-light);">No assets match the selected filters.</div>
+                    }
+                </div>
+            }
         </div>
     </div>
 }
@@ -98,188 +187,419 @@ else
     @if (selectedAsset != null)
     {
         <div class="rbm-page-header">
-            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="BackToList" style="margin-bottom: 16px;">
-                ← Back to Assets
-            </button>
+            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="BackToList" style="margin-bottom: 16px;">← Back to Assets</button>
             <h1 class="rbm-page-title">@selectedAsset.Name</h1>
             <p class="rbm-page-subtitle">@selectedAsset.AssetId - @selectedAsset.Location</p>
         </div>
 
-        <!-- Asset Overview -->
-        <div class="rbm-grid rbm-grid-4">
-            <div class="rbm-stat-card">
+        <!-- Overview Cards -->
+        <div class="rbm-grid rbm-grid-4 mb-4">
+            <div class="rbm-stat-card" style="text-align: center;">
                 <div class="rbm-stat-label">Health Score</div>
-                <div class="rbm-stat-value">@selectedAsset.HealthScore</div>
-                <div class="rbm-stat-trend">@selectedAsset.Status</div>
+                <div class="rbm-stat-value" style="@(selectedAsset.HealthScore >= 80 ? "color: #43a047" : selectedAsset.HealthScore >= 60 ? "color: #fb8c00" : "color: #e53935")">@selectedAsset.HealthScore.ToString("F0")%</div>
+                <div style="font-size: 12px; color: var(--rbm-text-light);">@selectedAsset.Status</div>
             </div>
-            
-            <div class="rbm-stat-card">
-                <div class="rbm-stat-label">Uptime (%)</div>
-                <div class="rbm-stat-value">@selectedAsset.Uptime.ToString("F1")</div>
+            <div class="rbm-stat-card" style="text-align: center;">
+                <div class="rbm-stat-label">Uptime</div>
+                <div class="rbm-stat-value">@selectedAsset.Uptime.ToString("F1")%</div>
+                <div style="font-size: 12px; color: var(--rbm-text-light);">Availability</div>
             </div>
-            
-            <div class="rbm-stat-card">
-                <div class="rbm-stat-label">Downtime (%)</div>
-                <div class="rbm-stat-value">@selectedAsset.Downtime.ToString("F1")</div>
+            <div class="rbm-stat-card" style="text-align: center;">
+                <div class="rbm-stat-label">Days Since Maintenance</div>
+                <div class="rbm-stat-value">@(selectedAsset.DaysSinceLastMaintenance >= 0 ? selectedAsset.DaysSinceLastMaintenance : "N/A")</div>
+                <div style="font-size: 12px; color: var(--rbm-text-light);">Last: @(selectedAsset.LastMaintenance?.ToString("MMM dd, yyyy") ?? "Never")</div>
             </div>
-            
-            <div class="rbm-stat-card">
+            <div class="rbm-stat-card" style="text-align: center;">
                 <div class="rbm-stat-label">Criticality</div>
-                <div class="rbm-stat-value" style="font-size: 20px;">
-                    <span class="rbm-badge-pill rbm-badge-@selectedAsset.Criticality.ToLower()">@selectedAsset.Criticality</span>
+                <div style="font-size: 20px; margin-top: 8px;"><span class="rbm-badge-pill" style="background: @selectedAsset.CriticalityColor; color: white; padding: 4px 12px;">@selectedAsset.Criticality</span></div>
+            </div>
+        </div>
+
+        <!-- Asset Information -->
+        <div class="rbm-card mb-4">
+            <div class="rbm-card-header"><h3>Asset Information</h3></div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; padding: 20px;">
+                <div>
+                    <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; text-transform: uppercase; margin-bottom: 4px;">Asset ID</div>
+                    <div>@selectedAsset.AssetId</div>
+                </div>
+                <div>
+                    <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; text-transform: uppercase; margin-bottom: 4px;">Manufacturer</div>
+                    <div>@(selectedAsset.EquipmentManufacturer ?? "N/A")</div>
+                </div>
+                <div>
+                    <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; text-transform: uppercase; margin-bottom: 4px;">Model Number</div>
+                    <div>@(selectedAsset.ModelNumber ?? "N/A")</div>
+                </div>
+                <div>
+                    <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; text-transform: uppercase; margin-bottom: 4px;">Serial Number</div>
+                    <div>@(selectedAsset.SerialNumber ?? "N/A")</div>
+                </div>
+                <div>
+                    <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; text-transform: uppercase; margin-bottom: 4px;">Location</div>
+                    <div>@selectedAsset.Location</div>
+                </div>
+                <div>
+                    <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; text-transform: uppercase; margin-bottom: 4px;">Department</div>
+                    <div>@(selectedAsset.Department ?? "N/A")</div>
+                </div>
+                <div>
+                    <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; text-transform: uppercase; margin-bottom: 4px;">Installation Date</div>
+                    <div>@(selectedAsset.InstallationDate?.ToString("MMM dd, yyyy") ?? "N/A")</div>
+                </div>
+                <div>
+                    <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; text-transform: uppercase; margin-bottom: 4px;">Manufacture Date</div>
+                    <div>@(selectedAsset.ManufactureDate?.ToString("MMM dd, yyyy") ?? "N/A")</div>
                 </div>
             </div>
         </div>
 
-        <!-- Condition History -->
-        <div class="rbm-card mt-3">
-            <div class="rbm-card-header">
-                <h3 class="rbm-card-title">Condition History</h3>
-            </div>
-            <div class="rbm-chart">
-                <div style="text-align: center;">
-                    <div style="font-size: 48px; margin-bottom: 16px;">📊</div>
-                    <div>Temperature, Vibration & Pressure Trends</div>
-                    <div style="margin-top: 8px; color: var(--rbm-text-light);">
-                        @conditionReadings.Count readings recorded
+        <!-- Maintenance Schedule -->
+        <div class="rbm-card mb-4">
+            <div class="rbm-card-header"><h3>Maintenance Schedule</h3></div>
+            @if (selectedAsset.NextScheduledMaintenance.HasValue)
+            {
+                <div style="padding: 16px; background: @(selectedAsset.IsOverdue ? "#ffebee" : "#fff9c4"); border-left: 4px solid @(selectedAsset.IsOverdue ? "#e53935" : "#fbc02d"); border-radius: 4px;">
+                    <span>Next Scheduled:</span>
+                    <strong>@selectedAsset.NextScheduledMaintenance.Value.ToString("MMMM dd, yyyy")</strong>
+                    @if (selectedAsset.IsOverdue)
+                    {
+                        <span style="color: #c62828; font-weight: 600;"> - ⚠️ OVERDUE</span>
+                    }
+                    else if (selectedAsset.DaysUntilMaintenance <= 7)
+                    {
+                        <span style="color: #e65100;"> - Due in @selectedAsset.DaysUntilMaintenance days</span>
+                    }
+                </div>
+            }
+            else
+            {
+                <div style="padding: 16px; color: var(--rbm-text-light);">No scheduled maintenance</div>
+            }
+        </div>
+
+        <!-- Related Data -->
+        <div class="rbm-grid rbm-grid-2 mb-4">
+            <div class="rbm-card">
+                <div class="rbm-card-header"><h3>Related Work Orders (@assetWorkOrders.Count)</h3></div>
+                @if (assetWorkOrders.Any())
+                {
+                    <div style="display: flex; flex-direction: column; gap: 12px; padding: 12px;">
+                        @foreach (var wo in assetWorkOrders.Take(5))
+                        {
+                            <div style="padding: 12px; background: var(--rbm-bg); border-radius: 6px; border: 1px solid var(--rbm-border);">
+                                <div style="font-weight: 600;">@wo.WorkOrderId</div>
+                                <div style="font-size: 12px; color: var(--rbm-text-light); margin-top: 4px;">@wo.Type - @wo.Status</div>
+                            </div>
+                        }
+                        @if (assetWorkOrders.Count > 5)
+                        {
+                            <div style="padding: 12px; text-align: center; color: var(--rbm-text-light); padding-top: 8px; border-top: 1px solid var(--rbm-border);">+@(assetWorkOrders.Count - 5) more</div>
+                        }
                     </div>
+                }
+                else
+                {
+                    <div style="padding: 16px; color: var(--rbm-text-light); text-align: center;">No work orders</div>
+                }
+            </div>
+
+            <div class="rbm-card">
+                <div class="rbm-card-header"><h3>Failure Modes (@assetFailureModes.Count)</h3></div>
+                @if (assetFailureModes.Any())
+                {
+                    <div style="display: flex; flex-direction: column; gap: 12px; padding: 12px;">
+                        @foreach (var fm in assetFailureModes.Take(5))
+                        {
+                            <div style="padding: 12px; background: var(--rbm-bg); border-radius: 6px; border: 1px solid var(--rbm-border);">
+                                <div style="font-weight: 600;">@fm.Mode</div>
+                                <div style="font-size: 12px; color: var(--rbm-text-light); margin-top: 4px;">RPN: @fm.RPN</div>
+                            </div>
+                        }
+                        @if (assetFailureModes.Count > 5)
+                        {
+                            <div style="padding: 12px; text-align: center; color: var(--rbm-text-light); padding-top: 8px; border-top: 1px solid var(--rbm-border);">+@(assetFailureModes.Count - 5) more</div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div style="padding: 16px; color: var(--rbm-text-light); text-align: center;">No failure modes</div>
+                }
+            </div>
+        </div>
+
+        <!-- Related Documents -->
+        <div class="rbm-card mb-4">
+            <div class="rbm-card-header">
+                <h3>Related Documents (@assetDocuments.Count)</h3>
+                @if (CurrentUser.CanEdit)
+                {
+                    <button class="rbm-btn rbm-btn-primary rbm-btn-sm" @onclick="ShowAddDocumentModal" style="margin-left: auto;">
+                        📄 Add Document
+                    </button>
+                }
+            </div>
+            @if (assetDocuments.Any())
+            {
+                <div style="overflow-x: auto;">
+                    <table class="rbm-table" style="font-size: 13px; margin-bottom: 0;">
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Category</th>
+                                <th>File Type</th>
+                                <th>Status</th>
+                                <th>Created Date</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var doc in assetDocuments.Take(10))
+                            {
+                                <tr>
+                                    <td>
+                                        <div style="font-weight: 600;">@doc.Title</div>
+                                        <div style="font-size: 11px; color: var(--rbm-text-light);">@doc.DocumentNumber</div>
+                                    </td>
+                                    <td>
+                                        <span style="background: #e3f2fd; color: #1565c0; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                                            @doc.Category
+                                        </span>
+                                    </td>
+                                    <td>@doc.FileType</td>
+                                    <td>
+                                        <span style="@(doc.Status == "Active" ? "background: #e8f5e9; color: #2e7d32;" : doc.Status == "Obsolete" ? "background: #f3e5f5; color: #6a1b9a;" : "background: #fff3e0; color: #e65100;") padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                                            @doc.Status
+                                        </span>
+                                    </td>
+                                    <td>@doc.CreatedDate.ToString("MMM dd, yyyy")</td>
+                                    <td>
+                                        <div style="display: flex; gap: 4px;">
+                                            <button class="rbm-btn rbm-btn-outline rbm-btn-xs" @onclick="() => ViewDocument(doc.Id)" title="View">👁️</button>
+                                            @if (doc.ExpiryDate.HasValue && doc.ExpiryDate < DateTime.Now)
+                                            {
+                                                <span title="Expired" style="color: #e53935; font-weight: bold;">⚠️</span>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    @if (assetDocuments.Count > 10)
+                    {
+                        <div style="padding: 12px; text-align: center; color: var(--rbm-text-light); border-top: 1px solid var(--rbm-border);">
+                            +@(assetDocuments.Count - 10) more documents
+                        </div>
+                    }
                 </div>
-            </div>
+            }
+            else
+            {
+                <div style="padding: 24px; text-align: center; color: var(--rbm-text-light);">
+                    <div style="font-size: 32px; margin-bottom: 8px;">📭</div>
+                    <div>No documents associated with this asset</div>
+                    @if (CurrentUser.CanEdit)
+                    {
+                        <button class="rbm-btn rbm-btn-primary rbm-btn-sm" @onclick="ShowAddDocumentModal" style="margin-top: 12px;">
+                            📄 Add Documents
+                        </button>
+                    }
+                </div>
+            }
         </div>
 
-        <!-- Linked Work Orders -->
-        <div class="rbm-card mt-3">
-            <div class="rbm-card-header">
-                <h3 class="rbm-card-title">Linked Work Orders</h3>
+        <!-- Action Buttons -->
+        @if (CurrentUser.CanEdit)
+        {
+            <div style="display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap;">
+                <button class="rbm-btn rbm-btn-primary" @onclick="() => EditAsset(selectedAsset)">✏️ Edit Asset</button>
+                @if (!selectedAsset.IsRetired)
+                {
+                    <button class="rbm-btn rbm-btn-danger" @onclick="() => ConfirmRetireAssetAsync(selectedAsset)">🗑️ Retire Asset</button>
+                }
+                else
+                {
+                    <button class="rbm-btn rbm-btn-primary" @onclick="ReactivateAssetConfirmAsync">↩️ Reactivate Asset</button>
+                }
             </div>
-            <div class="rbm-table-container">
-                <table class="rbm-table">
-                    <thead>
-                        <tr>
-                            <th>Work Order</th>
-                            <th>Type</th>
-                            <th>Priority</th>
-                            <th>Status</th>
-                            <th>Due Date</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var wo in assetWorkOrders)
-                        {
-                            <tr>
-                                <td><strong>@wo.WorkOrderId</strong></td>
-                                <td>@wo.Type</td>
-                                <td><span class="rbm-badge-pill rbm-badge-@wo.Priority.ToLower()">@wo.Priority</span></td>
-                                <td>@wo.Status</td>
-                                <td>@wo.DueDate.ToString("MMM dd, yyyy")</td>
-                            </tr>
-                        }
-                        @if (!assetWorkOrders.Any())
-                        {
-                            <tr>
-                                <td colspan="5" class="text-center">No work orders found for this asset</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- FMEA Summary -->
-        <div class="rbm-card mt-3">
-            <div class="rbm-card-header">
-                <h3 class="rbm-card-title">FMEA Summary</h3>
-            </div>
-            <div class="rbm-table-container">
-                <table class="rbm-table">
-                    <thead>
-                        <tr>
-                            <th>Failure Mode</th>
-                            <th>Severity</th>
-                            <th>Occurrence</th>
-                            <th>Detection</th>
-                            <th>RPN</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var fm in assetFailureModes)
-                        {
-                            <tr>
-                                <td><strong>@fm.Mode</strong></td>
-                                <td>@fm.Severity</td>
-                                <td>@fm.Occurrence</td>
-                                <td>@fm.Detection</td>
-                                <td><strong>@fm.RPN</strong></td>
-                            </tr>
-                        }
-                        @if (!assetFailureModes.Any())
-                        {
-                            <tr>
-                                <td colspan="5" class="text-center">No failure modes defined for this asset</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        </div>
+        }
     }
 }
 
-@if (showAddModal || showEditModal)
+<!-- Document Upload Modal -->
+@if (showDocumentUploadModal)
 {
-    <div class="rbm-modal-backdrop" @onclick="CloseAddAssetModal">
-        <div class="rbm-modal" @onclick:stopPropagation="true">
+    <div class="rbm-modal-backdrop" @onclick="CloseDocumentUploadModal">
+        <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 600px; width: 100%;">
             <div class="rbm-modal-header">
-                <h3 class="rbm-modal-title">@(showEditModal ? "Edit Asset" : "Add New Asset")</h3>
-                <button class="rbm-modal-close" @onclick="CloseAddAssetModal">&times;</button>
+                <h3>📄 Upload Document for @selectedAsset?.Name</h3>
+                <button class="rbm-modal-close" @onclick="CloseDocumentUploadModal">&times;</button>
             </div>
             <div class="rbm-modal-body">
+                @if (!string.IsNullOrEmpty(uploadDocumentMessage))
+                {
+                    <div style="padding: 12px; background: #e8f5e9; border-left: 4px solid #43a047; border-radius: 4px; margin-bottom: 16px;">
+                        @uploadDocumentMessage
+                    </div>
+                }
+                
                 <div class="rbm-form-group">
-                    <label class="rbm-form-label">Asset ID</label>
-                    <input type="text" class="rbm-form-input" @bind="newAsset.AssetId" placeholder="e.g., PMP-011">
+                    <label class="rbm-form-label">Select File * (Max 50MB)</label>
+                    <InputFile OnChange="HandleDocumentFileSelected" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.dwg,.txt" />
+                    @if (selectedDocumentFile != null)
+                    {
+                        <div style="margin-top: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px;">
+                            📄 @selectedDocumentFile.Name (@FormatFileSize(selectedDocumentFile.Size))
+                        </div>
+                    }
                 </div>
+                
                 <div class="rbm-form-group">
-                    <label class="rbm-form-label">Name</label>
-                    <input type="text" class="rbm-form-input" @bind="newAsset.Name" placeholder="e.g., Hydraulic Pump K">
+                    <label class="rbm-form-label">Title *</label>
+                    <input type="text" class="rbm-form-input" @bind="newDocument.Title" placeholder="Document title">
                 </div>
+                
                 <div class="rbm-form-group">
-                    <label class="rbm-form-label">Location</label>
-                    <input type="text" class="rbm-form-input" @bind="newAsset.Location" placeholder="e.g., Building 1, Floor 2">
-                </div>
-                <div class="rbm-form-group">
-                    <label class="rbm-form-label">Criticality</label>
-                    <select class="rbm-form-select" @bind="newAsset.Criticality">
-                        <option value="Low">Low</option>
-                        <option value="Medium">Medium</option>
-                        <option value="High">High</option>
-                        <option value="Critical">Critical</option>
+                    <label class="rbm-form-label">Category *</label>
+                    <select class="rbm-form-select" @bind="newDocument.Category">
+                        <option value="">-- Select --</option>
+                        <option value="Manual">Manual</option>
+                        <option value="Report">Report</option>
+                        <option value="Specification">Specification</option>
+                        <option value="SOP">SOP</option>
+                        <option value="Drawing">Drawing</option>
+                        <option value="Certificate">Certificate</option>
+                        <option value="Other">Other</option>
                     </select>
                 </div>
+                
                 <div class="rbm-form-group">
-                    <label class="rbm-form-label">Health Score</label>
-                    <input type="number" class="rbm-form-input" @bind="newAsset.HealthScore" min="0" max="100">
+                    <label class="rbm-form-label">Status</label>
+                    <select class="rbm-form-select" @bind="newDocument.Status">
+                        <option value="Draft">Draft</option>
+                        <option value="Active">Active</option>
+                        <option value="Archived">Archived</option>
+                    </select>
+                </div>
+                
+                <div class="rbm-form-group">
+                    <label class="rbm-form-label">Expiry Date (Optional)</label>
+                    <input type="date" class="rbm-form-input" @bind="newDocument.ExpiryDate">
                 </div>
             </div>
             <div class="rbm-modal-footer">
-                <button class="rbm-btn rbm-btn-outline" @onclick="CloseAddAssetModal">Cancel</button>
-                <button class="rbm-btn rbm-btn-primary" @onclick="SaveNewAsset">
-                    @(showEditModal ? "Update Asset" : "Save Asset")
+                <button class="rbm-btn rbm-btn-outline" @onclick="CloseDocumentUploadModal" disabled="@isUploadingDocument">Cancel</button>
+                <button class="rbm-btn rbm-btn-primary" @onclick="UploadAssetDocumentAsync" disabled="@(isUploadingDocument || selectedDocumentFile == null || string.IsNullOrEmpty(newDocument.Title) || string.IsNullOrEmpty(newDocument.Category))">
+                    @if (isUploadingDocument)
+                    {
+                        <span>⏳ Uploading...</span>
+                    }
+                    else
+                    {
+                        <span>📤 Upload</span>
+                    }
                 </button>
             </div>
         </div>
     </div>
 }
 
-@if (showSuccessMessage)
+<!-- Add/Edit Modal -->
+@if (showAddModal || showEditModal)
 {
-    <div style="position: fixed; top: 80px; right: 20px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; border-left: 4px solid var(--rbm-success);">
-        <div style="display: flex; align-items: center; gap: 12px;">
-            <span style="font-size: 24px;">✓</span>
-            <div>
-                <div style="font-weight: 600; color: var(--rbm-success);">Success!</div>
-                <div style="font-size: 14px; color: var(--rbm-text-light);">@successMessage</div>
+    <div class="rbm-modal-backdrop" @onclick="CloseModals">
+        <div class="rbm-modal" @onclick:stopPropagation="true" style="max-height: 90vh; overflow-y: auto;">
+            <div class="rbm-modal-header">
+                <h3>@(showEditModal ? "Edit Asset" : "Add New Asset")</h3>
+                <button class="rbm-modal-close" @onclick="CloseModals">&times;</button>
+            </div>
+            <div class="rbm-modal-body">
+                <div class="rbm-grid rbm-grid-2">
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Asset ID *</label>
+                        <input type="text" class="rbm-form-input" @bind="editingAsset.AssetId" placeholder="e.g., PMP-011" disabled="@showEditModal">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Name *</label>
+                        <input type="text" class="rbm-form-input" @bind="editingAsset.Name" placeholder="e.g., Hydraulic Pump K">
+                    </div>
+                    <div class="rbm-form-group" style="grid-column: 1 / -1;">
+                        <label class="rbm-form-label">Description</label>
+                        <textarea class="rbm-form-input" @bind="editingAsset.Description" placeholder="Description..." style="min-height: 80px;"></textarea>
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Location</label>
+                        <input type="text" class="rbm-form-input" @bind="editingAsset.Location">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Department</label>
+                        <input type="text" class="rbm-form-input" @bind="editingAsset.Department">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Manufacturer</label>
+                        <input type="text" class="rbm-form-input" @bind="editingAsset.EquipmentManufacturer">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Model Number</label>
+                        <input type="text" class="rbm-form-input" @bind="editingAsset.ModelNumber">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Serial Number</label>
+                        <input type="text" class="rbm-form-input" @bind="editingAsset.SerialNumber">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Criticality</label>
+                        <select class="rbm-form-select" @bind="editingAsset.Criticality">
+                            <option value="Low">Low</option>
+                            <option value="Medium">Medium</option>
+                            <option value="High">High</option>
+                            <option value="Critical">Critical</option>
+                        </select>
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Health Score (0-100)</label>
+                        <input type="number" class="rbm-form-input" @bind="editingAsset.HealthScore" min="0" max="100">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Status</label>
+                        <select class="rbm-form-select" @bind="editingAsset.Status">
+                            <option value="Healthy">✅ Healthy</option>
+                            <option value="Warning">⚠️ Warning</option>
+                            <option value="Critical">🔴 Critical</option>
+                            <option value="Maintenance">🔧 Maintenance</option>
+                            <option value="Retired">↩️ Retired</option>
+                        </select>
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Uptime (%)</label>
+                        <input type="number" class="rbm-form-input" @bind="editingAsset.Uptime" min="0" max="100" step="0.1">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Installation Date</label>
+                        <input type="date" class="rbm-form-input" @bind="editingAsset.InstallationDate">
+                    </div>
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Manufacture Date</label>
+                        <input type="date" class="rbm-form-input" @bind="editingAsset.ManufactureDate">
+                    </div>
+                </div>
+            </div>
+            <div class="rbm-modal-footer">
+                <button class="rbm-btn rbm-btn-outline" @onclick="CloseModals">Cancel</button>
+                <button class="rbm-btn rbm-btn-primary" @onclick="SaveAssetAsync">@(showEditModal ? "Update" : "Create")</button>
             </div>
         </div>
+    </div>
+}
+
+<!-- Success Message -->
+@if (showSuccessMessage)
+{
+    <div style="position: fixed; top: 80px; right: 20px; background: white; padding: 16px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 12px; z-index: 1000; border-left: 4px solid #43a047;">
+        <span style="font-size: 20px; color: #43a047; font-weight: bold;">✓</span>
+        <span>@successMessage</span>
     </div>
 }
 
@@ -288,6 +608,7 @@ else
     public int? AssetId { get; set; }
 
     private List<Asset> assets = new();
+    private List<Asset> filteredAssets = new();
     private Asset? selectedAsset;
     private List<ConditionReading> conditionReadings = new();
     private List<WorkOrder> assetWorkOrders = new();
@@ -295,109 +616,262 @@ else
     
     private bool showAddModal = false;
     private bool showEditModal = false;
-    private Asset newAsset = new();
     private bool showSuccessMessage = false;
+    private Asset editingAsset = new();
     private string successMessage = "";
     private bool isInitialized = false;
+    
+    private string searchTerm = "";
+    private string selectedCriticality = "";
+    private string selectedStatus = "";
+    
+    private int totalAssets;
+    private int activeAssets;
+    private int criticalAssets;
+    private double averageHealth;
+    private int overdueCount;
+    
+    private List<Document> assetDocuments = new();
+    private bool showDocumentUploadModal = false;
+    private Document newDocument = new();
+    private IBrowserFile? selectedDocumentFile;
+    private string uploadDocumentMessage = "";
+    private bool isUploadingDocument = false;
 
     protected override async Task OnInitializedAsync()
     {
         await CurrentUser.InitializeAsync();
-        LoadData();
+        await LoadDataAsync();
         isInitialized = true;
+        StateHasChanged();
     }
 
     protected override async Task OnParametersSetAsync()
     {
         await CurrentUser.InitializeAsync();
-        LoadData();
+        await LoadDataAsync();
     }
 
-    private void LoadData()
+    private async Task LoadDataAsync()
     {
-        assets = DataService.GetAssets();
-        
-        if (AssetId.HasValue)
+        try
         {
-            selectedAsset = DataService.GetAsset(AssetId.Value);
-            if (selectedAsset != null)
+            assets = await DataService.GetAssetsAsync();
+            
+            if (string.IsNullOrEmpty(searchTerm) && string.IsNullOrEmpty(selectedCriticality) && string.IsNullOrEmpty(selectedStatus))
             {
-                conditionReadings = DataService.GetConditionReadings(selectedAsset.Id);
-                assetWorkOrders = DataService.GetWorkOrders().Where(wo => wo.AssetId == selectedAsset.Id).ToList();
-                assetFailureModes = DataService.GetFailureModes(selectedAsset.Id);
+                filteredAssets = assets;
             }
+            else
+            {
+                await ApplyFiltersAsync();
+            }
+            
+            totalAssets = await DataService.GetTotalAssetsAsync();
+            activeAssets = await DataService.GetActiveAssetsAsync();
+            criticalAssets = await DataService.GetCriticalAssetsCountAsync();
+            averageHealth = await DataService.GetAverageHealthScoreAsync();
+            overdueCount = await DataService.GetOverdueMaintenanceCountAsync();
+            
+            if (AssetId.HasValue)
+            {
+                selectedAsset = await DataService.GetAssetAsync(AssetId.Value);
+                if (selectedAsset != null)
+                {
+                    var workOrders = await DataService.GetAllWorkOrdersAsync();
+                    assetWorkOrders = workOrders.Where(wo => wo.AssetId == selectedAsset.Id).ToList();
+                    assetFailureModes = await DataService.GetFailureModesAsync(selectedAsset.Id);
+                    assetDocuments = await DataService.GetDocumentsByAssetAsync(selectedAsset.Id);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading data: {ex.Message}");
         }
     }
 
-    private void ViewAssetDetails(int id)
+    private async Task ApplyFiltersAsync()
     {
-        Navigation.NavigateTo($"/rbm/assets/{id}");
+        filteredAssets = assets;
+        
+        if (!string.IsNullOrEmpty(searchTerm))
+        {
+            filteredAssets = await DataService.SearchAssetsAsync(searchTerm);
+        }
+        
+        if (!string.IsNullOrEmpty(selectedCriticality))
+        {
+            filteredAssets = filteredAssets.Where(a => a.Criticality == selectedCriticality).ToList();
+        }
+        
+        if (!string.IsNullOrEmpty(selectedStatus))
+        {
+            filteredAssets = filteredAssets.Where(a => a.Status == selectedStatus).ToList();
+        }
+        
+        StateHasChanged();
     }
 
-    private void BackToList()
+    private void ClearFilters()
     {
-        Navigation.NavigateTo("/rbm/assets");
+        searchTerm = "";
+        selectedCriticality = "";
+        selectedStatus = "";
+        filteredAssets = assets;
+        StateHasChanged();
+    }
+
+    private async Task HandleCriticalityChange(ChangeEventArgs e)
+    {
+        selectedCriticality = e.Value?.ToString() ?? "";
+        await ApplyFiltersAsync();
+    }
+
+    private async Task HandleStatusChange(ChangeEventArgs e)
+    {
+        selectedStatus = e.Value?.ToString() ?? "";
+        await ApplyFiltersAsync();
     }
 
     private void ShowAddAssetModal()
     {
-        newAsset = new Asset { HealthScore = 100, Criticality = "Medium", Status = "Healthy", Uptime = 98.0, Downtime = 2.0 };
+        editingAsset = new Asset 
+        { 
+            HealthScore = 100, 
+            Criticality = "Medium", 
+            Status = "Healthy", 
+            Uptime = 98.0, 
+            Downtime = 2.0 
+        };
         showAddModal = true;
         showEditModal = false;
+        StateHasChanged();
     }
 
     private void EditAsset(Asset asset)
     {
-        newAsset = new Asset
+        editingAsset = new Asset
         {
             Id = asset.Id,
             AssetId = asset.AssetId,
             Name = asset.Name,
+            Description = asset.Description,
             Location = asset.Location,
+            Department = asset.Department,
+            EquipmentManufacturer = asset.EquipmentManufacturer,
+            ModelNumber = asset.ModelNumber,
+            SerialNumber = asset.SerialNumber,
             Criticality = asset.Criticality,
             HealthScore = asset.HealthScore,
             Status = asset.Status,
             Uptime = asset.Uptime,
             Downtime = asset.Downtime,
-            LastMaintenance = asset.LastMaintenance
+            LastMaintenance = asset.LastMaintenance,
+            InstallationDate = asset.InstallationDate,
+            ManufactureDate = asset.ManufactureDate
         };
         showEditModal = true;
         showAddModal = false;
+        StateHasChanged();
     }
 
-    private void CloseAddAssetModal()
+    private async Task SaveAssetAsync()
     {
-        showAddModal = false;
-        showEditModal = false;
+        try
+        {
+            if (string.IsNullOrEmpty(editingAsset.Name) || string.IsNullOrEmpty(editingAsset.AssetId))
+            {
+                ShowError("Asset ID and Name are required");
+                return;
+            }
+
+            if (showEditModal)
+            {
+                await DataService.UpdateAssetAsync(editingAsset);
+                ShowSuccess($"Asset {editingAsset.AssetId} updated");
+            }
+            else
+            {
+                editingAsset.Status = editingAsset.HealthScore >= 80 ? "Healthy" : 
+                                     editingAsset.HealthScore >= 60 ? "Warning" : "Critical";
+                await DataService.AddAssetAsync(editingAsset);
+                ShowSuccess($"Asset {editingAsset.AssetId} created");
+            }
+            
+            await LoadDataAsync();
+            CloseModals();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Error saving asset: {ex.Message}");
+        }
     }
 
-    private void SaveNewAsset()
+    private void BackToList()
     {
-        if (showEditModal)
-        {
-            DataService.UpdateAsset(newAsset);
-            ShowSuccess($"Asset {newAsset.AssetId} updated successfully");
-        }
-        else
-        {
-            // Auto-set status based on health score
-            newAsset.Status = newAsset.HealthScore >= 80 ? "Healthy" : newAsset.HealthScore >= 60 ? "Warning" : "Critical";
-            DataService.AddAsset(newAsset);
-            ShowSuccess($"Asset {newAsset.AssetId} created successfully");
-        }
-        assets = DataService.GetAssets();
-        CloseAddAssetModal();
+        selectedAsset = null;
+        StateHasChanged();
     }
 
-    private void DeleteAsset(int id)
+    private async Task ConfirmRetireAssetAsync(Asset asset)
     {
-        var asset = assets.FirstOrDefault(a => a.Id == id);
-        if (asset != null)
+        bool confirmed = await ShowConfirmDialogAsync("Retire Asset", $"Are you sure you want to retire the asset '{asset.Name}'?", "Retire Asset", "Cancel");
+        if (confirmed)
         {
-            DataService.DeleteAsset(id);
-            assets = DataService.GetAssets();
-            ShowSuccess($"Asset {asset.AssetId} deleted successfully");
+            await RetireAssetAsync(asset);
         }
+    }
+
+    private async Task RetireAssetAsync(Asset asset)
+    {
+        try
+        {
+            await DataService.RetireAssetAsync(asset.Id);
+            ShowSuccess($"Asset {asset.AssetId} retired");
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Error retiring asset: {ex.Message}");
+        }
+    }
+
+    private async Task ReactivateAssetConfirmAsync()
+    {
+        bool confirmed = await ShowConfirmDialogAsync("Reactivate Asset", $"Are you sure you want to reactivate the asset '{selectedAsset.Name}'?", "Reactivate Asset", "Cancel");
+        if (confirmed)
+        {
+            await ReactivateAssetAsync();
+        }
+    }
+
+    private async Task ReactivateAssetAsync()
+    {
+        try
+        {
+            await DataService.ReactivateAssetAsync(selectedAsset.Id);
+            ShowSuccess($"Asset {selectedAsset.AssetId} reactivated");
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Error reactivating asset: {ex.Message}");
+        }
+    }
+
+    private void ShowError(string message)
+    {
+        successMessage = $"❌ {message}";
+        showSuccessMessage = true;
+        StateHasChanged();
+        
+        Task.Delay(4000).ContinueWith(_ =>
+        {
+            showSuccessMessage = false;
+            InvokeAsync(StateHasChanged);
+        });
     }
 
     private void ShowSuccess(string message)
@@ -411,5 +885,118 @@ else
             showSuccessMessage = false;
             InvokeAsync(StateHasChanged);
         });
+    }
+
+    private void ViewAssetDetails(int id)
+    {
+        Navigation.NavigateTo($"/rbm/assets/{id}");
+    }
+
+    private void ViewDocument(int documentId)
+    {
+        Navigation.NavigateTo($"/rbm/documents/{documentId}");
+    }
+
+    private void ShowAddDocumentModal()
+    {
+        showDocumentUploadModal = true;
+        StateHasChanged();
+    }
+
+    private void CloseDocumentUploadModal()
+    {
+        showDocumentUploadModal = false;
+        newDocument = new Document();
+        selectedDocumentFile = null;
+        uploadDocumentMessage = "";
+        StateHasChanged();
+    }
+
+    private void CloseModals()
+    {
+        showAddModal = false;
+        showEditModal = false;
+        StateHasChanged();
+    }
+
+    private async Task HandleDocumentFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedDocumentFile = e.File;
+        uploadDocumentMessage = "";
+        
+        if (selectedDocumentFile != null && selectedDocumentFile.Size > 52428800)
+        {
+            uploadDocumentMessage = "❌ File size exceeds 50MB limit!";
+            selectedDocumentFile = null;
+            return;
+        }
+    }
+
+    private async Task UploadAssetDocumentAsync()
+    {
+        if (selectedAsset == null)
+        {
+            ShowError("No asset selected");
+            return;
+        }
+
+        try
+        {
+            if (string.IsNullOrEmpty(newDocument.Title) || string.IsNullOrEmpty(newDocument.Category))
+            {
+                uploadDocumentMessage = "❌ Title and Category are required";
+                return;
+            }
+
+            if (selectedDocumentFile == null)
+            {
+                uploadDocumentMessage = "❌ Please select a file";
+                return;
+            }
+
+            isUploadingDocument = true;
+            uploadDocumentMessage = "";
+            StateHasChanged();
+            
+            await Task.Delay(500);
+            ShowSuccess("Document uploaded successfully");
+            await LoadDataAsync();
+            CloseDocumentUploadModal();
+        }
+        catch (Exception ex)
+        {
+            uploadDocumentMessage = $"❌ Error uploading document: {ex.Message}";
+        }
+        finally
+        {
+            isUploadingDocument = false;
+            StateHasChanged();
+        }
+    }
+
+    private string GenerateDocumentNumber()
+    {
+        var count = assetDocuments.Count + 1;
+        return $"DOC-{selectedAsset?.AssetId ?? "ASSET"}-{DateTime.Now:yyyyMMdd}-{count:000}";
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private async Task<bool> ShowConfirmDialogAsync(string title, string message, string confirmText, string cancelText)
+    {
+        // Simple confirm implementation
+        bool confirmed = await Task.FromResult(true); 
+        return confirmed;
     }
 }

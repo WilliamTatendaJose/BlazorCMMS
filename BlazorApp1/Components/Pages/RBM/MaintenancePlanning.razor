@@ -5,318 +5,847 @@
 @attribute [Authorize]
 @inject BlazorApp1.Services.DataService DataService
 @inject BlazorApp1.Services.CurrentUserService CurrentUser
+@inject BlazorApp1.Services.MaintenanceScheduleExportService ExportService
+@inject BlazorApp1.Services.RecurringMaintenanceScheduler RecurringScheduler
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
 @using BlazorApp1.Models
 
-<div class="rbm-page-header">
-    <h1 class="rbm-page-title">Maintenance Planning</h1>
-    <p class="rbm-page-subtitle">Schedule and optimize maintenance activities</p>
-</div>
+<PageTitle>Maintenance Planning | RBM CMMS</PageTitle>
 
-<div class="rbm-action-bar">
-    <div style="display: flex; gap: 12px;">
-        <button class="rbm-btn @(viewMode == "calendar" ? "rbm-btn-primary" : "rbm-btn-outline")" @onclick='() => viewMode = "calendar"'>
-            📅 Calendar View
-        </button>
-        <button class="rbm-btn @(viewMode == "gantt" ? "rbm-btn-primary" : "rbm-btn-outline")" @onclick='() => viewMode = "gantt"'>
-            📊 Gantt View
-        </button>
-    </div>
-    <div class="rbm-action-buttons">
-        <button class="rbm-btn rbm-btn-secondary">
-            🤖 Auto-Schedule by Risk
-        </button>
-        @if(CurrentUser.CanCreateWork){
-            <button class="rbm-btn rbm-btn-primary" @onclick="ShowAddScheduleModal">
-                ➕ Add Schedule
-            </button>
-
-        }
-               
-    </div>
-</div>
-
-@if (viewMode == "calendar")
+@if (!isInitialized)
 {
-    <!-- Calendar View -->
-    <div class="rbm-card">
-        <div class="rbm-card-header">
-            <h3 class="rbm-card-title">@currentMonth.ToString("MMMM yyyy")</h3>
-            <div style="display: flex; gap: 8px;">
-                <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="PreviousMonth">← Previous</button>
-                <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="NextMonth">Next →</button>
-            </div>
-        </div>
-        <div style="padding: 20px;">
-            <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px;">
-                <!-- Days of week header -->
-                @foreach (var day in new[] { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" })
-                {
-                    <div style="padding: 12px; text-align: center; font-weight: 600; background: var(--rbm-bg); border-radius: 8px;">
-                        @day
-                    </div>
-                }
-                
-                <!-- Calendar days -->
-                @for (int i = 0; i < firstDayOffset; i++)
-                {
-                    <div style="padding: 12px; background: var(--rbm-bg); border-radius: 8px; opacity: 0.3;"></div>
-                }
-                
-                @for (int day = 1; day <= daysInMonth; day++)
-                {
-                    var date = new DateTime(currentMonth.Year, currentMonth.Month, day);
-                    var daySchedules = schedules.Where(s => s.ScheduledDate.Date == date.Date).ToList();
-                    var isToday = date.Date == DateTime.Today;
-                    
-                    <div style="padding: 12px; background: @(isToday ? "rgba(2, 136, 209, 0.1)" : "white"); border: @(isToday ? "2px solid var(--rbm-accent)" : "1px solid var(--rbm-border)"); border-radius: 8px; min-height: 100px;">
-                        <div style="font-weight: 600; margin-bottom: 8px; @(isToday ? "color: var(--rbm-accent);" : "")">@day</div>
-                        @foreach (var schedule in daySchedules)
-                        {
-                            <div style="padding: 4px 8px; background: var(--rbm-accent); color: white; border-radius: 4px; font-size: 11px; margin-bottom: 4px; cursor: pointer;">
-                                @schedule.AssetName.Substring(0, Math.Min(15, schedule.AssetName.Length))
-                            </div>
-                        }
-                    </div>
-                }
-            </div>
+    <div style="display: flex; align-items: center; justify-content: center; min-height: 400px;">
+        <div style="text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 16px;">Loading...</div>
+            <div style="font-size: 16px; color: var(--rbm-text-light);">Loading maintenance schedules...</div>
         </div>
     </div>
 }
 else
 {
-    <!-- Gantt View -->
-    <div class="rbm-card">
-        <div class="rbm-card-header">
-            <h3 class="rbm-card-title">Gantt Chart - Next 30 Days</h3>
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <div style="position: fixed; top: 20px; right: 20px; max-width: 400px; background: #e8f5e9; border-left: 4px solid #43a047; padding: 16px; border-radius: 8px; display: flex; gap: 12px; z-index: 9999;" @onclick="() => successMessage = string.Empty">
+            <div>Success</div>
+            <div>@successMessage</div>
         </div>
-        <div style="padding: 20px; overflow-x: auto;">
-            <div style="display: grid; grid-template-columns: 200px repeat(30, 40px); gap: 1px; background: var(--rbm-border);">
-                <!-- Header row -->
-                <div style="background: var(--rbm-bg); padding: 12px; font-weight: 600; position: sticky; left: 0; z-index: 1;">
-                    Asset
-                </div>
-                @for (int i = 0; i < 30; i++)
-                {
-                    var date = DateTime.Today.AddDays(i);
-                    <div style="background: var(--rbm-bg); padding: 8px 4px; text-align: center; font-size: 10px;">
-                        <div style="font-weight: 600;">@date.Day</div>
-                        <div>@date.ToString("MMM")</div>
-                    </div>
-                }
-                
-                <!-- Schedule rows -->
-                @foreach (var schedule in schedules.OrderBy(s => s.AssetName))
-                {
-                    <div style="background: white; padding: 12px; font-size: 13px; position: sticky; left: 0; z-index: 1;">
-                        <strong>@schedule.AssetName</strong>
-                        <div style="font-size: 11px; color: var(--rbm-text-light);">@schedule.AssignedTechnician</div>
-                    </div>
-                    
-                    @for (int i = 0; i < 30; i++)
-                    {
-                        var date = DateTime.Today.AddDays(i);
-                        var isScheduled = date.Date >= schedule.ScheduledDate.Date && 
-                                        schedule.EndDate.HasValue && 
-                                        date.Date <= schedule.EndDate.Value.Date;
-                        
-                        <div style="background: @(isScheduled ? "var(--rbm-accent)" : "white"); padding: 8px;"></div>
-                    }
-                }
-            </div>
-        </div>
-    </div>
-}
+    }
 
-<!-- Technician Allocation -->
-<div class="rbm-card mt-3">
-    <div class="rbm-card-header">
-        <h3 class="rbm-card-title">Technician Allocation</h3>
-    </div>
-    <div class="rbm-grid rbm-grid-4" style="padding: 20px;">
-        @foreach (var tech in DataService.GetUsers().Where(u => u.Role == "Technician"))
-        {
-            var techSchedules = schedules.Where(s => s.AssignedTechnician == tech.Name).ToList();
-            <div class="rbm-stat-card">
-                <div class="rbm-stat-label">@tech.Name</div>
-                <div class="rbm-stat-value">@techSchedules.Count</div>
-                <div class="rbm-stat-trend">Assigned Tasks</div>
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div style="position: fixed; top: 20px; right: 20px; max-width: 400px; background: #ffebee; border-left: 4px solid #e53935; padding: 16px; border-radius: 8px; display: flex; gap: 12px; z-index: 9999;" @onclick="() => errorMessage = string.Empty">
+            <div>Error</div>
+            <div>@errorMessage</div>
+        </div>
+    }
+
+    <div class="rbm-page-header">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <h1 class="rbm-page-title">Maintenance Planning</h1>
+                <p class="rbm-page-subtitle">Schedule and optimize maintenance activities across your assets</p>
             </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <span style="font-size: 14px; color: var(--rbm-text-light);">
+                    <strong>@schedules.Count</strong> Schedules | 
+                    <strong>@GetUpcomingCount()</strong> Upcoming | 
+                    <strong>@GetCompletedCount()</strong> Completed
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <div class="rbm-grid rbm-grid-4" style="margin-bottom: 24px;">
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-value">@GetUpcomingCount()</div>
+            <div class="rbm-stat-label">Upcoming</div>
+            <div class="rbm-stat-detail">Next 30 days</div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-value">@GetInProgressCount()</div>
+            <div class="rbm-stat-label">In Progress</div>
+            <div class="rbm-stat-detail">Currently running</div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-value">@GetCompletedCount()</div>
+            <div class="rbm-stat-label">Completed</div>
+            <div class="rbm-stat-detail">This month</div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-value">@technicians.Count(t => t.Role == "Technician")</div>
+            <div class="rbm-stat-label">Technicians</div>
+            <div class="rbm-stat-detail">Available</div>
+        </div>
+    </div>
+
+    <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px;">
+        <button class="rbm-btn @(viewMode == "calendar" ? "rbm-btn-primary" : "rbm-btn-outline")" @onclick='() => { viewMode = "calendar"; StateHasChanged(); }'>Calendar</button>
+        <button class="rbm-btn @(viewMode == "gantt" ? "rbm-btn-primary" : "rbm-btn-outline")" @onclick='() => { viewMode = "gantt"; StateHasChanged(); }'>Gantt</button>
+        <button class="rbm-btn @(viewMode == "list" ? "rbm-btn-primary" : "rbm-btn-outline")" @onclick='() => { viewMode = "list"; StateHasChanged(); }'>List</button>
+        <div style="flex: 1;"></div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <span style="font-size: 12px; color: var(--rbm-text-light);">Export:</span>
+            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick='@((e) => ExportSchedules("excel"))' title="Export to Excel">Excel</button>
+            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick='@((e) => ExportSchedules("word"))' title="Export to Word">Word</button>
+            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick='@((e) => ExportSchedules("pdf"))' title="Export to PDF">PDF</button>
+        </div>
+        <button class="rbm-btn rbm-btn-secondary" @onclick="ShowAutoScheduleModal">Auto-Schedule</button>
+        @if(CurrentUser.CanEdit){
+            <button class="rbm-btn rbm-btn-primary" @onclick="ShowAddScheduleModal">New Schedule</button>
         }
     </div>
-</div>
 
-<!-- Upcoming Schedules -->
-<div class="rbm-card mt-3">
-    <div class="rbm-card-header">
-        <h3 class="rbm-card-title">Upcoming Maintenance (Next 30 Days)</h3>
-    </div>
-    <div class="rbm-table-container">
-        <table class="rbm-table">
-            <thead>
-                <tr>
-                    <th>Asset</th>
-                    <th>Scheduled Date</th>
-                    <th>End Date</th>
-                    <th>Type</th>
-                    <th>Technician</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var schedule in schedules.Where(s => s.ScheduledDate >= DateTime.Today && s.ScheduledDate <= DateTime.Today.AddDays(30)).OrderBy(s => s.ScheduledDate))
-                {
-                    <tr>
-                        <td><strong>@schedule.AssetName</strong></td>
-                        <td>@schedule.ScheduledDate.ToString("MMM dd, yyyy HH:mm")</td>
-                        <td>
-                            @if (schedule.EndDate.HasValue)
-                            {
-                                @schedule.EndDate.Value.ToString("MMM dd, yyyy HH:mm")
-                            }
-                            else
-                            {
-                                <span style="color: var(--rbm-text-light);">Not set</span>
-                            }
-                        </td>
-                        <td>@schedule.Type</td>
-                        <td>@schedule.AssignedTechnician</td>
-                        <td><span class="rbm-badge-pill" style="background: rgba(2, 136, 209, 0.1); color: var(--rbm-accent);">@schedule.Status</span></td>
-                        <td>
-                            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => RescheduleItem(schedule)">
-                                📝 Reschedule
-                            </button>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-</div>
-
-@if (showAddModal)
-{
-    <div class="rbm-modal-backdrop" @onclick="CloseAddModal">
-        <div class="rbm-modal" @onclick:stopPropagation="true">
-            <div class="rbm-modal-header">
-                <h3 class="rbm-modal-title">Schedule Maintenance</h3>
-                <button class="rbm-modal-close" @onclick="CloseAddModal">&times;</button>
+    <div class="rbm-card" style="margin-bottom: 24px; padding: 16px;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+            <div class="rbm-form-group" style="margin: 0;">
+                <label class="rbm-form-label" style="margin-bottom: 4px;">Filter by Type</label>
+                <select class="rbm-form-select" @bind="filterType">
+                    <option value="">All Types</option>
+                    <option value="Preventive">Preventive</option>
+                    <option value="Corrective">Corrective</option>
+                    <option value="Inspection">Inspection</option>
+                </select>
             </div>
-            <div class="rbm-modal-body">
-                <div class="rbm-form-group">
-                    <label class="rbm-form-label">Asset</label>
-                    <select class="rbm-form-select" @bind="newSchedule.AssetId" @bind:after="OnAssetSelectedForSchedule">
-                        <option value="0">-- Select Asset --</option>
-                        @foreach (var asset in DataService.GetAssets())
-                        {
-                            <option value="@asset.Id">@asset.AssetId - @asset.Name</option>
-                        }
-                    </select>
-                </div>
-                <div class="rbm-form-group">
-                    <label class="rbm-form-label">Type</label>
-                    <select class="rbm-form-select" @bind="newSchedule.Type">
-                        <option value="Preventive">Preventive</option>
-                        <option value="Corrective">Corrective</option>
-                        <option value="Inspection">Inspection</option>
-                    </select>
-                </div>
-                <div class="rbm-grid rbm-grid-2">
-                    <div class="rbm-form-group">
-                        <label class="rbm-form-label">Start Date & Time</label>
-                        <input type="datetime-local" class="rbm-form-input" @bind="newSchedule.ScheduledDate">
-                    </div>
-                    <div class="rbm-form-group">
-                        <label class="rbm-form-label">End Date & Time</label>
-                        <input type="datetime-local" class="rbm-form-input" @bind="newSchedule.EndDate">
-                    </div>
-                </div>
-                <div class="rbm-form-group">
-                    <label class="rbm-form-label">Assign Technician</label>
-                    <select class="rbm-form-select" @bind="newSchedule.AssignedTechnician">
-                        <option value="">-- Select Technician --</option>
-                        @foreach (var user in DataService.GetUsers().Where(u => u.Role == "Technician"))
-                        {
-                            <option value="@user.Name">@user.Name</option>
-                        }
-                    </select>
-                </div>
+            <div class="rbm-form-group" style="margin: 0;">
+                <label class="rbm-form-label" style="margin-bottom: 4px;">Filter by Status</label>
+                <select class="rbm-form-select" @bind="filterStatus">
+                    <option value="">All Status</option>
+                    <option value="Scheduled">Scheduled</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Cancelled">Cancelled</option>
+                </select>
             </div>
-            <div class="rbm-modal-footer">
-                <button class="rbm-btn rbm-btn-outline" @onclick="CloseAddModal">Cancel</button>
-                <button class="rbm-btn rbm-btn-primary" @onclick="SaveSchedule" disabled="@(newSchedule.AssetId == 0)">
-                    Save Schedule
-                </button>
+            <div class="rbm-form-group" style="margin: 0;">
+                <label class="rbm-form-label" style="margin-bottom: 4px;">Filter by Technician</label>
+                <select class="rbm-form-select" @bind="filterTechnician">
+                    <option value="">All Technicians</option>
+                    @foreach (var tech in technicians.Where(t => t.Role == "Technician"))
+                    {
+                        <option value="@tech.Name">@tech.Name</option>
+                    }
+                </select>
             </div>
         </div>
     </div>
+
+    @if (viewMode == "list")
+    {
+        <div class="rbm-card">
+            <div class="rbm-card-header">
+                <h2 class="rbm-card-title">Maintenance Schedules</h2>
+            </div>
+
+            @if (GetFilteredSchedules().Count == 0)
+            {
+                <div style="padding: 60px 20px; text-align: center; color: var(--rbm-text-light);">
+                    <div style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">No schedules found</div>
+                </div>
+            }
+            else
+            {
+                <div class="rbm-table-container">
+                    <table class="rbm-table">
+                        <thead>
+                            <tr>
+                                <th>Asset</th>
+                                <th>Type</th>
+                                <th>Date</th>
+                                <th>Duration</th>
+                                <th>Technician</th>
+                                <th>Frequency</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var schedule in GetFilteredSchedules().OrderBy(s => s.ScheduledDate))
+                            {
+                                <tr>
+                                    <td><strong>@schedule.AssetName</strong></td>
+                                    <td><span class="rbm-badge @GetTypeBadgeClass(schedule.Type)">@schedule.Type</span></td>
+                                    <td>@schedule.ScheduledDate.ToString("MMM dd, yyyy HH:mm")</td>
+                                    <td>@schedule.EstimatedDuration.ToString("F1") hrs</td>
+                                    <td>@schedule.AssignedTechnician</td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(schedule.Frequency))
+                                        {
+                                            <span style="color: var(--rbm-accent); font-weight: 500;">@schedule.Frequency</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="color: var(--rbm-text-light);">—</span>
+                                        }
+                                    </td>
+                                    <td><span class="rbm-badge @GetStatusBadgeClass(schedule.Status)">@schedule.Status</span></td>
+                                    <td style="display: flex; gap: 4px;">
+                                        <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => ShowScheduleDetails(schedule)">View</button>
+                                        @if (!string.IsNullOrEmpty(schedule.Frequency))
+                                        {
+                                            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => ShowRecurringInfo(schedule)" title="View recurring schedule info">🔄</button>
+                                        }
+                                        @if (CurrentUser.CanEdit && schedule.Status != "Completed")
+                                        {
+                                            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => EditSchedule(schedule)">Edit</button>
+                                        }
+                                        @if (CurrentUser.CanEdit)
+                                        {
+                                            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => DeleteSchedule(schedule)">Delete</button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
+    else if (viewMode == "calendar")
+    {
+        <div class="rbm-card">
+            <div class="rbm-card-header">
+                <h2 class="rbm-card-title">Calendar View</h2>
+            </div>
+            <div style="padding: 20px;">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <h3>@currentMonth.ToString("MMMM yyyy")</h3>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-bottom: 20px;">
+                    @foreach (var dayName in new[] { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" })
+                    {
+                        <div style="text-align: center; font-weight: 600; padding: 10px;">@dayName</div>
+                    }
+                    @{
+                        var firstDay = new DateTime(currentMonth.Year, currentMonth.Month, 1);
+                        var lastDay = firstDay.AddMonths(1).AddDays(-1);
+                        var startDate = firstDay.AddDays(-(int)firstDay.DayOfWeek);
+                        var endDate = lastDay.AddDays(6 - (int)lastDay.DayOfWeek);
+
+                        for (var date = startDate; date <= endDate; date = date.AddDays(1))
+                        {
+                            var daySchedules = GetFilteredSchedules().Where(s => s.ScheduledDate.Date == date.Date).ToList();
+                            var isCurrentMonth = date.Month == currentMonth.Month;
+                            var isToday = date.Date == DateTime.Today;
+
+                            <div style="border: 1px solid #ddd; padding: 8px; min-height: 80px; background: @(isToday ? "#fff9c4" : isCurrentMonth ? "white" : "#f5f5f5"); border-radius: 4px;">
+                                <div style="font-weight: 600; margin-bottom: 4px; color: @(isCurrentMonth ? "black" : "#999");">@date.Day</div>
+                                @foreach (var schedule in daySchedules.Take(2))
+                                {
+                                    <div style="font-size: 11px; padding: 2px; margin: 2px 0; background: #e3f2fd; border-radius: 2px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">
+                                        @schedule.AssetName
+                                    </div>
+                                }
+                                @if (daySchedules.Count > 2)
+                                {
+                                    <div style="font-size: 10px; color: #666;">+@(daySchedules.Count - 2) more</div>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+                <div style="text-align: center; display: flex; gap: 10px; justify-content: center;">
+                    <button class="rbm-btn rbm-btn-outline" @onclick="PreviousMonth">← Previous</button>
+                    <button class="rbm-btn rbm-btn-outline" @onclick="NextMonth">Next →</button>
+                </div>
+            </div>
+        </div>
+    }
+    else if (viewMode == "gantt")
+    {
+        <div class="rbm-card">
+            <div class="rbm-card-header">
+                <h2 class="rbm-card-title">Gantt Chart View (30 Days)</h2>
+            </div>
+            <div style="padding: 20px; overflow-x: auto;">
+                <div style="display: grid; grid-template-columns: 200px 1fr; gap: 10px; min-width: 1000px;">
+                    <!-- Header -->
+                    <div style="font-weight: 600; border-bottom: 2px solid #333;">Asset</div>
+                    <div style="display: grid; grid-template-columns: repeat(30, 30px); gap: 1px; border-bottom: 2px solid #333;">
+                        @for (int i = 0; i < 30; i++)
+                        {
+                            var date = DateTime.Today.AddDays(i);
+                            <div style="text-align: center; font-size: 10px; font-weight: 600;">@date.ToString("dd")</div>
+                        }
+                    </div>
+
+                    <!-- Data rows -->
+                    @foreach (var asset in assets.Where(a => GetFilteredSchedules().Any(s => s.AssetId == a.Id)).DistinctBy(a => a.Id))
+                    {
+                        <div style="font-weight: 500; padding: 8px 0; border-bottom: 1px solid #ddd;">@asset.Name</div>
+                        <div style="display: grid; grid-template-columns: repeat(30, 30px); gap: 1px; border-bottom: 1px solid #ddd;">
+                            @for (int i = 0; i < 30; i++)
+                            {
+                                var date = DateTime.Today.AddDays(i);
+                                var hasSchedule = GetFilteredSchedules().Any(s => 
+                                    s.AssetId == asset.Id && 
+                                    s.ScheduledDate.Date == date.Date);
+
+                                <div style="height: 30px; background: @(hasSchedule ? "#43a047" : "#f5f5f5"); border-radius: 2px; cursor: pointer;" title="@(hasSchedule ? date.ToString("MMM dd") : "")"></div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (showModal)
+    {
+        <div class="rbm-modal-backdrop" @onclick="CloseModal">
+            <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 600px;">
+                <div class="rbm-modal-header">
+                    <h3 class="rbm-modal-title">@(editingSchedule ? "Edit Schedule" : "New Schedule")</h3>
+                    <button class="rbm-modal-close" @onclick="CloseModal">&times;</button>
+                </div>
+                <div class="rbm-modal-body">
+                    @if (!string.IsNullOrEmpty(modalError))
+                    {
+                        <div style="background: #ffebee; border: 1px solid #e53935; border-radius: 6px; padding: 12px; margin-bottom: 16px; color: #c62828;">
+                            @modalError
+                        </div>
+                    }
+
+                    <div class="rbm-grid rbm-grid-2">
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Asset *</label>
+                            <select class="rbm-form-select" @bind="currentSchedule.AssetId" @bind:after="OnAssetSelectedForSchedule">
+                                <option value="0">-- Select Asset --</option>
+                                @foreach (var asset in assets)
+                                {
+                                    <option value="@asset.Id">@asset.AssetId - @asset.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Type *</label>
+                            <select class="rbm-form-select" @bind="currentSchedule.Type">
+                                <option value="Preventive">Preventive</option>
+                                <option value="Corrective">Corrective</option>
+                                <option value="Inspection">Inspection</option>
+                            </select>
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Start Date & Time *</label>
+                            <input type="datetime-local" class="rbm-form-input" @bind="currentSchedule.ScheduledDate">
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">End Date & Time</label>
+                            <input type="datetime-local" class="rbm-form-input" @bind="currentSchedule.EndDate">
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Estimated Duration (hours)</label>
+                            <input type="number" step="0.5" class="rbm-form-input" @bind="currentSchedule.EstimatedDuration">
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Technician *</label>
+                            <select class="rbm-form-select" @bind="currentSchedule.AssignedTechnician">
+                                <option value="">-- Select Technician --</option>
+                                @foreach (var user in technicians.Where(u => u.Role == "Technician"))
+                                {
+                                    <option value="@user.Name">@user.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="rbm-form-group rbm-grid-col-2">
+                            <label class="rbm-form-label">Description</label>
+                            <textarea class="rbm-form-input" @bind="currentSchedule.Description" style="min-height: 80px;"></textarea>
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Repeat Frequency</label>
+                            <select class="rbm-form-select" @bind="currentSchedule.Frequency">
+                                <option value="">-- No Repeat --</option>
+                                <option value="Daily">Daily</option>
+                                <option value="Weekly">Weekly (Every 7 days)</option>
+                                <option value="BiWeekly">BiWeekly (Every 14 days)</option>
+                                <option value="Monthly">Monthly (Every 30 days)</option>
+                                <option value="Quarterly">Quarterly (Every 90 days)</option>
+                                <option value="SemiAnnual">Semi-Annual (Every 180 days)</option>
+                                <option value="Annually">Annually (Every 365 days)</option>
+                            </select>
+                        </div>
+                        <div class="rbm-form-group">
+                            <label class="rbm-form-label">Generate Future Occurrences</label>
+                            <input type="number" min="0" max="52" class="rbm-form-input" @bind="futureOccurrences" placeholder="Number of occurrences to generate" style="max-width: 200px;">
+                            <small style="color: var(--rbm-text-light); display: block; margin-top: 4px;">How many future schedules to automatically create</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="rbm-modal-footer">
+                    <button class="rbm-btn rbm-btn-outline" @onclick="CloseModal">Cancel</button>
+                    <button class="rbm-btn rbm-btn-primary" @onclick="SaveSchedule" disabled="@(currentSchedule.AssetId == 0 || string.IsNullOrEmpty(currentSchedule.AssignedTechnician))">
+                        Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (showDetailsModal && selectedSchedule != null)
+    {
+        <div class="rbm-modal-backdrop" @onclick="CloseDetailsModal">
+            <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 600px;">
+                <div class="rbm-modal-header">
+                    <h3 class="rbm-modal-title">Schedule Details</h3>
+                    <button class="rbm-modal-close" @onclick="CloseDetailsModal">&times;</button>
+                </div>
+                <div class="rbm-modal-body">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Asset</div>
+                            <div style="font-size: 16px; font-weight: 600;">@selectedSchedule.AssetName</div>
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Type</div>
+                            <span class="rbm-badge @GetTypeBadgeClass(selectedSchedule.Type)">@selectedSchedule.Type</span>
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Status</div>
+                            <span class="rbm-badge @GetStatusBadgeClass(selectedSchedule.Status)">@selectedSchedule.Status</span>
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Technician</div>
+                            <div>@selectedSchedule.AssignedTechnician</div>
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Start Date</div>
+                            <div>@selectedSchedule.ScheduledDate.ToString("MMM dd, yyyy HH:mm")</div>
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Duration</div>
+                            <div>@selectedSchedule.EstimatedDuration.ToString("F1") hours</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="rbm-modal-footer">
+                    <button class="rbm-btn rbm-btn-outline" @onclick="CloseDetailsModal">Close</button>
+                    @if (CurrentUser.CanEdit && selectedSchedule.Status != "Completed")
+                    {
+                        <button class="rbm-btn rbm-btn-primary" @onclick="() => { EditSchedule(selectedSchedule); CloseDetailsModal(); }">Edit</button>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (showAutoScheduleModal)
+    {
+        <div class="rbm-modal-backdrop" @onclick="CloseAutoScheduleModal">
+            <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 500px;">
+                <div class="rbm-modal-header">
+                    <h3 class="rbm-modal-title">Auto-Schedule by Risk</h3>
+                    <button class="rbm-modal-close" @onclick="CloseAutoScheduleModal">&times;</button>
+                </div>
+                <div class="rbm-modal-body">
+                    <div style="background: rgba(2, 136, 209, 0.05); padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+                        Automatically schedules maintenance for high-risk assets based on health scores.
+                    </div>
+
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Risk Threshold: @riskThreshold%</label>
+                        <input type="range" class="rbm-form-input" min="0" max="100" @bind="riskThreshold" style="height: 6px;">
+                    </div>
+
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Schedule for next</label>
+                        <input type="number" class="rbm-form-input" @bind="daysAhead" style="width: 100px;"> days
+                    </div>
+
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Maintenance Type</label>
+                        <select class="rbm-form-select" @bind="autoScheduleType">
+                            <option value="Preventive">Preventive</option>
+                            <option value="Inspection">Inspection</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="rbm-modal-footer">
+                    <button class="rbm-btn rbm-btn-outline" @onclick="CloseAutoScheduleModal">Cancel</button>
+                    <button class="rbm-btn rbm-btn-primary" @onclick="ExecuteAutoSchedule">Auto-Schedule Now</button>
+                </div>
+            </div>
+        </div>
+    }
 }
 
 @code {
     private List<MaintenanceSchedule> schedules = new();
-    private MaintenanceSchedule newSchedule = new();
-    private bool showAddModal = false;
-    private string viewMode = "calendar";
-    private DateTime currentMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
-    private int daysInMonth => DateTime.DaysInMonth(currentMonth.Year, currentMonth.Month);
-    private int firstDayOffset => (int)new DateTime(currentMonth.Year, currentMonth.Month, 1).DayOfWeek;
+    private List<Asset> assets = new();
+    private List<User> technicians = new();
+    private MaintenanceSchedule currentSchedule = new();
+    private MaintenanceSchedule? selectedSchedule;
+    
+    private bool isInitialized = false;
+    private bool showModal = false;
+    private bool showDetailsModal = false;
+    private bool showAutoScheduleModal = false;
+    private bool editingSchedule = false;
+    private string viewMode = "list";
+    private string filterType = "";
+    private string filterStatus = "";
+    private string filterTechnician = "";
+    private string successMessage = string.Empty;
+    private string errorMessage = string.Empty;
+    private string modalError = string.Empty;
+    
+    private int riskThreshold = 70;
+    private int daysAhead = 7;
+    private string autoScheduleType = "Preventive";
+    private int futureOccurrences = 12;
+    private DateTime currentMonth = DateTime.Now;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        schedules = DataService.GetSchedules();
+        try
+        {
+            schedules = await DataService.GetSchedulesAsync();
+            assets = await DataService.GetAssetsAsync();
+            technicians = await DataService.GetUsersAsync();
+            isInitialized = true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading data: {ex.Message}";
+            isInitialized = true;
+        }
     }
+
+    private List<MaintenanceSchedule> GetFilteredSchedules()
+    {
+        var result = schedules.AsEnumerable();
+        if (!string.IsNullOrEmpty(filterType))
+            result = result.Where(s => s.Type == filterType);
+        if (!string.IsNullOrEmpty(filterStatus))
+            result = result.Where(s => s.Status == filterStatus);
+        if (!string.IsNullOrEmpty(filterTechnician))
+            result = result.Where(s => s.AssignedTechnician == filterTechnician);
+        return result.ToList();
+    }
+
+    private int GetUpcomingCount() => schedules.Count(s => s.ScheduledDate.Date >= DateTime.Today && s.ScheduledDate.Date <= DateTime.Today.AddDays(30) && s.Status == "Scheduled");
+    private int GetInProgressCount() => schedules.Count(s => s.Status == "In Progress");
+    private int GetCompletedCount() => schedules.Count(s => s.Status == "Completed" && s.CompletedDate?.Month == DateTime.Now.Month);
+
+    private string GetTypeBadgeClass(string type) => type switch
+    {
+        "Preventive" => "rbm-badge-info",
+        "Corrective" => "rbm-badge-warning",
+        "Inspection" => "rbm-badge-success",
+        _ => "rbm-badge-secondary"
+    };
+
+    private string GetStatusBadgeClass(string status) => status switch
+    {
+        "Scheduled" => "rbm-badge-info",
+        "In Progress" => "rbm-badge-warning",
+        "Completed" => "rbm-badge-success",
+        "Cancelled" => "rbm-badge-danger",
+        _ => "rbm-badge-secondary"
+    };
 
     private void ShowAddScheduleModal()
     {
-        newSchedule = new MaintenanceSchedule
+        currentSchedule = new MaintenanceSchedule
         {
             ScheduledDate = DateTime.Today.AddDays(7).AddHours(8),
             EndDate = DateTime.Today.AddDays(7).AddHours(10),
             Type = "Preventive",
             Status = "Scheduled",
+            EstimatedDuration = 2.0,
             CreatedDate = DateTime.Now,
-            CreatedBy = "System"
+            CreatedBy = CurrentUser.UserName,
+            Frequency = ""
         };
-        showAddModal = true;
+        futureOccurrences = 12;
+        editingSchedule = false;
+        modalError = string.Empty;
+        showModal = true;
     }
 
-    private void CloseAddModal()
+    private void EditSchedule(MaintenanceSchedule schedule)
     {
-        showAddModal = false;
+        currentSchedule = schedule;
+        editingSchedule = true;
+        modalError = string.Empty;
+        showModal = true;
     }
 
-    private void OnAssetSelectedForSchedule()
+    private async Task OnAssetSelectedForSchedule()
     {
-        var asset = DataService.GetAsset(newSchedule.AssetId);
-        if (asset != null)
+        try
         {
-            newSchedule.AssetName = asset.Name;
+            var asset = await DataService.GetAssetAsync(currentSchedule.AssetId);
+            if (asset != null)
+            {
+                currentSchedule.AssetName = asset.Name;
+            }
+        }
+        catch (Exception ex)
+        {
+            modalError = $"Error loading asset: {ex.Message}";
         }
     }
 
-    private void SaveSchedule()
+    private async Task SaveSchedule()
     {
-        if (newSchedule.AssetId > 0 && !string.IsNullOrEmpty(newSchedule.AssignedTechnician))
+        try
         {
-            DataService.AddSchedule(newSchedule);
-            schedules = DataService.GetSchedules();
-            CloseAddModal();
+            if (currentSchedule.AssetId <= 0)
+            {
+                modalError = "Please select an asset";
+                return;
+            }
+            
+            if (string.IsNullOrEmpty(currentSchedule.AssignedTechnician))
+            {
+                modalError = "Please select a technician";
+                return;
+            }
+
+            if (editingSchedule)
+            {
+                await DataService.UpdateScheduleAsync(currentSchedule);
+                successMessage = "Schedule updated successfully";
+            }
+            else
+            {
+                currentSchedule.CreatedBy = CurrentUser.UserName;
+                currentSchedule.CreatedDate = DateTime.Now;
+                await DataService.AddScheduleAsync(currentSchedule);
+
+                if (!string.IsNullOrEmpty(currentSchedule.Frequency) && futureOccurrences > 0)
+                {
+                    int createdCount = await RecurringScheduler.CreateRecurringSchedulesAsync(
+                        currentSchedule,
+                        futureOccurrences);
+
+                    successMessage = $"Schedule created successfully with {createdCount} recurring occurrences generated";
+                }
+                else
+                {
+                    successMessage = "Schedule created successfully";
+                }
+            }
+
+            schedules = await DataService.GetSchedulesAsync();
+            CloseModal();
+            
+            await Task.Delay(2000);
+            successMessage = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            modalError = $"Error saving schedule: {ex.Message}";
         }
     }
 
-    private void RescheduleItem(MaintenanceSchedule schedule)
+    private async Task DeleteSchedule(MaintenanceSchedule schedule)
     {
-        // TODO: Implement reschedule functionality
-        // For now, just open edit modal with the schedule
+        if (await JSRuntime.InvokeAsync<bool>("confirm", "Delete this schedule?"))
+        {
+            try
+            {
+                await DataService.DeleteScheduleAsync(schedule.Id);
+                schedules = await DataService.GetSchedulesAsync();
+                successMessage = "Schedule deleted successfully";
+                
+                await Task.Delay(2000);
+                successMessage = string.Empty;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Error deleting schedule: {ex.Message}";
+            }
+        }
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+        modalError = string.Empty;
+    }
+
+    private void ShowScheduleDetails(MaintenanceSchedule schedule)
+    {
+        selectedSchedule = schedule;
+        showDetailsModal = true;
+    }
+
+    private void CloseDetailsModal()
+    {
+        showDetailsModal = false;
+        selectedSchedule = null;
+    }
+
+    private void ShowAutoScheduleModal()
+    {
+        riskThreshold = 70;
+        daysAhead = 7;
+        showAutoScheduleModal = true;
+    }
+
+    private void CloseAutoScheduleModal()
+    {
+        showAutoScheduleModal = false;
     }
 
     private void PreviousMonth()
     {
         currentMonth = currentMonth.AddMonths(-1);
+        StateHasChanged();
     }
 
     private void NextMonth()
     {
         currentMonth = currentMonth.AddMonths(1);
+        StateHasChanged();
+    }
+
+    private void ShowRecurringInfo(MaintenanceSchedule schedule)
+    {
+        if (string.IsNullOrEmpty(schedule.Frequency))
+        {
+            errorMessage = "This schedule does not have a repeat frequency set";
+            return;
+        }
+
+        var info = RecurringScheduler.GetSchedulingInfo(schedule);
+        var futureOccurrences = RecurringScheduler.GetFutureOccurrences(schedule, 5);
+
+        var message = $"Frequency: {info.Frequency} ({info.FrequencyDays} days)\n";
+        message += $"Next scheduled: {info.NextScheduledDate:MMM dd, yyyy HH:mm}\n";
+        message += $"Days until next: {info.DaysUntilNext}\n";
+        message += $"Status: {(info.IsOverdue ? "OVERDUE" : "On Schedule")}\n\n";
+        message += "Upcoming occurrences:\n";
+
+        foreach (var occurrence in futureOccurrences.Take(3))
+        {
+            message += $"  • {occurrence.ScheduledDate:MMM dd, yyyy} ({occurrence.DaysFromNow} days from now)\n";
+        }
+
+        successMessage = message;
+    }
+
+    private async Task ExecuteAutoSchedule()
+    {
+        try
+        {
+            var highRiskAssets = assets.Where(a => (100 - a.HealthScore) >= riskThreshold).ToList();
+            
+            if (highRiskAssets.Count == 0)
+            {
+                errorMessage = "No assets found with risk above threshold";
+                CloseAutoScheduleModal();
+                return;
+            }
+
+            var createdCount = 0;
+            var availableTechs = technicians.Where(t => t.Role == "Technician").ToList();
+            
+            if (availableTechs.Count == 0)
+            {
+                errorMessage = "No technicians available";
+                CloseAutoScheduleModal();
+                return;
+            }
+
+            foreach (var asset in highRiskAssets)
+            {
+                var existingSchedule = schedules.FirstOrDefault(s => 
+                    s.AssetId == asset.Id && 
+                    s.ScheduledDate >= DateTime.Today && 
+                    s.ScheduledDate <= DateTime.Today.AddDays(daysAhead) &&
+                    s.Status != "Cancelled");
+
+                if (existingSchedule != null)
+                    continue;
+
+                var techWithLeast = availableTechs
+                    .OrderBy(t => schedules.Count(s => s.AssignedTechnician == t.Name && s.Status != "Completed"))
+                    .First();
+
+                var schedule = new MaintenanceSchedule
+                {
+                    AssetId = asset.Id,
+                    AssetName = asset.Name,
+                    ScheduledDate = DateTime.Today.AddDays(Random.Shared.Next(1, daysAhead)),
+                    Type = autoScheduleType,
+                    Status = "Scheduled",
+                    AssignedTechnician = techWithLeast.Name,
+                    Description = $"Auto-scheduled due to risk level: {(100 - asset.HealthScore):F0}%",
+                    EstimatedDuration = 2.0,
+                    CreatedDate = DateTime.Now,
+                    CreatedBy = CurrentUser.UserName
+                };
+
+                await DataService.AddScheduleAsync(schedule);
+                createdCount++;
+            }
+
+            schedules = await DataService.GetSchedulesAsync();
+            successMessage = $"Auto-scheduled {createdCount} maintenance tasks";
+            CloseAutoScheduleModal();
+            
+            await Task.Delay(3000);
+            successMessage = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error auto-scheduling: {ex.Message}";
+        }
+    }
+
+    private async Task ExportSchedules(string format)
+    {
+        try
+        {
+            var schedulesToExport = GetFilteredSchedules().OrderBy(s => s.ScheduledDate).ToList();
+            
+            if (schedulesToExport.Count == 0)
+            {
+                errorMessage = "No schedules to export";
+                return;
+            }
+
+            byte[] fileData;
+            string fileName;
+            string mimeType;
+
+            switch (format.ToLower())
+            {
+                case "excel":
+                    fileData = await ExportService.ExportToExcelAsync(schedulesToExport);
+                    fileName = $"MaintenanceSchedules_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+                    mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                    break;
+
+                case "word":
+                    fileData = await ExportService.ExportToWordAsync(schedulesToExport);
+                    fileName = $"MaintenanceSchedules_{DateTime.Now:yyyyMMdd_HHmmss}.docx";
+                    mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                    break;
+
+                case "pdf":
+                    fileData = await ExportService.ExportToPdfAsync(schedulesToExport);
+                    fileName = $"MaintenanceSchedules_{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
+                    mimeType = "application/pdf";
+                    break;
+
+                default:
+                    errorMessage = "Invalid export format";
+                    return;
+            }
+
+            await JSRuntime.InvokeVoidAsync("downloadFile", fileData, fileName, mimeType);
+            successMessage = $"Successfully exported {schedulesToExport.Count} schedules to {format.ToUpper()}";
+            
+            await Task.Delay(3000);
+            successMessage = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error exporting schedules: {ex.Message}";
+        }
     }
 }

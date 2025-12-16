@@ -1,0 +1,782 @@
+﻿@page "/rbm/work-orders/{Id:int}"
+@rendermode InteractiveServer
+@layout RBMLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject BlazorApp1.Services.DataService DataService
+@inject BlazorApp1.Services.CurrentUserService CurrentUser
+@inject BlazorApp1.Services.RolePermissionService PermissionService
+@inject NavigationManager Navigation
+@using BlazorApp1.Models
+
+<PageTitle>Work Order @workOrder?.WorkOrderId | RBM CMMS</PageTitle>
+
+@if (workOrder == null)
+{
+    <div class="loading-container">
+        <div class="loading-spinner"></div>
+        <p>Loading work order...</p>
+    </div>
+}
+else
+{
+    <div class="rbm-page-header">
+        <div>
+            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 8px;">
+                <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="GoBack">
+                    ← Back
+                </button>
+                <h1 class="rbm-page-title" style="margin: 0;">@workOrder.WorkOrderId</h1>
+                <span class="status-badge large" style="background: @workOrder.StatusColor;">
+                    @workOrder.Status
+                </span>
+                <span class="priority-badge large" style="background: @workOrder.PriorityColor;">
+                    @workOrder.Priority Priority
+                </span>
+            </div>
+            <p class="rbm-page-subtitle">@workOrder.Type Maintenance</p>
+        </div>
+        <div class="action-buttons">
+            @if (canEdit)
+            {
+                @if (workOrder.Status == "Requested" || workOrder.Status == "Pending Approval")
+                {
+                    <button class="rbm-btn rbm-btn-success" @onclick="ApproveWorkOrder">
+                        ✓ Approve
+                    </button>
+                    <button class="rbm-btn rbm-btn-danger" @onclick="ShowRejectModal">
+                        ✕ Reject
+                    </button>
+                }
+                @if (workOrder.Status == "Open" || workOrder.Status == "Approved")
+                {
+                    <button class="rbm-btn rbm-btn-primary" @onclick="StartWorkOrder">
+                        ▶️ Start Work
+                    </button>
+                }
+                @if (workOrder.Status == "In Progress")
+                {
+                    <button class="rbm-btn rbm-btn-warning" @onclick="ShowHoldModal">
+                        ⏸️ Hold
+                    </button>
+                    <button class="rbm-btn rbm-btn-success" @onclick="ShowCompleteModal">
+                        ✓ Complete
+                    </button>
+                }
+                @if (workOrder.Status == "On Hold")
+                {
+                    <button class="rbm-btn rbm-btn-primary" @onclick="ResumeWorkOrder">
+                        ▶️ Resume
+                    </button>
+                }
+            }
+            <button class="rbm-btn rbm-btn-outline" @onclick="PrintWorkOrder">
+                🖨️ Print
+            </button>
+            @if (canEdit)
+            {
+                <button class="rbm-btn rbm-btn-outline" @onclick="EditWorkOrder">
+                    ✏️ Edit
+                </button>
+            }
+        </div>
+    </div>
+
+    <!-- Status Timeline -->
+    <div class="rbm-card mb-3">
+        <div class="timeline-container">
+            <div class="timeline-item @(workOrder.CreatedDate != default ? "completed" : "")">
+                <div class="timeline-icon">📝</div>
+                <div class="timeline-content">
+                    <div class="timeline-title">Created</div>
+                    <div class="timeline-time">@workOrder.CreatedDate.ToString("MMM dd, yyyy HH:mm")</div>
+                    @if (!string.IsNullOrEmpty(workOrder.RequestedBy))
+                    {
+                        <div class="timeline-user">by @workOrder.RequestedBy</div>
+                    }
+                </div>
+            </div>
+
+            @if (workOrder.Status == "Pending Approval" || workOrder.ApprovedDate != null)
+            {
+                <div class="timeline-item @(workOrder.ApprovedDate != null ? "completed" : "active")">
+                    <div class="timeline-icon">🔍</div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">Approval</div>
+                        @if (workOrder.ApprovedDate != null)
+                        {
+                            <div class="timeline-time">@workOrder.ApprovedDate.Value.ToString("MMM dd, yyyy HH:mm")</div>
+                            <div class="timeline-user">by @workOrder.ApprovedBy</div>
+                        }
+                        else
+                        {
+                            <div class="timeline-pending">Pending approval...</div>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (workOrder.RejectedDate != null)
+            {
+                <div class="timeline-item completed rejected">
+                    <div class="timeline-icon">✕</div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">Rejected</div>
+                        <div class="timeline-time">@workOrder.RejectedDate.Value.ToString("MMM dd, yyyy HH:mm")</div>
+                        <div class="timeline-user">by @workOrder.RejectedBy</div>
+                        <div class="timeline-note">@workOrder.RejectionReason</div>
+                    </div>
+                </div>
+            }
+
+            @if (workOrder.Status == "In Progress" || workOrder.StartedDate != null)
+            {
+                <div class="timeline-item @(workOrder.StartedDate != null ? "completed" : workOrder.Status == "In Progress" ? "active" : "")">
+                    <div class="timeline-icon">⚙️</div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">In Progress</div>
+                        @if (workOrder.StartedDate != null)
+                        {
+                            <div class="timeline-time">@workOrder.StartedDate.Value.ToString("MMM dd, yyyy HH:mm")</div>
+                        }
+                        @if (!string.IsNullOrEmpty(workOrder.AssignedTo))
+                        {
+                            <div class="timeline-user">Assigned to @workOrder.AssignedTo</div>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (workOrder.Status == "Completed" || workOrder.CompletedDate != null)
+            {
+                <div class="timeline-item @(workOrder.CompletedDate != null ? "completed" : "")">
+                    <div class="timeline-icon">✓</div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">Completed</div>
+                        @if (workOrder.CompletedDate != null)
+                        {
+                            <div class="timeline-time">@workOrder.CompletedDate.Value.ToString("MMM dd, yyyy HH:mm")</div>
+                            @if (workOrder.LaborHours != null)
+                            {
+                                <div class="timeline-note">Labor: @workOrder.LaborHours hrs</div>
+                            }
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Main Content Grid -->
+    <div class="detail-grid">
+        <!-- Left Column -->
+        <div class="detail-section">
+            <!-- Asset Information -->
+            <div class="rbm-card">
+                <div class="rbm-card-header">
+                    <h3>🏭 Asset Information</h3>
+                </div>
+                <div class="rbm-card-body">
+                    <div class="info-row">
+                        <span class="info-label">Asset Name:</span>
+                        <span class="info-value"><strong>@workOrder.AssetName</strong></span>
+                    </div>
+                    @if (asset != null)
+                    {
+                        <div class="info-row">
+                            <span class="info-label">Asset ID:</span>
+                            <span class="info-value">@asset.AssetId</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Location:</span>
+                            <span class="info-value">@asset.Location</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Health Score:</span>
+                            <span class="info-value">
+                                <span class="health-badge" style="background: @(asset.HealthScore >= 80 ? "#43a047" : asset.HealthScore >= 50 ? "#fb8c00" : "#e53935"); color: white; padding: 2px 8px; border-radius: 4px;">
+                                    @asset.HealthScore%
+                                </span>
+                            </span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Criticality:</span>
+                            <span class="info-value">@asset.Criticality</span>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(workOrder.Location))
+                    {
+                        <div class="info-row">
+                            <span class="info-label">Work Location:</span>
+                            <span class="info-value">@workOrder.Location</span>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(workOrder.Building))
+                    {
+                        <div class="info-row">
+                            <span class="info-label">Building:</span>
+                            <span class="info-value">@workOrder.Building - Floor @workOrder.Floor</span>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Work Order Details -->
+            <div class="rbm-card mt-3">
+                <div class="rbm-card-header">
+                    <h3>📋 Work Order Details</h3>
+                </div>
+                <div class="rbm-card-body">
+                    <div class="info-row">
+                        <span class="info-label">Type:</span>
+                        <span class="info-value">@workOrder.Type</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Category:</span>
+                        <span class="info-value">@workOrder.Category @(!string.IsNullOrEmpty(workOrder.SubCategory) ? $"/ {workOrder.SubCategory}" : "")</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Job Type:</span>
+                        <span class="info-value">
+                            @if (workOrder.IsMechanical && workOrder.IsElectrical)
+                            {
+                                <span>Both (Mechanical & Electrical)</span>
+                            }
+                            else if (workOrder.IsMechanical)
+                            {
+                                <span>Mechanical</span>
+                            }
+                            else if (workOrder.IsElectrical)
+                            {
+                                <span>Electrical</span>
+                            }
+                            else
+                            {
+                                <span>@workOrder.JobType</span>
+                            }
+                        </span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Created Date:</span>
+                        <span class="info-value">@workOrder.CreatedDate.ToString("MMM dd, yyyy HH:mm")</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Due Date:</span>
+                        <span class="info-value" style="@(workOrder.IsOverdue ? "color: #e53935; font-weight: 600;" : "")">
+                            @(workOrder.DueDate?.ToString("MMM dd, yyyy") ?? "Not set")
+                            @if (workOrder.IsOverdue)
+                            {
+                                <span> (⚠️ OVERDUE)</span>
+                            }
+                            else if (workOrder.DaysUntilDue <= 3 && workOrder.Status != "Completed")
+                            {
+                                <span style="color: #fb8c00;"> (@workOrder.DaysUntilDue days remaining)</span>
+                            }
+                        </span>
+                    </div>
+                    @if (workOrder.ScheduledStartDate != null)
+                    {
+                        <div class="info-row">
+                            <span class="info-label">Scheduled:</span>
+                            <span class="info-value">
+                                @workOrder.ScheduledStartDate.Value.ToString("MMM dd, HH:mm")
+                                @if (workOrder.ScheduledEndDate != null)
+                                {
+                                    <text> - @workOrder.ScheduledEndDate.Value.ToString("HH:mm")</text>
+                                }
+                            </span>
+                        </div>
+                    }
+                    <div class="info-row">
+                        <span class="info-label">Requires Shutdown:</span>
+                        <span class="info-value">@(workOrder.RequiresShutdown ? "Yes ⚠️" : "No")</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Lock Out Required:</span>
+                        <span class="info-value">@(workOrder.LockOutRequired ? "Yes 🔒" : "No")</span>
+                    </div>
+                    @if (workOrder.RequiresSafetyPermit)
+                    {
+                        <div class="info-row">
+                            <span class="info-label">Safety Permit:</span>
+                            <span class="info-value">@workOrder.SafetyPermitNumber</span>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Cost & Time -->
+            <div class="rbm-card mt-3">
+                <div class="rbm-card-header">
+                    <h3>💰 Cost & Time Tracking</h3>
+                </div>
+                <div class="rbm-card-body">
+                    <div class="cost-grid">
+                        <div class="cost-item">
+                            <div class="cost-label">Estimated Downtime</div>
+                            <div class="cost-value">@workOrder.EstimatedDowntime hrs</div>
+                        </div>
+                        @if (workOrder.ActualDowntime != null)
+                        {
+                            <div class="cost-item">
+                                <div class="cost-label">Actual Downtime</div>
+                                <div class="cost-value" style="color: @(workOrder.ActualDowntime > workOrder.EstimatedDowntime ? "#e53935" : "#43a047");">
+                                    @workOrder.ActualDowntime hrs
+                                </div>
+                            </div>
+                        }
+                        <div class="cost-item">
+                            <div class="cost-label">Estimated Cost</div>
+                            <div class="cost-value">@workOrder.EstimatedCost.ToString("C")</div>
+                        </div>
+                        @if (workOrder.ActualCost != null)
+                        {
+                            <div class="cost-item">
+                                <div class="cost-label">Actual Cost</div>
+                                <div class="cost-value" style="color: @(workOrder.ActualCost > workOrder.EstimatedCost ? "#e53935" : "#43a047");">
+                                    @workOrder.ActualCost.Value.ToString("C")
+                                </div>
+                            </div>
+                        }
+                        @if (workOrder.LaborHours != null)
+                        {
+                            <div class="cost-item">
+                                <div class="cost-label">Labor Hours</div>
+                                <div class="cost-value">@workOrder.LaborHours hrs</div>
+                            </div>
+                        }
+                        @if (workOrder.TotalWorkTime != null)
+                        {
+                            <div class="cost-item">
+                                <div class="cost-label">Total Work Time</div>
+                                <div class="cost-value">@workOrder.TotalWorkTime.Value.ToString("F1") hrs</div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column -->
+        <div class="detail-section">
+            <!-- Description & Request Details -->
+            <div class="rbm-card">
+                <div class="rbm-card-header">
+                    <h3>📝 Description & Details</h3>
+                </div>
+                <div class="rbm-card-body">
+                    @if (!string.IsNullOrEmpty(workOrder.Description))
+                    {
+                        <div class="detail-block">
+                            <h4>Description</h4>
+                            <p>@workOrder.Description</p>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(workOrder.DetailsOfRequest))
+                    {
+                        <div class="detail-block">
+                            <h4>Details of Request</h4>
+                            <p>@workOrder.DetailsOfRequest</p>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(workOrder.RequestReason))
+                    {
+                        <div class="detail-block">
+                            <h4>Request Reason</h4>
+                            <p>@workOrder.RequestReason</p>
+                        </div>
+                    }
+                    @if (workOrder.FaultDate != null)
+                    {
+                        <div class="detail-block">
+                            <h4>Fault Information</h4>
+                            <p>
+                                <strong>Date:</strong> @workOrder.FaultDate.Value.ToString("MMM dd, yyyy")<br>
+                                
+                                
+                                    <text><strong>Time:</strong> @workOrder.FaultTime</text>
+                                
+                            </p>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Work Performed -->
+            @if (workOrder.Status == "Completed" || !string.IsNullOrEmpty(workOrder.DetailsOfWorkCarriedOut))
+            {
+                <div class="rbm-card mt-3">
+                    <div class="rbm-card-header">
+                        <h3>🔧 Work Performed</h3>
+                    </div>
+                    <div class="rbm-card-body">
+                        @if (!string.IsNullOrEmpty(workOrder.DetailsOfWorkCarriedOut))
+                        {
+                            <div class="detail-block">
+                                <h4>Work Carried Out</h4>
+                                <p>@workOrder.DetailsOfWorkCarriedOut</p>
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(workOrder.CorrectiveAction))
+                        {
+                            <div class="detail-block">
+                                <h4>Corrective Action</h4>
+                                <p>@workOrder.CorrectiveAction</p>
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(workOrder.CompletionNotes))
+                        {
+                            <div class="detail-block">
+                                <h4>Completion Notes</h4>
+                                <p>@workOrder.CompletionNotes</p>
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(workOrder.ArtisanName))
+                        {
+                            <div class="info-row">
+                                <span class="info-label">Artisan:</span>
+                                <span class="info-value">@workOrder.ArtisanName</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- Spare Parts Used -->
+            <div class="rbm-card mt-3">
+                <div class="rbm-card-header">
+                    <h3>📦 Spare Parts Used</h3>
+                    @if (canEdit && workOrder.Status == "In Progress")
+                    {
+                        <button class="rbm-btn rbm-btn-sm rbm-btn-primary" @onclick="ShowAddPartsModal">
+                            + Add Parts
+                        </button>
+                    }
+                </div>
+                <div class="rbm-card-body">
+                    @if (sparesUsed.Any())
+                    {
+                        <div class="parts-list">
+                            @foreach (var spare in sparesUsed)
+                            {
+                                <div class="part-item">
+                                    <div class="part-info">
+                                        <div class="part-name">@spare.ItemDescription</div>
+                                        @if (!string.IsNullOrEmpty(spare.RequisitionNumber))
+                                        {
+                                            <div class="part-req">Req: @spare.RequisitionNumber</div>
+                                        }
+                                    </div>
+                                    <div class="part-qty">Qty: @spare.Quantity</div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted">No spare parts recorded yet.</p>
+                    }
+                </div>
+            </div>
+
+            <!-- Personnel -->
+            <div class="rbm-card mt-3">
+                <div class="rbm-card-header">
+                    <h3>👥 Personnel & Contact</h3>
+                </div>
+                <div class="rbm-card-body">
+                    @if (!string.IsNullOrEmpty(workOrder.AssignedTo))
+                    {
+                        <div class="info-row">
+                            <span class="info-label">Assigned To:</span>
+                            <span class="info-value">@workOrder.AssignedTo</span>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(workOrder.Originator))
+                    {
+                        <div class="info-row">
+                            <span class="info-label">Originator:</span>
+                            <span class="info-value">@workOrder.Originator</span>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(workOrder.Department))
+                    {
+                        <div class="info-row">
+                            <span class="info-label">Department:</span>
+                            <span class="info-value">@workOrder.Department</span>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(workOrder.ContactPerson))
+                    {
+                        <div class="info-row">
+                            <span class="info-label">Contact Person:</span>
+                            <span class="info-value">@workOrder.ContactPerson</span>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(workOrder.ContactPhone))
+                    {
+                        <div class="info-row">
+                            <span class="info-label">Phone:</span>
+                            <span class="info-value">@workOrder.ContactPhone</span>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(workOrder.ContactEmail))
+                    {
+                        <div class="info-row">
+                            <span class="info-label">Email:</span>
+                            <span class="info-value">@workOrder.ContactEmail</span>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Verifications -->
+            @if (workOrder.Status == "Completed")
+            {
+                <div class="rbm-card mt-3">
+                    <div class="rbm-card-header">
+                        <h3>✅ Verifications</h3>
+                    </div>
+                    <div class="rbm-card-body">
+                        @if (!string.IsNullOrEmpty(workOrder.OriginatorVerification))
+                        {
+                            <div class="verification-item">
+                                <div class="verification-role">Originator</div>
+                                <div class="verification-name">@workOrder.OriginatorVerification</div>
+                                @if (workOrder.OriginatorVerificationDate != null)
+                                {
+                                    <div class="verification-date">@workOrder.OriginatorVerificationDate.Value.ToString("MMM dd, yyyy HH:mm")</div>
+                                }
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(workOrder.EngineeringForemanVerification))
+                        {
+                            <div class="verification-item">
+                                <div class="verification-role">Engineering Foreman</div>
+                                <div class="verification-name">@workOrder.EngineeringForemanVerification</div>
+                                @if (workOrder.EngineeringForemanVerificationDate != null)
+                                {
+                                    <div class="verification-date">@workOrder.EngineeringForemanVerificationDate.Value.ToString("MMM dd, yyyy HH:mm")</div>
+                                }
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(workOrder.HODVerification))
+                        {
+                            <div class="verification-item">
+                                <div class="verification-role">HOD</div>
+                                <div class="verification-name">@workOrder.HODVerification</div>
+                                @if (workOrder.HODVerificationDate != null)
+                                {
+                                    <div class="verification-date">@workOrder.HODVerificationDate.Value.ToString("MMM dd, yyyy HH:mm")</div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@if (showSuccessMessage)
+{
+    <div class="toast-notification success">
+        <span class="toast-icon">✓</span>
+        <span>@successMessage</span>
+    </div>
+}
+
+@if (showEditModal && workOrder != null)
+{
+    <WorkOrderEditModal 
+        OriginalWorkOrder="workOrder"
+        Technicians="technicianList"
+        UserRole="@CurrentUser.Role"
+        OnSave="SaveWorkOrderChanges"
+        OnCancel="CancelEdit" />
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private WorkOrder? workOrder;
+    private Asset? asset;
+    private List<WorkOrderSpareUsed> sparesUsed = new();
+    private bool canEdit = false;
+    private bool showSuccessMessage = false;
+    private string successMessage = "";
+
+    private bool showEditModal = false;
+    private List<User> allUsers = new();
+    private List<User> technicianList = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadWorkOrder();
+        canEdit = await PermissionService.CanEditAsync();
+        allUsers = DataService.GetUsers();
+        technicianList = allUsers.Where(u => u.Role == "Technician").ToList();
+    }
+
+    private async Task LoadWorkOrder()
+    {
+        workOrder = DataService.GetWorkOrder(Id);
+        
+        if (workOrder != null)
+        {
+            asset = DataService.GetAsset(workOrder.AssetId);
+            sparesUsed = workOrder.SparesUsed.ToList();
+        }
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/rbm/work-orders");
+    }
+
+    private async Task ApproveWorkOrder()
+    {
+        if (workOrder != null)
+        {
+            workOrder.Status = "Approved";
+            workOrder.ApprovedBy = CurrentUser.UserName;
+            workOrder.ApprovedDate = DateTime.Now;
+            DataService.UpdateWorkOrder(workOrder);
+            ShowSuccess("Work order approved successfully");
+            await LoadWorkOrder();
+        }
+    }
+
+    private void ShowRejectModal()
+    {
+        // TODO: Implement reject modal
+    }
+
+    private async Task StartWorkOrder()
+    {
+        if (workOrder != null)
+        {
+            workOrder.Status = "In Progress";
+            workOrder.StartedDate = DateTime.Now;
+            workOrder.TimeSubmitted = DateTime.Now;
+            DataService.UpdateWorkOrder(workOrder);
+            ShowSuccess("Work order started");
+            await LoadWorkOrder();
+        }
+    }
+
+    private void ShowCompleteModal()
+    {
+        // TODO: Implement complete modal
+    }
+
+    private void ShowHoldModal()
+    {
+        // TODO: Implement hold modal
+    }
+
+    private async Task ResumeWorkOrder()
+    {
+        if (workOrder != null)
+        {
+            workOrder.Status = "In Progress";
+            DataService.UpdateWorkOrder(workOrder);
+            ShowSuccess("Work order resumed");
+            await LoadWorkOrder();
+        }
+    }
+
+    private void PrintWorkOrder()
+    {
+        // TODO: Implement print functionality
+    }
+
+    private void EditWorkOrder()
+    {
+        // Check permissions for editing
+        if (CanUserEditWorkOrder())
+        {
+            showEditModal = true;
+        }
+        else
+        {
+            ShowSuccess("❌ You don't have permission to edit this work order", isError: true);
+        }
+    }
+
+    private bool CanUserEditWorkOrder()
+    {
+        if (workOrder == null)
+            return false;
+
+        // Admin can always edit
+        if (CurrentUser.IsAdmin)
+            return true;
+
+        // Technicians can only edit work orders assigned to them
+        if (CurrentUser.Role == "Technician")
+        {
+            return workOrder.AssignedTo == CurrentUser.UserName;
+        }
+
+        // Engineers, Planners, Supervisors can edit
+        if (CurrentUser.Role == "Reliability Engineer" || 
+            CurrentUser.Role == "Planner" || 
+            CurrentUser.Role == "Supervisor")
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private async Task SaveWorkOrderChanges(WorkOrder editedWorkOrder)
+    {
+        if (editedWorkOrder == null)
+            return;
+
+        try
+        {
+            // Update last modified info
+            editedWorkOrder.LastModifiedBy = CurrentUser.UserName;
+            editedWorkOrder.LastModifiedDate = DateTime.Now;
+
+            // Save the changes
+            DataService.UpdateWorkOrder(editedWorkOrder);
+            
+            showEditModal = false;
+            ShowSuccess("Work order updated successfully");
+            
+            // Reload the work order
+            await LoadWorkOrder();
+        }
+        catch (Exception ex)
+        {
+            ShowSuccess($"❌ Error saving work order: {ex.Message}", isError: true);
+        }
+    }
+
+    private void CancelEdit()
+    {
+        showEditModal = false;
+    }
+
+    private void ShowAddPartsModal()
+    {
+        // TODO: Implement add parts modal
+    }
+
+    private void ShowSuccess(string message, bool isError = false)
+    {
+        successMessage = message;
+        showSuccessMessage = true;
+        StateHasChanged();
+
+        Task.Delay(3000).ContinueWith(_ =>
+        {
+            showSuccessMessage = false;
+            InvokeAsync(StateHasChanged);
+        });
+    }
+}
+

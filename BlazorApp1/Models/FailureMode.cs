@@ -63,6 +63,9 @@ public class FailureMode
     
     public DateTime? ModifiedDate { get; set; }
     
+    // Multi-tenancy support
+    public int? TenantId { get; set; }
+    
     // Navigation property
     [ForeignKey("AssetId")]
     public virtual Asset? Asset { get; set; }

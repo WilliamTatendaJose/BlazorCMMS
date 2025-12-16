@@ -244,92 +244,122 @@
     private List<SimpleLineChart.ChartDataPoint> mtbfTrendData = new();
     private List<SimpleLineChart.ChartDataPoint> mttrTrendData = new();
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        assets = DataService.GetAssets();
-        workOrders = DataService.GetWorkOrders();
-        
-        // Generate sample MTBF trend data (12 months)
-        mtbfTrendData = new List<SimpleLineChart.ChartDataPoint>
+        try
         {
-            new() { Label = "Jan", Value = 1050 },
-            new() { Label = "Feb", Value = 1080 },
-            new() { Label = "Mar", Value = 1100 },
-            new() { Label = "Apr", Value = 1120 },
-            new() { Label = "May", Value = 1110 },
-            new() { Label = "Jun", Value = 1150 },
-            new() { Label = "Jul", Value = 1180 },
-            new() { Label = "Aug", Value = 1190 },
-            new() { Label = "Sep", Value = 1210 },
-            new() { Label = "Oct", Value = 1220 },
-            new() { Label = "Nov", Value = 1240 },
-            new() { Label = "Dec", Value = 1248 }
-        };
-        
-        // Generate sample MTTR trend data (12 months)
-        mttrTrendData = new List<SimpleLineChart.ChartDataPoint>
-        {
-            new() { Label = "Jan", Value = 3.8 },
-            new() { Label = "Feb", Value = 3.9 },
-            new() { Label = "Mar", Value = 3.7 },
-            new() { Label = "Apr", Value = 3.8 },
-            new() { Label = "May", Value = 4.0 },
-            new() { Label = "Jun", Value = 3.9 },
-            new() { Label = "Jul", Value = 4.1 },
-            new() { Label = "Aug", Value = 4.0 },
-            new() { Label = "Sep", Value = 4.1 },
-            new() { Label = "Oct", Value = 4.2 },
-            new() { Label = "Nov", Value = 4.3 },
-            new() { Label = "Dec", Value = 4.2 }
-        };
-    }
-
-    private void ExportReport()
-    {
-        ShowSuccess("Report exported successfully!");
-    }
-
-    private void CreateWorkOrderForAsset(int assetId, bool isCritical = false)
-    {
-        var asset = assets.FirstOrDefault(a => a.Id == assetId);
-        if (asset != null)
-        {
-            var newWorkOrder = new WorkOrder
+            assets = await DataService.GetAssetsAsync();
+            workOrders = await DataService.GetWorkOrdersAsync();
+            
+            // Generate sample MTBF trend data (12 months)
+            mtbfTrendData = new List<SimpleLineChart.ChartDataPoint>
             {
-                AssetId = asset.Id,
-                AssetName = asset.Name,
-                Priority = isCritical ? "Critical" : "High",
-                Type = isCritical ? "Corrective" : "Predictive",
-                Status = "Open",
-                DueDate = DateTime.Now.AddDays(isCritical ? 1 : 7),
-                AssignedTo = "John Smith",
-                Description = $"AI-generated work order based on {(isCritical ? "critical condition analysis" : "predictive analytics")}",
-                EstimatedDowntime = isCritical ? 6 : 3
+                new() { Label = "Jan", Value = 1050 },
+                new() { Label = "Feb", Value = 1080 },
+                new() { Label = "Mar", Value = 1100 },
+                new() { Label = "Apr", Value = 1120 },
+                new() { Label = "May", Value = 1110 },
+                new() { Label = "Jun", Value = 1150 },
+                new() { Label = "Jul", Value = 1180 },
+                new() { Label = "Aug", Value = 1190 },
+                new() { Label = "Sep", Value = 1210 },
+                new() { Label = "Oct", Value = 1220 },
+                new() { Label = "Nov", Value = 1240 },
+                new() { Label = "Dec", Value = 1248 }
             };
             
-            DataService.AddWorkOrder(newWorkOrder);
-            ShowSuccess($"Work order {newWorkOrder.WorkOrderId} created for {asset.Name}");
+            // Generate sample MTTR trend data (12 months)
+            mttrTrendData = new List<SimpleLineChart.ChartDataPoint>
+            {
+                new() { Label = "Jan", Value = 3.8 },
+                new() { Label = "Feb", Value = 3.9 },
+                new() { Label = "Mar", Value = 3.7 },
+                new() { Label = "Apr", Value = 3.8 },
+                new() { Label = "May", Value = 4.0 },
+                new() { Label = "Jun", Value = 3.9 },
+                new() { Label = "Jul", Value = 4.1 },
+                new() { Label = "Aug", Value = 4.0 },
+                new() { Label = "Sep", Value = 4.1 },
+                new() { Label = "Oct", Value = 4.2 },
+                new() { Label = "Nov", Value = 4.3 },
+                new() { Label = "Dec", Value = 4.2 }
+            };
+            
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading analytics data: {ex.Message}");
         }
     }
 
-    private void CreateScheduleForAsset(int assetId)
+    private async Task ExportReport()
+    {
+        try
+        {
+            await Task.Delay(500); // Simulate export
+            ShowSuccess("Report exported successfully!");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error exporting report: {ex.Message}");
+        }
+    }
+
+    private async Task CreateWorkOrderForAsset(int assetId, bool isCritical = false)
     {
         var asset = assets.FirstOrDefault(a => a.Id == assetId);
         if (asset != null)
         {
-            var newSchedule = new MaintenanceSchedule
+            try
             {
-                AssetId = asset.Id,
-                AssetName = asset.Name,
-                ScheduledDate = DateTime.Now.AddDays(14).AddHours(8),
-                EndDate = DateTime.Now.AddDays(14).AddHours(11),
-                Type = "Preventive",
-                AssignedTechnician = "Mike Davis",
-                Status = "Scheduled"
-            };
-            
-            DataService.AddSchedule(newSchedule);
-            ShowSuccess($"Maintenance scheduled for {asset.Name} on {newSchedule.ScheduledDate:MMM dd}");
+                var newWorkOrder = new WorkOrder
+                {
+                    AssetId = asset.Id,
+                    Priority = isCritical ? "Critical" : "High",
+                    Type = isCritical ? "Corrective" : "Predictive",
+                    Status = "Open",
+                    DueDate = DateTime.Now.AddDays(isCritical ? 1 : 7),
+                    AssignedTo = "John Smith",
+                    Description = $"AI-generated work order based on {(isCritical ? "critical condition analysis" : "predictive analytics")}",
+                    EstimatedDowntime = isCritical ? 6 : 3
+                };
+                
+                await DataService.AddWorkOrderAsync(newWorkOrder);
+                workOrders = await DataService.GetWorkOrdersAsync();
+                ShowSuccess($"Work order {newWorkOrder.WorkOrderId} created for {asset.Name}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error creating work order: {ex.Message}");
+            }
+        }
+    }
+
+    private async Task CreateScheduleForAsset(int assetId)
+    {
+        var asset = assets.FirstOrDefault(a => a.Id == assetId);
+        if (asset != null)
+        {
+            try
+            {
+                var newSchedule = new MaintenanceSchedule
+                {
+                    AssetId = asset.Id,
+                    ScheduledDate = DateTime.Now.AddDays(14).AddHours(8),
+                    EndDate = DateTime.Now.AddDays(14).AddHours(11),
+                    Type = "Preventive",
+                    AssignedTechnician = "Mike Davis",
+                    Status = "Scheduled"
+                };
+                
+                await DataService.AddScheduleAsync(newSchedule);
+                ShowSuccess($"Maintenance scheduled for {asset.Name} on {newSchedule.ScheduledDate:MMM dd}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error creating schedule: {ex.Message}");
+            }
         }
     }
 

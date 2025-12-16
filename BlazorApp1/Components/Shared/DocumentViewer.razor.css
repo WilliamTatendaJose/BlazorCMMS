@@ -1,0 +1,356 @@
+.document-viewer {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 500px;
+    background: #1a1a2e;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.document-viewer.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10000;
+    border-radius: 0;
+    min-height: 100vh;
+}
+
+/* Viewer Header */
+.viewer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%);
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    flex-shrink: 0;
+}
+
+.viewer-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: white;
+}
+
+.file-icon {
+    font-size: 28px;
+}
+
+.title-info h4 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.file-meta {
+    font-size: 12px;
+    color: rgba(255,255,255,0.6);
+}
+
+.viewer-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.viewer-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 6px;
+    color: white;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.viewer-btn:hover:not(:disabled) {
+    background: rgba(255,255,255,0.2);
+}
+
+.viewer-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.viewer-btn.primary {
+    background: rgba(2, 136, 209, 0.8);
+    border-color: #0288d1;
+}
+
+.viewer-btn.primary:hover {
+    background: #0288d1;
+}
+
+.viewer-btn.danger {
+    background: rgba(229, 57, 53, 0.8);
+    border-color: #e53935;
+}
+
+.viewer-btn.danger:hover {
+    background: #e53935;
+}
+
+.zoom-level, .page-info {
+    color: rgba(255,255,255,0.8);
+    font-size: 13px;
+    min-width: 50px;
+    text-align: center;
+}
+
+.viewer-divider {
+    width: 1px;
+    height: 24px;
+    background: rgba(255,255,255,0.2);
+    margin: 0 4px;
+}
+
+/* Viewer Content */
+.viewer-content {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #2a2a3e;
+    position: relative;
+}
+
+.viewer-loading {
+    text-align: center;
+    color: white;
+}
+
+.loading-spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid rgba(255,255,255,0.2);
+    border-top-color: #0288d1;
+    border-radius: 50%;
+    animation: doc-viewer-spin 1s linear infinite;
+    margin: 0 auto 16px;
+}
+
+@keyframes doc-viewer-spin {
+    to { transform: rotate(360deg); }
+}
+
+.viewer-error {
+    text-align: center;
+    color: white;
+    padding: 40px;
+}
+
+.error-icon {
+    font-size: 48px;
+    display: block;
+    margin-bottom: 16px;
+}
+
+.viewer-error h4 {
+    margin: 0 0 8px 0;
+}
+
+.viewer-error p {
+    color: rgba(255,255,255,0.6);
+    margin-bottom: 20px;
+}
+
+/* PDF Viewer */
+.pdf-viewer {
+    width: 100%;
+    height: 100%;
+    transition: transform 0.2s;
+}
+
+.pdf-frame {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: white;
+}
+
+/* Image Viewer */
+.image-viewer {
+    max-width: 100%;
+    max-height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.3s ease;
+    padding: 20px;
+}
+
+.image-viewer img {
+    max-width: 100%;
+    max-height: calc(100vh - 200px);
+    object-fit: contain;
+    border-radius: 4px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    cursor: zoom-in;
+}
+
+/* Office Document Viewer */
+.office-viewer, .cad-viewer, .unsupported-viewer {
+    text-align: center;
+    color: white;
+    padding: 60px 40px;
+}
+
+.office-preview-notice, .cad-preview-notice {
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.file-type-icon {
+    font-size: 64px;
+    display: block;
+    margin-bottom: 20px;
+}
+
+.office-preview-notice h4, .cad-preview-notice h4 {
+    margin: 0 0 8px 0;
+    font-size: 22px;
+}
+
+.office-preview-notice p, .cad-preview-notice p {
+    color: rgba(255,255,255,0.7);
+    margin: 0 0 8px 0;
+}
+
+.file-info {
+    font-size: 13px;
+    color: rgba(255,255,255,0.5);
+}
+
+.office-actions, .cad-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin: 24px 0;
+}
+
+.hint {
+    font-size: 13px;
+    color: rgba(255,255,255,0.5);
+    margin-top: 16px;
+}
+
+.cad-tools {
+    margin-top: 24px;
+    padding: 20px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+    text-align: left;
+}
+
+.cad-tools h5 {
+    margin: 0 0 12px 0;
+    color: rgba(255,255,255,0.8);
+}
+
+.cad-tools ul {
+    margin: 0;
+    padding-left: 20px;
+    color: rgba(255,255,255,0.6);
+}
+
+.cad-tools li {
+    margin-bottom: 6px;
+}
+
+/* Text Viewer */
+.text-viewer {
+    width: 100%;
+    height: 100%;
+    padding: 20px;
+    background: #1e1e1e;
+    overflow: auto;
+}
+
+.text-viewer pre {
+    margin: 0;
+    color: #d4d4d4;
+    font-family: 'Consolas', 'Monaco', monospace;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* Viewer Footer */
+.viewer-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    border-top: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.7);
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+.footer-info {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.info-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.info-item.warning {
+    color: #fb8c00;
+}
+
+.status-badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.status-badge.active { background: rgba(67, 160, 71, 0.2); color: #66bb6a; }
+.status-badge.draft { background: rgba(158, 158, 158, 0.2); color: #9e9e9e; }
+.status-badge.approved { background: rgba(2, 136, 209, 0.2); color: #29b6f6; }
+.status-badge.archived { background: rgba(158, 158, 158, 0.2); color: #9e9e9e; }
+.status-badge.obsolete { background: rgba(229, 57, 53, 0.2); color: #ef5350; }
+
+.footer-stats {
+    display: flex;
+    gap: 16px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .viewer-header {
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px;
+    }
+
+    .viewer-controls {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .viewer-footer {
+        flex-direction: column;
+        gap: 8px;
+        text-align: center;
+    }
+
+    .footer-info {
+        justify-content: center;
+    }
+}

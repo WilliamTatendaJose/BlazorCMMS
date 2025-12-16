@@ -1,0 +1,125 @@
+/* Condition Monitoring Animations */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.8;
+    }
+}
+
+/* Form Elements */
+.rbm-form-select, .rbm-form-input {
+    transition: all 0.2s ease;
+}
+
+.rbm-form-select:focus, .rbm-form-input:focus {
+    box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
+}
+
+/* Health Score Animation */
+.health-score-pulse {
+    animation: pulse 2s infinite;
+}
+
+/* Stat Cards */
+.rbm-stat-card {
+    transition: all 0.3s ease;
+}
+
+.rbm-stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Reading Cards */
+.reading-card {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.reading-card:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Alert Messages */
+.alert-message {
+    animation: slideIn 0.3s ease;
+}
+
+/* Modal */
+.rbm-modal-backdrop {
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.rbm-modal {
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Badge */
+.rbm-badge {
+    transition: all 0.2s ease;
+}
+
+.rbm-badge:hover {
+    transform: scale(1.05);
+}
+
+/* Trends Grid */
+.trends-card {
+    transition: all 0.3s ease;
+}
+
+.trends-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+    .rbm-grid rbm-grid-3 {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .rbm-grid.rbm-grid-3 {
+        grid-template-columns: 1fr;
+    }
+    
+    .rbm-grid.rbm-grid-5 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}

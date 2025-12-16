@@ -1,0 +1,555 @@
+@page "/rbm/tenants"
+@using BlazorApp1.Services
+@using BlazorApp1.Models
+@using BlazorApp1.Data
+@using Microsoft.AspNetCore.Authorization
+
+@layout RBMLayout
+@rendermode InteractiveServer
+
+@inject ITenantManagementService TenantManagementService
+@inject ITenantService TenantService
+@inject NavigationManager NavigationManager
+@inject RolePermissionService RolePermissionService
+
+@attribute [Authorize(Roles = "SuperAdmin")]
+
+<PageTitle>Tenant Management | RBM CMMS</PageTitle>
+
+<div class="container-fluid p-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h2 class="mb-1">?? Tenant Management</h2>
+                    <p class="text-muted mb-0">SuperAdmin - Manage all tenants and their configurations</p>
+                </div>
+                <button class="btn btn-primary" @onclick="OpenCreateTenantModal" disabled="@(isLoading || isSaving)">
+                    <i class="bi bi-plus-circle"></i> Create New Tenant
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Messages -->
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bi bi-exclamation-triangle"></i> 
+            <strong>Error:</strong> @errorMessage
+            <button type="button" class="btn-close" @onclick="() => errorMessage = null"></button>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="bi bi-check-circle"></i> 
+            <strong>Success:</strong> @successMessage
+            <button type="button" class="btn-close" @onclick="() => successMessage = null"></button>
+        </div>
+    }
+
+    <!-- Loading State -->
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary mb-3" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="text-muted">Loading tenants...</p>
+        </div>
+    }
+    <!-- Tenants Grid -->
+    else if (tenants != null && tenants.Count > 0)
+    {
+        <div class="row">
+            @foreach (var tenant in tenants)
+            {
+                <div class="col-md-6 col-lg-4 mb-4">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-header bg-primary text-white">
+                            <div style="display: flex; justify-content: space-between; align-items: start;">
+                                <div>
+                                    <h5 class="card-title mb-0">@tenant.Name</h5>
+                                    <small class="text-white-50">@tenant.TenantCode</small>
+                                </div>
+                                <span class="badge bg-@(tenant.IsActive ? "success" : "secondary")">
+                                    @(tenant.IsActive ? "Active" : "Inactive")
+                                </span>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <p class="card-text small"><strong>Contact:</strong> @tenant.ContactPerson</p>
+                            <p class="card-text small"><strong>Email:</strong> <a href="mailto:@tenant.ContactEmail">@tenant.ContactEmail</a></p>
+                            <p class="card-text small"><strong>Users:</strong> @(tenant.Users?.Count ?? 0) / @tenant.MaxUsers</p>
+                            <p class="card-text small"><strong>Assets:</strong> @tenant.MaxAssets | <strong>Documents:</strong> @tenant.MaxDocuments</p>
+                            <p class="card-text small text-muted">Created: @tenant.CreatedDate.ToShortDateString()</p>
+                        </div>
+                        <div class="card-footer">
+                            <div class="btn-group btn-group-sm w-100" role="group">
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenEditTenantModal(tenant)" disabled="@isSaving">
+                                    <i class="bi bi-pencil"></i> Edit
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => ManageTenantUsers(tenant.Id)" disabled="@isSaving">
+                                    <i class="bi bi-people"></i> Users
+                                </button>
+                                @if (tenant.IsActive)
+                                {
+                                    <button class="btn btn-sm btn-outline-warning" @onclick="() => ConfirmDeactivateTenant(tenant.Id, tenant.Name)" disabled="@isSaving">
+                                        <i class="bi bi-ban"></i>
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-outline-success" @onclick="() => ActivateTenant(tenant.Id)" disabled="@isSaving">
+                                        <i class="bi bi-check-circle"></i>
+                                    </button>
+                                }
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDeleteTenant(tenant.Id, tenant.Name)" disabled="@isSaving">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    <!-- Empty State -->
+    else
+    {
+        <div class="alert alert-info text-center py-5">
+            <i class="bi bi-info-circle" style="font-size: 2rem; margin-bottom: 1rem; display: block;"></i>
+            <h5>No Tenants Found</h5>
+            <p class="text-muted mb-0">Create a new tenant to get started.</p>
+        </div>
+    }
+</div>
+
+<!-- Create/Edit Modal -->
+<div class="modal @(showTenantModal ? "show d-block" : "")" tabindex="-1" role="dialog" style="background-color: @(showTenantModal ? "rgba(0,0,0,0.5)" : "");">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">@(editingTenant?.Id > 0 ? "Edit Tenant" : "Create New Tenant")</h5>
+                <button type="button" class="btn-close" @onclick="CloseTenantModal" disabled="@isSaving"></button>
+            </div>
+            @if (editingTenant != null)
+            {
+                <div class="modal-body">
+                    <form>
+                        <div class="mb-3">
+                            <label for="tenantCode" class="form-label">Tenant Code *</label>
+                            <input type="text" class="form-control" id="tenantCode" 
+                                   @bind="editingTenant.TenantCode" 
+                                   disabled="@(editingTenant.Id > 0)" 
+                                   placeholder="e.g., TENANT001"
+                                   maxlength="50" />
+                        </div>
+                        <div class="mb-3">
+                            <label for="tenantName" class="form-label">Tenant Name *</label>
+                            <input type="text" class="form-control" id="tenantName" 
+                                   @bind="editingTenant.Name" 
+                                   placeholder="e.g., ABC Corporation"
+                                   disabled="@isSaving"
+                                   maxlength="200" />
+                        </div>
+                        <div class="mb-3">
+                            <label for="description" class="form-label">Description</label>
+                            <textarea class="form-control" id="description" 
+                                      @bind="editingTenant.Description" 
+                                      rows="3"
+                                      disabled="@isSaving"
+                                      maxlength="500"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="contactPerson" class="form-label">Contact Person</label>
+                            <input type="text" class="form-control" id="contactPerson" 
+                                   @bind="editingTenant.ContactPerson"
+                                   disabled="@isSaving"
+                                   maxlength="100" />
+                        </div>
+                        <div class="mb-3">
+                            <label for="contactEmail" class="form-label">Contact Email</label>
+                            <input type="email" class="form-control" id="contactEmail" 
+                                   @bind="editingTenant.ContactEmail"
+                                   disabled="@isSaving"
+                                   maxlength="100" />
+                        </div>
+                        <div class="mb-3">
+                            <label for="contactPhone" class="form-label">Contact Phone</label>
+                            <input type="tel" class="form-control" id="contactPhone" 
+                                   @bind="editingTenant.ContactPhone"
+                                   disabled="@isSaving"
+                                   maxlength="20" />
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label for="maxUsers" class="form-label">Max Users *</label>
+                                    <input type="number" class="form-control" id="maxUsers" 
+                                           @bind="editingTenant.MaxUsers" 
+                                           min="1"
+                                           disabled="@isSaving" />
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label for="maxAssets" class="form-label">Max Assets *</label>
+                                    <input type="number" class="form-control" id="maxAssets" 
+                                           @bind="editingTenant.MaxAssets"
+                                           min="1"
+                                           disabled="@isSaving" />
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label for="maxDocuments" class="form-label">Max Documents *</label>
+                                    <input type="number" class="form-control" id="maxDocuments" 
+                                           @bind="editingTenant.MaxDocuments"
+                                           min="1"
+                                           disabled="@isSaving" />
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseTenantModal" disabled="@isSaving">Close</button>
+                    <button type="button" class="btn btn-primary" @onclick="SaveTenant" disabled="@isSaving">
+                        @if (isSaving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                            <span>Saving...</span>
+                        }
+                        else
+                        {
+                            <span>Save Tenant</span>
+                        }
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Confirmation Modal -->
+<div class="modal @(showConfirmationModal ? "show d-block" : "")" tabindex="-1" role="dialog" style="background-color: @(showConfirmationModal ? "rgba(0,0,0,0.5)" : "");">
+    <div class="modal-dialog modal-sm" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Action</h5>
+                <button type="button" class="btn-close" @onclick="CancelConfirmation" disabled="@isSaving"></button>
+            </div>
+            <div class="modal-body">
+                <p>@confirmationMessage</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" @onclick="CancelConfirmation" disabled="@isSaving">Cancel</button>
+                <button type="button" class="btn @(confirmationType == "delete" ? "btn-danger" : "btn-warning")" 
+                        @onclick="ExecuteConfirmedAction" disabled="@isSaving">
+                    @if (isSaving)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                    }
+                    <span>@(confirmationType == "delete" ? "Delete" : "Deactivate")</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<Tenant> tenants = new();
+    private Tenant? editingTenant;
+    private bool showTenantModal = false;
+    private bool showConfirmationModal = false;
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private string? errorMessage;
+    private string? successMessage;
+    private int? confirmationTenantId;
+    private string confirmationType = "delete";
+    private string confirmationMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Verify SuperAdmin access
+        var isSuperAdmin = await RolePermissionService.IsSuperAdminAsync();
+        if (!isSuperAdmin)
+        {
+            NavigationManager.NavigateTo("/access-denied");
+            return;
+        }
+
+        await LoadTenants();
+    }
+
+    private async Task LoadTenants()
+    {
+        isLoading = true;
+        errorMessage = null;
+        try
+        {
+            tenants = await TenantManagementService.GetAllTenantsAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load tenants: {ex.GetBaseException().Message}";
+            Console.WriteLine($"ERROR loading tenants: {ex}");
+            tenants = new();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void OpenCreateTenantModal()
+    {
+        editingTenant = new Tenant
+        {
+            MaxUsers = 10,
+            MaxAssets = 100,
+            MaxDocuments = 500,
+            IsActive = true,
+            Status = "Active"
+        };
+        showTenantModal = true;
+    }
+
+    private void OpenEditTenantModal(Tenant tenant)
+    {
+        editingTenant = new Tenant
+        {
+            Id = tenant.Id,
+            TenantCode = tenant.TenantCode,
+            Name = tenant.Name,
+            Description = tenant.Description,
+            ContactPerson = tenant.ContactPerson,
+            ContactEmail = tenant.ContactEmail,
+            ContactPhone = tenant.ContactPhone,
+            Address = tenant.Address,
+            City = tenant.City,
+            Country = tenant.Country,
+            PostalCode = tenant.PostalCode,
+            MaxUsers = tenant.MaxUsers,
+            MaxAssets = tenant.MaxAssets,
+            MaxDocuments = tenant.MaxDocuments,
+            IsActive = tenant.IsActive,
+            Status = tenant.Status,
+            Users = tenant.Users
+        };
+        showTenantModal = true;
+    }
+
+    private void CloseTenantModal()
+    {
+        showTenantModal = false;
+        editingTenant = null;
+        errorMessage = null;
+    }
+
+    private async Task SaveTenant()
+    {
+        if (editingTenant == null)
+        {
+            errorMessage = "Invalid tenant data";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(editingTenant.TenantCode))
+        {
+            errorMessage = "Tenant Code is required";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(editingTenant.Name))
+        {
+            errorMessage = "Tenant Name is required";
+            return;
+        }
+
+        if (editingTenant.MaxUsers <= 0 || editingTenant.MaxAssets <= 0 || editingTenant.MaxDocuments <= 0)
+        {
+            errorMessage = "Resource limits must be greater than 0";
+            return;
+        }
+
+        isSaving = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            var trimmedCode = editingTenant.TenantCode.Trim();
+            var trimmedName = editingTenant.Name.Trim();
+            var createdBy = "SuperAdmin";
+
+            if (editingTenant.Id == 0)
+            {
+                var result = await TenantManagementService.CreateTenantAsync(trimmedCode, trimmedName, createdBy);
+
+                if (result == null)
+                {
+                    errorMessage = "Failed to create tenant. The tenant code may already exist.";
+                    isSaving = false;
+                    return;
+                }
+
+                successMessage = $"Tenant '{trimmedName}' created successfully!";
+            }
+            else
+            {
+                var success = await TenantManagementService.UpdateTenantAsync(editingTenant, createdBy);
+
+                if (!success)
+                {
+                    errorMessage = "Failed to update tenant. Please try again.";
+                    isSaving = false;
+                    return;
+                }
+
+                successMessage = $"Tenant '{trimmedName}' updated successfully!";
+            }
+
+            CloseTenantModal();
+            await LoadTenants();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error saving tenant: {ex.GetBaseException().Message}";
+            Console.WriteLine($"ERROR saving tenant: {ex}");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void ConfirmDeleteTenant(int tenantId, string tenantName)
+    {
+        confirmationType = "delete";
+        confirmationTenantId = tenantId;
+        confirmationMessage = $"Are you sure you want to delete the tenant '{tenantName}'? This action cannot be undone.";
+        showConfirmationModal = true;
+    }
+
+    private void ConfirmDeactivateTenant(int tenantId, string tenantName)
+    {
+        confirmationType = "deactivate";
+        confirmationTenantId = tenantId;
+        confirmationMessage = $"Are you sure you want to deactivate the tenant '{tenantName}'?";
+        showConfirmationModal = true;
+    }
+
+    private void CancelConfirmation()
+    {
+        showConfirmationModal = false;
+        confirmationTenantId = null;
+    }
+
+    private async Task ExecuteConfirmedAction()
+    {
+        if (!confirmationTenantId.HasValue)
+            return;
+
+        isSaving = true;
+        try
+        {
+            if (confirmationType == "delete")
+            {
+                await DeleteTenant(confirmationTenantId.Value);
+            }
+            else if (confirmationType == "deactivate")
+            {
+                await DeactivateTenant(confirmationTenantId.Value);
+            }
+        }
+        finally
+        {
+            isSaving = false;
+            CancelConfirmation();
+        }
+    }
+
+    private async Task DeleteTenant(int tenantId)
+    {
+        try
+        {
+            var success = await TenantManagementService.DeleteTenantAsync(tenantId);
+
+            if (success)
+            {
+                successMessage = "Tenant deleted successfully!";
+                await LoadTenants();
+            }
+            else
+            {
+                errorMessage = "Failed to delete tenant.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error deleting tenant: {ex.GetBaseException().Message}";
+            Console.WriteLine($"ERROR deleting tenant: {ex}");
+        }
+    }
+
+    private async Task ActivateTenant(int tenantId)
+    {
+        isSaving = true;
+        try
+        {
+            var success = await TenantManagementService.ActivateTenantAsync(tenantId);
+
+            if (success)
+            {
+                successMessage = "Tenant activated successfully!";
+                await LoadTenants();
+            }
+            else
+            {
+                errorMessage = "Failed to activate tenant.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error activating tenant: {ex.GetBaseException().Message}";
+            Console.WriteLine($"ERROR activating tenant: {ex}");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task DeactivateTenant(int tenantId)
+    {
+        try
+        {
+            var success = await TenantManagementService.DeactivateTenantAsync(tenantId);
+
+            if (success)
+            {
+                successMessage = "Tenant deactivated successfully!";
+                await LoadTenants();
+            }
+            else
+            {
+                errorMessage = "Failed to deactivate tenant.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error deactivating tenant: {ex.GetBaseException().Message}";
+            Console.WriteLine($"ERROR deactivating tenant: {ex}");
+        }
+    }
+
+    private void ManageTenantUsers(int tenantId)
+    {
+        NavigationManager.NavigateTo($"/rbm/tenant-users/{tenantId}");
+    }
+}

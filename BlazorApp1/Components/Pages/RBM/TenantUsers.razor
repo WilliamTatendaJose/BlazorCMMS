@@ -1,0 +1,245 @@
+@page "/rbm/tenant-users/{TenantId:int}"
+@using BlazorApp1.Services
+@using BlazorApp1.Models
+@using BlazorApp1.Data
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+
+@inject ITenantManagementService TenantManagementService
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager NavigationManager
+
+@attribute [Authorize(Roles = "SuperAdmin,TenantAdmin")]
+
+<div class="container-fluid p-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <button class="btn btn-secondary" @onclick="BackToTenants">
+                <i class="bi bi-arrow-left"></i> Back to Tenants
+            </button>
+            <h2 class="mb-3 d-inline-block ms-3">Manage Users - @tenant?.Name</h2>
+            <button class="btn btn-primary float-end" @onclick="OpenAddUserModal">
+                <i class="bi bi-plus-circle"></i> Add User
+            </button>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    }
+    else if (tenantUsers != null && tenantUsers.Count > 0)
+    {
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Full Name</th>
+                        <th>Email</th>
+                        <th>Department</th>
+                        <th>Phone</th>
+                        <th>Admin</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var user in tenantUsers)
+                    {
+                        var mapping = userMappings.FirstOrDefault(m => m.UserId == user.Id);
+                        <tr>
+                            <td>@user.FullName</td>
+                            <td>@user.Email</td>
+                            <td>@user.Department</td>
+                            <td>@user.PhoneNumber</td>
+                            <td>
+                                <input type="checkbox" class="form-check-input" 
+                                       checked="@(mapping?.IsTenantAdmin ?? false)"
+                                       @onchange="@((ChangeEventArgs e) => ToggleAdminStatus(user.Id, (bool)e.Value))" />
+                            </td>
+                            <td>
+                                <span class="badge bg-@(user.IsActive ? "success" : "danger")">
+                                    @(user.IsActive ? "Active" : "Inactive")
+                                </span>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-danger" @onclick="() => RemoveUserFromTenant(user.Id)">
+                                    <i class="bi bi-trash"></i> Remove
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> No users assigned to this tenant yet.
+        </div>
+    }
+</div>
+
+<!-- Add User Modal -->
+<div class="modal @(showAddUserModal ? "show d-block" : "")" tabindex="-1" role="dialog" style="background-color: rgba(0,0,0,0.5);">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add User to Tenant</h5>
+                <button type="button" class="btn-close" @onclick="CloseAddUserModal"></button>
+            </div>
+            <div class="modal-body">
+                <form>
+                    <div class="mb-3">
+                        <label for="userSelect" class="form-label">Select User *</label>
+                        <select class="form-select" id="userSelect" @bind="selectedUserId">
+                            <option value="">-- Select User --</option>
+                            @foreach (var user in availableUsers)
+                            {
+                                <option value="@user.Id">@user.FullName (@user.Email)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="isAdmin" @bind="selectedUserIsAdmin" />
+                        <label class="form-check-label" for="isAdmin">
+                            Make Tenant Admin
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" @onclick="CloseAddUserModal">Close</button>
+                <button type="button" class="btn btn-primary" @onclick="AddUserToTenant">Add User</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int TenantId { get; set; }
+
+    private Tenant? tenant;
+    private List<ApplicationUser> tenantUsers = new();
+    private List<ApplicationUser> availableUsers = new();
+    private List<TenantUserMapping> userMappings = new();
+    private bool showAddUserModal = false;
+    private bool isLoading = true;
+    private string? selectedUserId;
+    private bool selectedUserIsAdmin = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private void BackToTenants()
+    {
+        NavigationManager.NavigateTo("/rbm/tenants");
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        try
+        {
+            tenant = await TenantManagementService.GetTenantByIdAsync(TenantId);
+            if (tenant == null)
+            {
+                NavigationManager.NavigateTo("/rbm/tenants");
+                return;
+            }
+
+            tenantUsers = await TenantManagementService.GetTenantUsersAsync(TenantId);
+            
+            // Get available users (not yet assigned to this tenant)
+            // Use AsEnumerable to properly handle the type
+            var allUsersQuery = UserManager.Users.AsEnumerable();
+            availableUsers = allUsersQuery
+                .Where(u => !tenantUsers.Any(tu => tu.Id == u.Id))
+                .OrderBy(u => u.FullName)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading tenant data: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void OpenAddUserModal()
+    {
+        showAddUserModal = true;
+        selectedUserId = null;
+        selectedUserIsAdmin = false;
+    }
+
+    private void CloseAddUserModal()
+    {
+        showAddUserModal = false;
+        selectedUserId = null;
+        selectedUserIsAdmin = false;
+    }
+
+    private async Task AddUserToTenant()
+    {
+        if (string.IsNullOrEmpty(selectedUserId))
+            return;
+
+        try
+        {
+            await TenantManagementService.AddUserToTenantAsync(
+                TenantId, 
+                selectedUserId, 
+                selectedUserIsAdmin);
+
+            CloseAddUserModal();
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error adding user: {ex.Message}");
+        }
+    }
+
+    private async Task RemoveUserFromTenant(string userId)
+    {
+        if (!await ConfirmAction("Remove this user from the tenant?"))
+            return;
+
+        try
+        {
+            await TenantManagementService.RemoveUserFromTenantAsync(TenantId, userId);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error removing user: {ex.Message}");
+        }
+    }
+
+    private async Task ToggleAdminStatus(string userId, bool isAdmin)
+    {
+        try
+        {
+            await TenantManagementService.SetUserAsAdminAsync(TenantId, userId, isAdmin);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating admin status: {ex.Message}");
+        }
+    }
+
+    private async Task<bool> ConfirmAction(string message)
+    {
+        return await Task.FromResult(true);
+    }
+}
