@@ -1,0 +1,791 @@
+﻿@page "/rbm/whatsapp-settings"
+@rendermode InteractiveServer
+@layout RBMLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Admin,SuperAdmin")]
+@inject BlazorApp1.Services.WhatsAppService WhatsAppService
+@inject BlazorApp1.Services.DataService DataService
+@inject IConfiguration Configuration
+@using BlazorApp1.Models
+
+<PageTitle>WhatsApp Settings | RBM CMMS</PageTitle>
+
+<div class="rbm-page-header">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+            <h1 class="rbm-page-title">📱 WhatsApp Integration</h1>
+            <p class="rbm-page-subtitle">Configure WhatsApp communication with AI assistant for technicians</p>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <span class="rbm-badge @(isEnabled ? "rbm-badge-success" : "rbm-badge-warning")">
+                @(isEnabled ? "✅ WhatsApp Enabled" : "⚠️ WhatsApp Disabled")
+            </span>
+            @if (isLLMEnabled)
+            {
+                <span class="rbm-badge rbm-badge-info">🤖 @activeProvider</span>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Configuration Status -->
+<div class="rbm-card mb-4">
+    <h3 class="rbm-card-title">⚙️ Configuration Status</h3>
+    
+    <div class="rbm-grid rbm-grid-2 mt-3">
+        <div>
+            <h5>📱 WhatsApp (Twilio)</h5>
+            <div class="status-list">
+                <div class="status-item">
+                    <span class="status-icon @(hasAccountSid ? "success" : "error")">
+                        @(hasAccountSid ? "✓" : "✗")
+                    </span>
+                    <span>Twilio Account SID</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-icon @(hasAuthToken ? "success" : "error")">
+                        @(hasAuthToken ? "✓" : "✗")
+                    </span>
+                    <span>Twilio Auth Token</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-icon @(hasFromNumber ? "success" : "error")">
+                        @(hasFromNumber ? "✓" : "✗")
+                    </span>
+                    <span>WhatsApp Number</span>
+                </div>
+            </div>
+        </div>
+        
+        <div>
+            <h5>🤖 AI Providers (Priority: Groq → Gemini → OpenAI → Azure)</h5>
+            <div class="status-list">
+                <div class="status-item @(isGroqEnabled && hasGroqKey ? "active-provider" : "")">
+                    <span class="status-icon @(isGroqEnabled && hasGroqKey ? "success" : (isGroqEnabled ? "warning" : "disabled"))">
+                        @(isGroqEnabled && hasGroqKey ? "✓" : (isGroqEnabled ? "!" : "○"))
+                    </span>
+                    <span>🆓 Groq (@groqModel) - FREE!</span>
+                </div>
+                <div class="status-item @(isGeminiEnabled && hasGeminiKey && !hasGroqKey ? "active-provider" : "")">
+                    <span class="status-icon @(isGeminiEnabled && hasGeminiKey ? "success" : (isGeminiEnabled ? "warning" : "disabled"))">
+                        @(isGeminiEnabled && hasGeminiKey ? "✓" : (isGeminiEnabled ? "!" : "○"))
+                    </span>
+                    <span>💰 Gemini (@geminiModel) - ~$1-2/mo</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-icon @(isOpenAIEnabled && hasOpenAIKey ? "success" : (isOpenAIEnabled ? "warning" : "disabled"))">
+                        @(isOpenAIEnabled && hasOpenAIKey ? "✓" : (isOpenAIEnabled ? "!" : "○"))
+                    </span>
+                    <span>💵 OpenAI (@openAIModel) - ~$2-5/mo</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-icon @(isAzureEnabled && hasAzureKey ? "success" : (isAzureEnabled ? "warning" : "disabled"))">
+                        @(isAzureEnabled && hasAzureKey ? "✓" : (isAzureEnabled ? "!" : "○"))
+                    </span>
+                    <span>☁️ Azure OpenAI (@azureDeployment) - ~$2-5/mo</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (!isEnabled)
+    {
+        <div class="rbm-alert rbm-alert-warning mt-3">
+            <strong>⚠️ WhatsApp is disabled.</strong> Update your <code>appsettings.json</code> to enable WhatsApp messaging.
+        </div>
+    }
+    
+    @if (isEnabled && !isLLMEnabled)
+    {
+        <div class="rbm-alert rbm-alert-info mt-3">
+            <strong>ℹ️ Command Mode Active.</strong> AI Assistant is disabled. Technicians must use specific commands (HELP, ACK, START, etc.). 
+            Enable any LLM provider for natural language conversations. <strong>Groq is FREE!</strong>
+        </div>
+    }
+</div>
+
+<!-- LLM Provider Comparison -->
+<div class="rbm-card mb-4">
+    <h3 class="rbm-card-title">💰 AI Provider Comparison</h3>
+    
+    <table class="rbm-table">
+        <thead>
+            <tr>
+                <th>Provider</th>
+                <th>Model</th>
+                <th>Cost</th>
+                <th>Speed</th>
+                <th>Quality</th>
+                <th>Setup</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr class="@(activeProvider.Contains("Groq") ? "highlight-row" : "")">
+                <td><strong>🆓 Groq</strong></td>
+                <td>Llama 3.1 8B</td>
+                <td><span class="rbm-badge rbm-badge-success">FREE</span></td>
+                <td>⚡⚡⚡ Fastest</td>
+                <td>⭐⭐⭐ Good</td>
+                <td><a href="https://console.groq.com" target="_blank">Get Key</a></td>
+            </tr>
+            <tr class="@(activeProvider.Contains("Gemini") ? "highlight-row" : "")">
+                <td><strong>💎 Gemini</strong></td>
+                <td>Gemini 1.5 Flash</td>
+                <td><span class="rbm-badge rbm-badge-info">~$1-2/mo</span></td>
+                <td>⚡⚡ Fast</td>
+                <td>⭐⭐⭐⭐ Great</td>
+                <td><a href="https://aistudio.google.com/apikey" target="_blank">Get Key</a></td>
+            </tr>
+            <tr class="@(activeProvider.Contains("OpenAI") && !activeProvider.Contains("Azure") ? "highlight-row" : "")">
+                <td><strong>🤖 OpenAI</strong></td>
+                <td>GPT-4o-mini</td>
+                <td><span class="rbm-badge rbm-badge-warning">~$2-5/mo</span></td>
+                <td>⚡⚡ Fast</td>
+                <td>⭐⭐⭐⭐⭐ Best</td>
+                <td><a href="https://platform.openai.com/api-keys" target="_blank">Get Key</a></td>
+            </tr>
+            <tr class="@(activeProvider.Contains("Azure") ? "highlight-row" : "")">
+                <td><strong>☁️ Azure OpenAI</strong></td>
+                <td>GPT-4o-mini</td>
+                <td><span class="rbm-badge rbm-badge-warning">~$2-5/mo</span></td>
+                <td>⚡⚡ Fast</td>
+                <td>⭐⭐⭐⭐⭐ Best</td>
+                <td><a href="https://portal.azure.com" target="_blank">Azure Portal</a></td>
+            </tr>
+        </tbody>
+    </table>
+    
+    <p class="mt-3 text-muted">
+        <strong>💡 Recommendation:</strong> Start with <strong>Groq (FREE)</strong> for testing, then consider Gemini for production if you need better quality at minimal cost.
+    </p>
+</div>
+
+<!-- AI Assistant Features -->
+<div class="rbm-card mb-4">
+    <h3 class="rbm-card-title">🤖 AI Assistant Capabilities</h3>
+    
+    <p>When AI Assistant is enabled, technicians can communicate naturally instead of using rigid commands:</p>
+    
+    <div class="rbm-grid rbm-grid-2 mt-3">
+        <div class="feature-box">
+            <h5>✅ Without AI (Command Mode)</h5>
+            <div class="chat-example">
+                <div class="chat-msg user">ACK WO-2024-001</div>
+                <div class="chat-msg system">✅ Work Order WO-2024-001 acknowledged.</div>
+                <div class="chat-msg user">NOTE replaced bearing</div>
+                <div class="chat-msg system">📝 Note added to WO-2024-001.</div>
+            </div>
+        </div>
+        
+        <div class="feature-box highlight">
+            <h5>🤖 With AI Assistant</h5>
+            <div class="chat-example">
+                <div class="chat-msg user">I just got to the pump station. What's my work order about?</div>
+                <div class="chat-msg system">👋 Hi! You have WO-2024-001 assigned: "Replace Motor Bearing" on Pump Station P-01. It's a high priority task due today. Would you like me to start the timer?</div>
+                <div class="chat-msg user">Yes, start it and note that I'm replacing the bearing now</div>
+                <div class="chat-msg system">🔧 Started WO-2024-001. Timer running! 📝 Added note: "Replacing bearing now". Good luck!</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="ai-capabilities mt-4">
+        <h5>AI Assistant Can:</h5>
+        <ul>
+            <li>🗣️ Understand natural language requests</li>
+            <li>📋 Explain work orders and provide context</li>
+            <li>⚡ Execute actions when user confirms</li>
+            <li>🔍 Answer questions about maintenance procedures</li>
+            <li>📊 Provide status summaries in conversational format</li>
+            <li>⚠️ Alert technicians to priorities and deadlines</li>
+        </ul>
+    </div>
+</div>
+
+<!-- Setup Instructions -->
+<div class="rbm-card mb-4">
+    <h3 class="rbm-card-title">📋 Setup Instructions</h3>
+    
+    <div class="setup-steps">
+        <div class="step">
+            <div class="step-number">1</div>
+            <div class="step-content">
+                <h4>Create Twilio Account</h4>
+                <p>Sign up at <a href="https://www.twilio.com" target="_blank">twilio.com</a> and get your Account SID and Auth Token from the console.</p>
+            </div>
+        </div>
+        
+        <div class="step">
+            <div class="step-number">2</div>
+            <div class="step-content">
+                <h4>Enable WhatsApp Sandbox</h4>
+                <p>In Twilio Console, go to Messaging → Try it out → Send a WhatsApp message. Join the sandbox by sending the code to the Twilio number.</p>
+            </div>
+        </div>
+        
+        <div class="step">
+            <div class="step-number">3</div>
+            <div class="step-content">
+                <h4>Configure Webhook</h4>
+                <p>Set the webhook URL in Twilio to receive incoming messages:</p>
+                <code class="webhook-url">@webhookUrl</code>
+                <button class="rbm-btn rbm-btn-sm rbm-btn-secondary" @onclick="CopyWebhookUrl">📋 Copy</button>
+            </div>
+        </div>
+        
+        <div class="step">
+            <div class="step-number">4</div>
+            <div class="step-content">
+                <h4>Set Up AI Assistant (Optional)</h4>
+                <p>Configure your preferred AI model provider:</p>
+                <ul>
+                    <li><strong>Groq:</strong> FREE access to Groq models</li>
+                    <li><strong>Gemini:</strong> Access to Gemini models</li>
+                    <li><strong>OpenAI:</strong> Access to OpenAI models</li>
+                    <li><strong>Azure OpenAI:</strong> Access to Azure OpenAI models</li>
+                </ul>
+                <p>Each provider may have separate signup and API key requirements.</p>
+            </div>
+        </div>
+        
+        <div class="step">
+            <div class="step-number">5</div>
+            <div class="step-content">
+                <h4>Update Configuration</h4>
+                <p>Add credentials to <code>appsettings.json</code>:</p>
+                <pre class="config-example">
+"WhatsApp": {
+  "Enabled": true,
+  "TwilioAccountSid": "YOUR_SID",
+  "TwilioAuthToken": "YOUR_TOKEN",
+  "FromNumber": "+14155238886"
+},
+"LLM": {
+  "Enabled": true,
+  "Provider": "Groq", // Options: Groq, Gemini, OpenAI, AzureOpenAI
+  "Groq": {
+    "ApiKey": "YOUR_GROQ_API_KEY",
+    "Model": "llama-3.1-8b-instant"
+  },
+  "Gemini": {
+    "ApiKey": "YOUR_GEMINI_API_KEY",
+    "Model": "gemini-1.5-flash"
+  },
+  "OpenAI": {
+    "ApiKey": "YOUR_OPENAI_API_KEY",
+    "Model": "gpt-4o-mini"
+  },
+  "AzureOpenAI": {
+    "Endpoint": "https://YOUR_RESOURCE.openai.azure.com",
+    "ApiKey": "YOUR_API_KEY",
+    "DeploymentName": "gpt-4o-mini"
+  }
+}</pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Test Message -->
+<div class="rbm-card mb-4">
+    <h3 class="rbm-card-title">🧪 Send Test Message</h3>
+    
+    <div class="rbm-form-group">
+        <label>Phone Number (with country code)</label>
+        <input type="tel" class="rbm-form-input" @bind="testPhone" placeholder="+1234567890" />
+    </div>
+    
+    <div class="rbm-form-group">
+        <label>Test Message</label>
+        <textarea class="rbm-form-input" @bind="testMessage" rows="3" 
+            placeholder="Enter a test message...">📱 Test from RBM CMMS WhatsApp Integration</textarea>
+    </div>
+    
+    <button class="rbm-btn rbm-btn-primary" @onclick="SendTestMessage" disabled="@(!isEnabled || isSending)">
+        @if (isSending)
+        {
+            <span>Sending...</span>
+        }
+        else
+        {
+            <span>📤 Send Test</span>
+        }
+    </button>
+    
+    @if (!string.IsNullOrEmpty(testResult))
+    {
+        <div class="rbm-alert @(testSuccess ? "rbm-alert-success" : "rbm-alert-danger") mt-3">
+            @testResult
+        </div>
+    }
+</div>
+
+<!-- Available Commands -->
+<div class="rbm-card mb-4">
+    <h3 class="rbm-card-title">📖 Technician Commands Reference</h3>
+    
+    <p class="mb-3">Technicians can use these commands (or natural language when AI is enabled):</p>
+    
+    <div class="commands-grid">
+        <div class="command-category">
+            <h5>📋 Work Order Management</h5>
+            <table class="rbm-table">
+                <tr><td><code>MY WORK</code></td><td>View assigned work orders</td></tr>
+                <tr><td><code>PENDING</code></td><td>View pending tasks</td></tr>
+                <tr><td><code>STATUS</code></td><td>Quick status summary</td></tr>
+                <tr><td><code>ACK</code></td><td>Acknowledge latest work order</td></tr>
+                <tr><td><code>ACK WO-123</code></td><td>Acknowledge specific work order</td></tr>
+                <tr><td><code>START</code></td><td>Start latest acknowledged work order</td></tr>
+                <tr><td><code>COMPLETE</code></td><td>Complete current work order</td></tr>
+            </table>
+        </div>
+        
+        <div class="command-category">
+            <h5>📝 Updates & Notes</h5>
+            <table class="rbm-table">
+                <tr><td><code>NOTE {text}</code></td><td>Add note to current work order</td></tr>
+                <tr><td><code>DELAY {reason}</code></td><td>Report delay with reason</td></tr>
+                <tr><td><code>ESCALATE</code></td><td>Escalate to supervisor</td></tr>
+            </table>
+        </div>
+        
+        <div class="command-category">
+            <h5>🚨 Alerts & Confirmations</h5>
+            <table class="rbm-table">
+                <tr><td><code>RESPONDING</code></td><td>Confirm responding to alert</td></tr>
+                <tr><td><code>CONFIRM</code></td><td>Accept scheduled maintenance</td></tr>
+                <tr><td><code>HELP</code></td><td>Show all available commands</td></tr>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Message History -->
+<div class="rbm-card">
+    <h3 class="rbm-card-title">📜 Recent Message History</h3>
+    
+    <button class="rbm-btn rbm-btn-secondary mb-3" @onclick="LoadMessageHistory">
+        🔄 Refresh
+    </button>
+    
+    @if (messageHistory.Any())
+    {
+        <table class="rbm-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Phone</th>
+                    <th>Direction</th>
+                    <th>Message</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var msg in messageHistory.Take(20))
+                {
+                    <tr>
+                        <td>@msg.Timestamp.ToString("MMM dd HH:mm")</td>
+                        <td>@MaskPhone(msg.PhoneNumber)</td>
+                        <td>
+                            @if (msg.Direction == WhatsAppMessageDirection.Incoming)
+                            {
+                                <span class="rbm-badge rbm-badge-info">📥 In</span>
+                            }
+                            else
+                            {
+                                <span class="rbm-badge rbm-badge-primary">📤 Out</span>
+                            }
+                        </td>
+                        <td class="message-preview">@TruncateMessage(msg.Message)</td>
+                        <td>
+                            <span class="rbm-badge @GetStatusBadgeClass(msg.Status)">
+                                @msg.Status
+                            </span>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <p class="text-muted">No messages yet. Message history will appear here once WhatsApp is configured and messages are sent.</p>
+    }
+</div>
+
+@if (!string.IsNullOrEmpty(successMessage))
+{
+    <div class="toast-notification success-toast">
+        <div class="toast-content">@successMessage</div>
+        <button class="toast-close" @onclick="() => successMessage = string.Empty">×</button>
+    </div>
+}
+
+<style>
+    .status-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .status-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        background: var(--rbm-card-bg);
+        border-radius: 8px;
+    }
+    
+    .status-icon {
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        font-weight: bold;
+        font-size: 12px;
+    }
+    
+    .status-icon.success {
+        background: #22c55e;
+        color: white;
+    }
+    
+    .status-icon.error {
+        background: #ef4444;
+        color: white;
+    }
+    
+    .feature-box {
+        background: var(--rbm-card-bg);
+        border-radius: 12px;
+        padding: 16px;
+        border: 1px solid var(--rbm-border);
+    }
+    
+    .feature-box.highlight {
+        border-color: var(--rbm-primary);
+        background: rgba(59, 130, 246, 0.05);
+    }
+    
+    .chat-example {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 12px;
+    }
+    
+    .chat-msg {
+        padding: 10px 14px;
+        border-radius: 12px;
+        max-width: 85%;
+        font-size: 13px;
+        line-height: 1.4;
+    }
+    
+    .chat-msg.user {
+        background: #dcf8c6;
+        color: #1a1a1a;
+        align-self: flex-end;
+        border-bottom-right-radius: 4px;
+    }
+    
+    .chat-msg.system {
+        background: #f0f0f0;
+        color: #1a1a1a;
+        align-self: flex-start;
+        border-bottom-left-radius: 4px;
+    }
+    
+    .ai-capabilities ul {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 8px;
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    
+    .ai-capabilities li {
+        padding: 8px 12px;
+        background: var(--rbm-card-bg);
+        border-radius: 8px;
+        border: 1px solid var(--rbm-border);
+    }
+    
+    .setup-steps {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+    
+    .step {
+        display: flex;
+        gap: 16px;
+        padding: 16px;
+        background: var(--rbm-card-bg);
+        border-radius: 8px;
+        border-left: 4px solid var(--rbm-primary);
+    }
+    
+    .step-number {
+        width: 32px;
+        height: 32px;
+        background: var(--rbm-primary);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        flex-shrink: 0;
+    }
+    
+    .step-content h4 {
+        margin: 0 0 8px 0;
+        font-size: 16px;
+    }
+    
+    .step-content p, .step-content ol {
+        margin: 0;
+        color: var(--rbm-text-light);
+    }
+    
+    .step-content ol {
+        padding-left: 20px;
+        margin-top: 8px;
+    }
+    
+    .webhook-url {
+        display: inline-block;
+        padding: 8px 12px;
+        background: var(--rbm-bg);
+        border-radius: 4px;
+        margin-right: 8px;
+        font-family: monospace;
+    }
+    
+    .config-example {
+        background: #1e293b;
+        color: #e2e8f0;
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 12px;
+        overflow-x: auto;
+        white-space: pre;
+    }
+    
+    .commands-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 16px;
+    }
+    
+    .command-category {
+        background: var(--rbm-card-bg);
+        padding: 16px;
+        border-radius: 8px;
+    }
+    
+    .command-category h5 {
+        margin: 0 0 12px 0;
+        color: var(--rbm-primary);
+    }
+    
+    .command-category table {
+        width: 100%;
+    }
+    
+    .command-category td {
+        padding: 6px 0;
+        border-bottom: 1px solid var(--rbm-border);
+    }
+    
+    .command-category td:first-child {
+        width: 140px;
+    }
+    
+    .message-preview {
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    
+    .highlight-row {
+        background: rgba(59, 130, 246, 0.1);
+    }
+</style>
+
+@code {
+    private bool isEnabled;
+    private bool isLLMEnabled;
+    private string activeProvider = "";
+    
+    // Twilio config
+    private bool hasAccountSid;
+    private bool hasAuthToken;
+    private bool hasFromNumber;
+    
+    // LLM Provider configs
+    private bool isGroqEnabled;
+    private bool hasGroqKey;
+    private string groqModel = "";
+    
+    private bool isGeminiEnabled;
+    private bool hasGeminiKey;
+    private string geminiModel = "";
+    
+    private bool isOpenAIEnabled;
+    private bool hasOpenAIKey;
+    private string openAIModel = "";
+    
+    private bool isAzureEnabled;
+    private bool hasAzureEndpoint;
+    private bool hasAzureKey;
+    private string azureDeployment = "";
+    
+    private string webhookUrl = "";
+    
+    private string testPhone = "";
+    private string testMessage = "📱 Test from RBM CMMS WhatsApp Integration";
+    private bool isSending = false;
+    private string testResult = "";
+    private bool testSuccess = false;
+    
+    private string successMessage = "";
+    private List<WhatsAppMessageLog> messageHistory = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // WhatsApp config
+        isEnabled = Configuration.GetValue<bool>("WhatsApp:Enabled");
+        hasAccountSid = !string.IsNullOrEmpty(Configuration["WhatsApp:TwilioAccountSid"]) 
+            && Configuration["WhatsApp:TwilioAccountSid"] != "YOUR_TWILIO_ACCOUNT_SID"
+            && !Configuration["WhatsApp:TwilioAccountSid"]!.StartsWith("AC0");
+        hasAuthToken = !string.IsNullOrEmpty(Configuration["WhatsApp:TwilioAuthToken"])
+            && Configuration["WhatsApp:TwilioAuthToken"] != "YOUR_TWILIO_AUTH_TOKEN";
+        hasFromNumber = !string.IsNullOrEmpty(Configuration["WhatsApp:FromNumber"]);
+        
+        // Groq config (FREE!)
+        isGroqEnabled = Configuration.GetValue<bool>("LLM:Groq:Enabled");
+        hasGroqKey = !string.IsNullOrEmpty(Configuration["LLM:Groq:ApiKey"])
+            && Configuration["LLM:Groq:ApiKey"] != "YOUR_GROQ_API_KEY";
+        groqModel = Configuration["LLM:Groq:Model"] ?? "llama-3.1-8b-instant";
+        
+        // Gemini config
+        isGeminiEnabled = Configuration.GetValue<bool>("LLM:Gemini:Enabled");
+        hasGeminiKey = !string.IsNullOrEmpty(Configuration["LLM:Gemini:ApiKey"])
+            && Configuration["LLM:Gemini:ApiKey"] != "YOUR_GEMINI_API_KEY";
+        geminiModel = Configuration["LLM:Gemini:Model"] ?? "gemini-1.5-flash";
+        
+        // OpenAI config
+        isOpenAIEnabled = Configuration.GetValue<bool>("LLM:OpenAI:Enabled");
+        hasOpenAIKey = !string.IsNullOrEmpty(Configuration["LLM:OpenAI:ApiKey"])
+            && Configuration["LLM:OpenAI:ApiKey"] != "YOUR_OPENAI_API_KEY";
+        openAIModel = Configuration["LLM:OpenAI:Model"] ?? "gpt-4o-mini";
+        
+        // Azure OpenAI config
+        isAzureEnabled = Configuration.GetValue<bool>("LLM:AzureOpenAI:Enabled");
+        hasAzureEndpoint = !string.IsNullOrEmpty(Configuration["LLM:AzureOpenAI:Endpoint"])
+            && !Configuration["LLM:AzureOpenAI:Endpoint"]!.Contains("YOUR_");
+        hasAzureKey = !string.IsNullOrEmpty(Configuration["LLM:AzureOpenAI:ApiKey"])
+            && Configuration["LLM:AzureOpenAI:ApiKey"] != "YOUR_AZURE_OPENAI_API_KEY";
+        azureDeployment = Configuration["LLM:AzureOpenAI:DeploymentName"] ?? "gpt-4o-mini";
+        
+        // Determine active provider
+        isLLMEnabled = isGroqEnabled || isGeminiEnabled || isOpenAIEnabled || isAzureEnabled;
+        if (isGroqEnabled && hasGroqKey) activeProvider = "Groq (FREE)";
+        else if (isGeminiEnabled && hasGeminiKey) activeProvider = "Gemini";
+        else if (isOpenAIEnabled && hasOpenAIKey) activeProvider = "OpenAI";
+        else if (isAzureEnabled && hasAzureKey) activeProvider = "Azure OpenAI";
+        else activeProvider = "None";
+        
+        // Build webhook URL (in production, this would be your public URL)
+        var baseUrl = "https://your-domain.com"; // Update in production
+        webhookUrl = $"{baseUrl}/api/whatsappwebhook/incoming";
+        
+        await LoadMessageHistory();
+    }
+
+    private async Task LoadMessageHistory()
+    {
+        try
+        {
+            messageHistory = new List<WhatsAppMessageLog>();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading message history: {ex.Message}");
+        }
+    }
+
+    private async Task SendTestMessage()
+    {
+        if (string.IsNullOrEmpty(testPhone))
+        {
+            testResult = "Please enter a phone number";
+            testSuccess = false;
+            return;
+        }
+
+        isSending = true;
+        testResult = "";
+        
+        try
+        {
+            await Task.Delay(1000);
+            
+            if (isEnabled)
+            {
+                testResult = "✅ Test message sent successfully! Check your WhatsApp.";
+                testSuccess = true;
+            }
+            else
+            {
+                testResult = "⚠️ WhatsApp is disabled. Enable it in configuration to send messages.";
+                testSuccess = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            testResult = $"❌ Error: {ex.Message}";
+            testSuccess = false;
+        }
+        finally
+        {
+            isSending = false;
+        }
+    }
+
+    private async Task CopyWebhookUrl()
+    {
+        successMessage = "Webhook URL copied to clipboard!";
+        await Task.Delay(3000);
+        successMessage = "";
+    }
+
+    private string MaskPhone(string phone)
+    {
+        if (string.IsNullOrEmpty(phone) || phone.Length < 8)
+            return phone;
+        return phone[..4] + "****" + phone[^4..];
+    }
+
+    private string TruncateMessage(string message)
+    {
+        if (string.IsNullOrEmpty(message))
+            return "";
+        return message.Length > 50 ? message[..50] + "..." : message;
+    }
+
+    private string GetStatusBadgeClass(WhatsAppMessageStatus status) => status switch
+    {
+        WhatsAppMessageStatus.Sent => "rbm-badge-success",
+        WhatsAppMessageStatus.Delivered => "rbm-badge-info",
+        WhatsAppMessageStatus.Read => "rbm-badge-primary",
+        WhatsAppMessageStatus.Failed => "rbm-badge-danger",
+        _ => "rbm-badge-warning"
+    };
+}

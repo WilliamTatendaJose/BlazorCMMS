@@ -29,6 +29,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<UserSettings> UserSettings { get; set; }
     public DbSet<NotificationSettings> NotificationSettings { get; set; }
     public DbSet<NotificationLog> NotificationLogs { get; set; }
+    public DbSet<WhatsAppMessageLog> WhatsAppMessageLogs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

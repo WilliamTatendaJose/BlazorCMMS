@@ -34,6 +34,15 @@ builder.Services.AddScoped<DataExportService>();
 builder.Services.AddScoped<MaintenanceScheduleExportService>();
 builder.Services.AddScoped<RecurringMaintenanceScheduler>();
 
+// Register WhatsApp Service
+builder.Services.AddHttpClient("TwilioWhatsApp");
+builder.Services.AddHttpClient("LLMClient"); // For Groq, OpenAI, Gemini, Azure OpenAI
+builder.Services.AddScoped<WhatsAppLLMService>();
+builder.Services.AddScoped<WhatsAppService>();
+
+// Add API Controllers for webhooks
+builder.Services.AddControllers();
+
 // Register Multi-tenancy Services
 builder.Services.AddScoped<ITenantService, TenantService>();
 builder.Services.AddScoped<ITenantManagementService, TenantManagementService>();
@@ -157,6 +166,9 @@ app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages:
 app.UseHttpsRedirection();
 
 app.UseAntiforgery();
+
+// Map API Controllers (for WhatsApp webhooks)
+app.MapControllers();
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
