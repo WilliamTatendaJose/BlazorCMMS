@@ -36,6 +36,9 @@ public class AssetAttachment
     [MaxLength(200)]
     public string UploadedBy { get; set; } = string.Empty;
     
+    // Multi-tenancy support
+    public int? TenantId { get; set; }
+    
     // Navigation property
     [ForeignKey("AssetId")]
     public virtual Asset? Asset { get; set; }

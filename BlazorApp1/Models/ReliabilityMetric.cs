@@ -58,6 +58,9 @@ public class ReliabilityMetric
     
     public DateTime CalculatedDate { get; set; } = DateTime.Now;
     
+    // Multi-tenancy support
+    public int? TenantId { get; set; }
+    
     // Navigation property
     [ForeignKey("AssetId")]
     public virtual Asset? Asset { get; set; }

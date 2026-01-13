@@ -56,9 +56,19 @@ builder.Services.AddAuthentication(options =>
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
-// Add DbContextFactory for DataService - use AddPooledDbContextFactory
+// Add DbContextFactory for DataService - use AddPooledDbContextFactory with retry logic
 builder.Services.AddPooledDbContextFactory<ApplicationDbContext>(options =>
-    options.UseSqlServer(connectionString));
+    options.UseSqlServer(connectionString, sqlOptions =>
+    {
+        // Enable retry on failure for transient errors (Azure SQL)
+        sqlOptions.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(30),
+            errorNumbersToAdd: null);
+        
+        // Command timeout for long-running migrations
+        sqlOptions.CommandTimeout(120);
+    }));
 
 // Add scoped DbContext for Identity (uses the factory)
 builder.Services.AddScoped(sp =>
@@ -119,28 +129,13 @@ using (var scope = app.Services.CreateScope())
         var context = services.GetRequiredService<ApplicationDbContext>();
         await DbInitializer.SeedAsync(context);
         
-        // Seed Identity roles and users
+        // Seed Identity roles and users (also syncs to legacy Users table)
         var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
         var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
-        await IdentityDataSeeder.SeedRolesAndUsersAsync(userManager, roleManager);
+        await IdentityDataSeeder.SeedRolesAndUsersAsync(userManager, roleManager, context);
         
-        // Seed SuperAdmin role if not exists
-        if (!await roleManager.RoleExistsAsync("SuperAdmin"))
-        {
-            await roleManager.CreateAsync(new IdentityRole("SuperAdmin"));
-        }
-        
-        // Seed TenantAdmin role if not exists
-        if (!await roleManager.RoleExistsAsync("TenantAdmin"))
-        {
-            await roleManager.CreateAsync(new IdentityRole("TenantAdmin"));
-        }
-        
-        // Seed Viewer role if not exists
-        if (!await roleManager.RoleExistsAsync("Viewer"))
-        {
-            await roleManager.CreateAsync(new IdentityRole("Viewer"));
-        }
+        // Sync any existing Identity users to legacy Users table
+        await IdentityDataSeeder.SyncAllUsersToLegacyTableAsync(userManager, context);
     }
     catch (Exception ex)
     {

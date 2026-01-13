@@ -130,18 +130,9 @@ public static class DbInitializer
         await context.MaintenanceSchedules.AddRangeAsync(schedules);
         await context.SaveChangesAsync();
 
-        // Seed Users
-        var users = new List<User>
-        {
-            new() { Name = "Admin User", Email = "admin@company.com", Role = "Admin", Department = "Management", Phone = "555-0001", IsActive = true },
-            new() { Name = "Sarah Johnson", Email = "sarah.johnson@company.com", Role = "Reliability Engineer", Department = "Engineering", Phone = "555-0002", IsActive = true },
-            new() { Name = "Emily Brown", Email = "emily.brown@company.com", Role = "Planner", Department = "Planning", Phone = "555-0003", IsActive = true },
-            new() { Name = "John Smith", Email = "john.smith@company.com", Role = "Technician", Department = "Maintenance", Phone = "555-0004", IsActive = true },
-            new() { Name = "Mike Davis", Email = "mike.davis@company.com", Role = "Technician", Department = "Maintenance", Phone = "555-0005", IsActive = true }
-        };
-
-        await context.Users.AddRangeAsync(users);
-        await context.SaveChangesAsync();
+        // NOTE: Users are now seeded via IdentityDataSeeder which syncs both
+        // AspNetUsers (Identity) and the legacy Users table together.
+        // See IdentityDataSeeder.SeedRolesAndUsersAsync()
 
         // Seed Spare Parts
         var spareParts = new List<SparePart>

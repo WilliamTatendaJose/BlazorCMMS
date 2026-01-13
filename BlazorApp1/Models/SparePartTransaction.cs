@@ -49,6 +49,9 @@ public class SparePartTransaction
     [MaxLength(100)]
     public string ReferenceNumber { get; set; } = string.Empty; // PO number, invoice number, etc.
     
+    // Multi-tenancy support
+    public int? TenantId { get; set; }
+    
     // Navigation properties
     [ForeignKey("SparePartId")]
     public virtual SparePart? SparePart { get; set; }

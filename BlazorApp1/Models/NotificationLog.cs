@@ -45,4 +45,7 @@ public class NotificationLog
     public DateTime? SentDate { get; set; }
     public int? RelatedAssetId { get; set; }
     public int? RelatedWorkOrderId { get; set; }
+    
+    // Multi-tenancy support
+    public int? TenantId { get; set; }
 }

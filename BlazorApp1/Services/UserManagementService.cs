@@ -1,27 +1,32 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using BlazorApp1.Data;
+using BlazorApp1.Models;
 
 namespace BlazorApp1.Services;
 
 /// <summary>
-/// Production-ready user management service using ASP.NET Core Identity
+/// Production-ready user management service using ASP.NET Core Identity.
+/// Automatically syncs changes to the legacy Users table for backward compatibility.
 /// </summary>
 public class UserManagementService
 {
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly RoleManager<IdentityRole> _roleManager;
+    private readonly IDbContextFactory<ApplicationDbContext> _contextFactory;
     private readonly IEmailSender<ApplicationUser> _emailSender;
     private readonly ILogger<UserManagementService> _logger;
 
     public UserManagementService(
         UserManager<ApplicationUser> userManager,
         RoleManager<IdentityRole> roleManager,
+        IDbContextFactory<ApplicationDbContext> contextFactory,
         IEmailSender<ApplicationUser> emailSender,
         ILogger<UserManagementService> logger)
     {
         _userManager = userManager;
         _roleManager = roleManager;
+        _contextFactory = contextFactory;
         _emailSender = emailSender;
         _logger = logger;
     }
@@ -113,7 +118,8 @@ public class UserManagementService
             PhoneNumber = model.PhoneNumber,
             IsActive = true,
             CreatedDate = DateTime.Now,
-            EmailConfirmed = model.EmailConfirmed
+            EmailConfirmed = model.EmailConfirmed,
+            PrimaryTenantId = model.TenantId
         };
 
         var result = await _userManager.CreateAsync(user, model.Password);
@@ -132,6 +138,9 @@ public class UserManagementService
                 _logger.LogWarning("Failed to add user {Email} to role {Role}", user.Email, model.Role);
             }
         }
+
+        // Sync to legacy Users table
+        await SyncToLegacyUsersTableAsync(user, model.Role ?? "Technician");
 
         _logger.LogInformation("User {Email} created successfully", user.Email);
 
@@ -159,6 +168,7 @@ public class UserManagementService
         user.Department = model.Department;
         user.PhoneNumber = model.PhoneNumber;
         user.IsActive = model.IsActive;
+        user.PrimaryTenantId = model.TenantId;
 
         var result = await _userManager.UpdateAsync(user);
 
@@ -167,6 +177,8 @@ public class UserManagementService
             return (false, result.Errors.Select(e => e.Description).ToArray());
         }
 
+        string currentRole = model.Role ?? "Technician";
+        
         // Update role if changed
         if (!string.IsNullOrEmpty(model.Role))
         {
@@ -180,7 +192,11 @@ public class UserManagementService
             
             // Add to new role
             await _userManager.AddToRoleAsync(user, model.Role);
+            currentRole = model.Role;
         }
+
+        // Sync to legacy Users table
+        await SyncToLegacyUsersTableAsync(user, currentRole);
 
         _logger.LogInformation("User {Email} updated successfully", user.Email);
         return (true, []);
@@ -197,6 +213,9 @@ public class UserManagementService
             return (false, ["User not found"]);
         }
 
+        // Delete from legacy Users table first
+        await DeleteFromLegacyUsersTableAsync(userId, user.Email);
+
         var result = await _userManager.DeleteAsync(user);
 
         if (!result.Succeeded)
@@ -206,6 +225,82 @@ public class UserManagementService
 
         _logger.LogInformation("User {Email} deleted", user.Email);
         return (true, []);
+    }
+
+    #endregion
+
+    #region Legacy Users Table Sync
+
+    /// <summary>
+    /// Syncs an Identity user to the legacy Users table
+    /// </summary>
+    private async Task SyncToLegacyUsersTableAsync(ApplicationUser identityUser, string role)
+    {
+        try
+        {
+            using var context = _contextFactory.CreateDbContext();
+            
+            var legacyUser = await context.Users
+                .FirstOrDefaultAsync(u => u.AspNetUserId == identityUser.Id || u.Email == identityUser.Email);
+
+            if (legacyUser == null)
+            {
+                legacyUser = new User
+                {
+                    Name = identityUser.FullName ?? identityUser.Email ?? "Unknown",
+                    Email = identityUser.Email ?? "",
+                    Role = role,
+                    Department = identityUser.Department ?? "",
+                    Phone = identityUser.PhoneNumber ?? "",
+                    IsActive = identityUser.IsActive,
+                    CreatedDate = identityUser.CreatedDate,
+                    AspNetUserId = identityUser.Id,
+                    TenantId = identityUser.PrimaryTenantId
+                };
+                context.Users.Add(legacyUser);
+            }
+            else
+            {
+                legacyUser.Name = identityUser.FullName ?? identityUser.Email ?? "Unknown";
+                legacyUser.Email = identityUser.Email ?? "";
+                legacyUser.Role = role;
+                legacyUser.Department = identityUser.Department ?? "";
+                legacyUser.Phone = identityUser.PhoneNumber ?? "";
+                legacyUser.IsActive = identityUser.IsActive;
+                legacyUser.AspNetUserId = identityUser.Id;
+                legacyUser.TenantId = identityUser.PrimaryTenantId;
+            }
+
+            await context.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to sync user {Email} to legacy Users table", identityUser.Email);
+        }
+    }
+
+    /// <summary>
+    /// Deletes a user from the legacy Users table
+    /// </summary>
+    private async Task DeleteFromLegacyUsersTableAsync(string aspNetUserId, string? email)
+    {
+        try
+        {
+            using var context = _contextFactory.CreateDbContext();
+            
+            var legacyUser = await context.Users
+                .FirstOrDefaultAsync(u => u.AspNetUserId == aspNetUserId || u.Email == email);
+
+            if (legacyUser != null)
+            {
+                context.Users.Remove(legacyUser);
+                await context.SaveChangesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to delete user from legacy Users table");
+        }
     }
 
     #endregion
@@ -551,6 +646,7 @@ public class CreateUserModel
     public string PhoneNumber { get; set; } = "";
     public string Role { get; set; } = "Technician";
     public bool EmailConfirmed { get; set; } = true;
+    public int? TenantId { get; set; }
 }
 
 public class UpdateUserModel
@@ -561,6 +657,7 @@ public class UpdateUserModel
     public string PhoneNumber { get; set; } = "";
     public string Role { get; set; } = "";
     public bool IsActive { get; set; }
+    public int? TenantId { get; set; }
 }
 
 public class UserStatistics

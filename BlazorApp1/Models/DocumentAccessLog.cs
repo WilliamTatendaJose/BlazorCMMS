@@ -33,6 +33,9 @@ public class DocumentAccessLog
     [MaxLength(1000)]
     public string Notes { get; set; } = string.Empty;
     
+    // Multi-tenancy support
+    public int? TenantId { get; set; }
+    
     // Navigation property
     [ForeignKey("DocumentId")]
     public virtual Document? Document { get; set; }

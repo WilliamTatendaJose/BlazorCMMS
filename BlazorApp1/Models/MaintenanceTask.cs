@@ -56,6 +56,9 @@ public class MaintenanceTask
     [MaxLength(200)]
     public string CompletedBy { get; set; } = string.Empty;
     
+    // Multi-tenancy support
+    public int? TenantId { get; set; }
+    
     // Navigation properties
     [ForeignKey("WorkOrderId")]
     public virtual WorkOrder? WorkOrder { get; set; }

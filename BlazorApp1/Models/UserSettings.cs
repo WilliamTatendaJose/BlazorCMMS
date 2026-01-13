@@ -86,4 +86,7 @@ public class UserSettings
     /// Last modified timestamp
     /// </summary>
     public DateTime? ModifiedDate { get; set; }
+    
+    // Multi-tenancy support
+    public int? TenantId { get; set; }
 }

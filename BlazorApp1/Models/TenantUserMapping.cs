@@ -16,6 +16,8 @@ public class TenantUserMapping
     
     public bool IsTenantAdmin { get; set; } = false;
     
+    public bool IsActive { get; set; } = true;
+    
     public DateTime AssignedDate { get; set; } = DateTime.Now;
     
     public DateTime? RemovedDate { get; set; }

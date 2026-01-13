@@ -5,8 +5,9 @@
 @using Microsoft.AspNetCore.Identity
 @using BlazorApp1.Data
 @using BlazorApp1.Services
-@attribute [Authorize(Roles = "Admin")]
+@attribute [Authorize(Roles = "SuperAdmin,TenantAdmin,Admin")]
 @inject UserManagementService UserService
+@inject RolePermissionService PermissionService
 @inject NavigationManager Navigation
 
 <PageTitle>User Management | RBM CMMS</PageTitle>
@@ -16,6 +17,10 @@
         <div>
             <h1 class="rbm-page-title">👥 User Management</h1>
             <p class="rbm-page-subtitle">Manage users, roles, and access permissions</p>
+            @if (!string.IsNullOrEmpty(currentUserRole))
+            {
+                <span class="rbm-badge" style="margin-top: 8px;">Your Role: @currentUserRole</span>
+            }
         </div>
     </div>
 </div>
@@ -25,6 +30,14 @@
     <div style="text-align: center; padding: 60px;">
         <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
         <div style="color: var(--rbm-text-light);">Loading users...</div>
+    </div>
+}
+else if (!canManageUsers)
+{
+    <div class="rbm-card" style="text-align: center; padding: 60px;">
+        <div style="font-size: 48px; margin-bottom: 16px;">🚫</div>
+        <div style="font-weight: 600; margin-bottom: 8px;">Access Denied</div>
+        <div style="color: var(--rbm-text-light);">You don't have permission to manage users.</div>
     </div>
 }
 else
@@ -473,7 +486,14 @@ else
     private bool isInitialized = false;
     private List<UserViewModel> users = [];
     private List<string> roles = [];
+    private List<string> assignableRoles = [];
     private UserStatistics statistics = new();
+    
+    // Permission state
+    private bool canManageUsers = false;
+    private bool canDeleteUsers = false;
+    private bool isSuperAdmin = false;
+    private string currentUserRole = "";
     
     private string searchTerm = "";
     private string filterRole = "";
@@ -497,7 +517,18 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadData();
+        // Load permissions first
+        canManageUsers = await PermissionService.CanManageUsersAsync();
+        canDeleteUsers = await PermissionService.CanDeleteUsersAsync();
+        isSuperAdmin = await PermissionService.IsSuperAdminAsync();
+        currentUserRole = await PermissionService.GetCurrentUserRoleAsync();
+        assignableRoles = await PermissionService.GetAssignableRolesAsync();
+        
+        if (canManageUsers)
+        {
+            await LoadData();
+        }
+        
         isInitialized = true;
     }
 
@@ -508,9 +539,26 @@ else
         statistics = await UserService.GetUserStatisticsAsync();
     }
 
+    /// <summary>
+    /// Check if current user can manage a specific user based on role hierarchy
+    /// </summary>
+    private bool CanManageUser(UserViewModel user)
+    {
+        // SuperAdmin can manage anyone
+        if (isSuperAdmin)
+            return true;
+
+        // Can't manage users with higher or equal role
+        var userPrimaryRole = user.PrimaryRole;
+        return RolePermissionService.GetRoleLevel(currentUserRole) < RolePermissionService.GetRoleLevel(userPrimaryRole);
+    }
+
     private List<UserViewModel> GetFilteredUsers()
     {
         var filtered = users.AsEnumerable();
+
+        // Filter to only show users the current user can manage
+        filtered = filtered.Where(u => CanManageUser(u) || u.Email == userForm.Email);
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {

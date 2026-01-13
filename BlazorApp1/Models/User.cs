@@ -3,6 +3,13 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace BlazorApp1.Models;
 
+/// <summary>
+/// Legacy Users table - DEPRECATED
+/// This table is kept for backward compatibility with work order assignments.
+/// New functionality should use ApplicationUser (AspNetUsers) via UserManagementService.
+/// 
+/// This table is synchronized with AspNetUsers during seeding.
+/// </summary>
 [Table("Users")]
 public class User
 {
@@ -37,4 +44,13 @@ public class User
     
     [MaxLength(500)]
     public string Notes { get; set; } = string.Empty;
+    
+    // Multi-tenancy support
+    public int? TenantId { get; set; }
+    
+    /// <summary>
+    /// Links to the corresponding ApplicationUser (AspNetUsers) record
+    /// </summary>
+    [MaxLength(450)]
+    public string? AspNetUserId { get; set; }
 }
