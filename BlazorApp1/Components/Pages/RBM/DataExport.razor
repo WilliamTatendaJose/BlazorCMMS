@@ -12,6 +12,15 @@
 
 <PageTitle>Data Export - RBM CMMS</PageTitle>
 
+@if (isLoading)
+{
+    <div style="text-align: center; padding: 60px;">
+        <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
+        <div style="color: var(--rbm-text-light);">Loading export data...</div>
+    </div>
+}
+else
+{
 <div class="rbm-page-header">
     <h1 class="rbm-page-title">🔄 Data Exchange</h1>
     <p class="rbm-page-subtitle">Export system data and import bulk data in multiple formats</p>
@@ -434,6 +443,7 @@
         <button class="message-close" @onclick="() => importMessage = string.Empty">✕</button>
     </div>
 }
+} @* End of else block for isLoading *@
 
 <style>
     .export-summary {
@@ -736,10 +746,23 @@
     private byte[]? assetsFileData;
     private byte[]? workOrdersFileData;
     private byte[]? sparePartsFileData;
+    
+    private bool isLoading = true;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        summary = ExportService.GetExportSummary();
+        try
+        {
+            summary = await ExportService.GetExportSummaryAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading export summary");
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
 
     private async Task HandleFileClick(ElementReference fileInput)

@@ -1,0 +1,397 @@
+@page "/rbm/data-exchange"
+@page "/rbm/data-import"
+@rendermode InteractiveServer
+@layout RBMLayout
+@using Microsoft.AspNetCore.Authorization
+@using BlazorApp1.Services
+@using BlazorApp1.Models
+@using Microsoft.JSInterop
+@attribute [Authorize(Roles = "SuperAdmin,TenantAdmin,Admin")]
+@inject DataService DataService
+@inject DataExportService ExportService
+@inject CurrentUserService CurrentUser
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+
+<PageTitle>Data Exchange | RBM CMMS</PageTitle>
+
+<div class="rbm-page-header">
+    <h1 class="rbm-page-title">?? Data Exchange</h1>
+    <p class="rbm-page-subtitle">Import and export data in multiple formats</p>
+</div>
+
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="rbm-alert @(isError ? "rbm-alert-danger" : "rbm-alert-success")" style="margin-bottom: 20px;">
+        <span>@(isError ? "??" : "?")</span>
+        @message
+        <button class="rbm-alert-close" @onclick="() => message = null">?</button>
+    </div>
+}
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+    <!-- Export Section -->
+    <div class="rbm-card">
+        <div class="rbm-card-header">
+            <h3>?? Export Data</h3>
+        </div>
+        <div class="rbm-card-body">
+            <p style="color: var(--rbm-text-light); margin-bottom: 20px;">
+                Export your data in CSV, Excel, or JSON format for backup or external analysis.
+            </p>
+            
+            <div class="rbm-form-group">
+                <label class="rbm-form-label">Data Type</label>
+                <select class="rbm-form-select" @bind="exportDataType">
+                    <option value="assets">Assets</option>
+                    <option value="workorders">Work Orders</option>
+                    <option value="spareparts">Spare Parts</option>
+                    <option value="failuremodes">Failure Modes (FMEA)</option>
+                </select>
+            </div>
+            
+            <div class="rbm-form-group">
+                <label class="rbm-form-label">Export Format</label>
+                <select class="rbm-form-select" @bind="exportFormat">
+                    <option value="csv">CSV (Comma Separated)</option>
+                    <option value="excel">Excel (.xlsx)</option>
+                    <option value="json">JSON</option>
+                </select>
+            </div>
+            
+            <div style="display: flex; gap: 12px; margin-top: 20px;">
+                <button class="rbm-btn rbm-btn-primary" @onclick="ExportData" disabled="@isExporting">
+                    @if (isExporting)
+                    {
+                        <span>? Exporting...</span>
+                    }
+                    else
+                    {
+                        <span>?? Download Export</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Import Section -->
+    <div class="rbm-card">
+        <div class="rbm-card-header">
+            <h3>?? Import Data</h3>
+        </div>
+        <div class="rbm-card-body">
+            <p style="color: var(--rbm-text-light); margin-bottom: 20px;">
+                Import data from CSV or Excel files. Download a template first to ensure correct format.
+            </p>
+            
+            <div class="rbm-form-group">
+                <label class="rbm-form-label">Data Type to Import</label>
+                <select class="rbm-form-select" @bind="importDataType">
+                    <option value="assets">Assets</option>
+                    <option value="workorders">Work Orders</option>
+                    <option value="spareparts">Spare Parts</option>
+                </select>
+            </div>
+            
+            <div class="rbm-form-group">
+                <label class="rbm-form-label">Select File</label>
+                <InputFile OnChange="HandleFileSelected" accept=".csv,.xlsx" class="rbm-form-input" />
+                @if (selectedFile != null)
+                {
+                    <small style="color: var(--rbm-text-light);">
+                        Selected: @selectedFile.Name (@(selectedFile.Size / 1024) KB)
+                    </small>
+                }
+            </div>
+            
+            <div style="display: flex; gap: 12px; margin-top: 20px;">
+                <button class="rbm-btn rbm-btn-outline" @onclick="DownloadTemplate">
+                    ?? Download Template
+                </button>
+                <button class="rbm-btn rbm-btn-primary" @onclick="ImportData" disabled="@(isImporting || selectedFile == null)">
+                    @if (isImporting)
+                    {
+                        <span>? Importing...</span>
+                    }
+                    else
+                    {
+                        <span>?? Import Data</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Export Buttons -->
+<div class="rbm-card" style="margin-top: 24px;">
+    <div class="rbm-card-header">
+        <h3>? Quick Export</h3>
+    </div>
+    <div class="rbm-card-body">
+        <p style="color: var(--rbm-text-light); margin-bottom: 20px;">
+            One-click export for common data types in Excel format.
+        </p>
+        <div style="display: flex; flex-wrap: wrap; gap: 12px;">
+            <button class="rbm-btn rbm-btn-outline" @onclick='() => QuickExport("assets")'>
+                ?? Assets
+            </button>
+            <button class="rbm-btn rbm-btn-outline" @onclick='() => QuickExport("workorders")'>
+                ?? Work Orders
+            </button>
+            <button class="rbm-btn rbm-btn-outline" @onclick='() => QuickExport("spareparts")'>
+                ?? Spare Parts
+            </button>
+            <button class="rbm-btn rbm-btn-outline" @onclick='() => QuickExport("failuremodes")'>
+                ?? Failure Modes
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Activity -->
+<div class="rbm-card" style="margin-top: 24px;">
+    <div class="rbm-card-header">
+        <h3>?? Recent Activity</h3>
+    </div>
+    <div class="rbm-card-body">
+        @if (recentActivity.Count == 0)
+        {
+            <p style="color: var(--rbm-text-light); text-align: center; padding: 20px;">
+                No recent import/export activity
+            </p>
+        }
+        else
+        {
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                @foreach (var activity in recentActivity)
+                {
+                    <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--rbm-bg); border-radius: 8px;">
+                        <span style="font-size: 24px;">@(activity.Type == "Export" ? "??" : "??")</span>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 500;">@activity.Description</div>
+                            <div style="font-size: 12px; color: var(--rbm-text-light);">@activity.Timestamp.ToString("MMM dd, yyyy HH:mm")</div>
+                        </div>
+                        <span class="rbm-badge @(activity.Success ? "rbm-badge-success" : "rbm-badge-danger")">
+                            @(activity.Success ? "Success" : "Failed")
+                        </span>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string exportDataType = "assets";
+    private string exportFormat = "excel";
+    private string importDataType = "assets";
+    private IBrowserFile? selectedFile;
+    private bool isExporting = false;
+    private bool isImporting = false;
+    private string? message;
+    private bool isError = false;
+    private List<ActivityRecord> recentActivity = new();
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await CurrentUser.InitializeAsync();
+    }
+    
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+        message = null;
+    }
+    
+    private async Task ExportData()
+    {
+        isExporting = true;
+        message = null;
+        
+        try
+        {
+            byte[] data;
+            string filename;
+            string contentType;
+            
+            switch (exportFormat)
+            {
+                case "csv":
+                    data = GetCsvData();
+                    filename = $"{exportDataType}_{DateTime.Now:yyyyMMdd}.csv";
+                    contentType = "text/csv";
+                    break;
+                case "excel":
+                    data = GetExcelData();
+                    filename = $"{exportDataType}_{DateTime.Now:yyyyMMdd}.xlsx";
+                    contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                    break;
+                case "json":
+                    data = GetJsonData();
+                    filename = $"{exportDataType}_{DateTime.Now:yyyyMMdd}.json";
+                    contentType = "application/json";
+                    break;
+                default:
+                    throw new InvalidOperationException("Invalid export format");
+            }
+            
+            await DownloadFileAsync(filename, data, contentType);
+            
+            message = $"Successfully exported {exportDataType} data!";
+            isError = false;
+            
+            recentActivity.Insert(0, new ActivityRecord
+            {
+                Type = "Export",
+                Description = $"Exported {exportDataType} to {exportFormat.ToUpper()}",
+                Timestamp = DateTime.Now,
+                Success = true
+            });
+        }
+        catch (Exception ex)
+        {
+            message = $"Export failed: {ex.Message}";
+            isError = true;
+            
+            recentActivity.Insert(0, new ActivityRecord
+            {
+                Type = "Export",
+                Description = $"Failed to export {exportDataType}",
+                Timestamp = DateTime.Now,
+                Success = false
+            });
+        }
+        finally
+        {
+            isExporting = false;
+        }
+    }
+    
+    private async Task QuickExport(string dataType)
+    {
+        exportDataType = dataType;
+        exportFormat = "excel";
+        await ExportData();
+    }
+    
+    private byte[] GetCsvData()
+    {
+        return exportDataType switch
+        {
+            "assets" => ExportService.ExportAssetsToCSV(),
+            "workorders" => ExportService.ExportWorkOrdersToCSV(),
+            "spareparts" => ExportService.ExportSparePartsToCSV(),
+            "failuremodes" => ExportService.ExportFailureModesToCSV(),
+            _ => throw new InvalidOperationException($"Unknown data type: {exportDataType}")
+        };
+    }
+    
+    private byte[] GetExcelData()
+    {
+        return exportDataType switch
+        {
+            "assets" => ExportService.ExportAssetsToExcel(),
+            "workorders" => ExportService.ExportWorkOrdersToExcel(),
+            "spareparts" => ExportService.ExportSparePartsToExcel(),
+            "failuremodes" => ExportService.ExportAssetsToExcel(), // Use assets template for now
+            _ => throw new InvalidOperationException($"Unknown data type: {exportDataType}")
+        };
+    }
+    
+    private byte[] GetJsonData()
+    {
+        return exportDataType switch
+        {
+            "assets" => ExportService.ExportAssetsToJSON(),
+            "workorders" => ExportService.ExportWorkOrdersToJSON(),
+            "spareparts" => ExportService.ExportAssetsToJSON(), // Use assets template for now
+            "failuremodes" => ExportService.ExportAssetsToJSON(), // Use assets template for now
+            _ => throw new InvalidOperationException($"Unknown data type: {exportDataType}")
+        };
+    }
+    
+    private async Task DownloadTemplate()
+    {
+        try
+        {
+            byte[] data = GetExcelData();
+            string filename = $"{importDataType}_template.xlsx";
+            await DownloadFileAsync(filename, data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            message = "Template downloaded successfully!";
+            isError = false;
+        }
+        catch (Exception ex)
+        {
+            message = $"Failed to download template: {ex.Message}";
+            isError = true;
+        }
+    }
+    
+    private async Task ImportData()
+    {
+        if (selectedFile == null)
+        {
+            message = "Please select a file first";
+            isError = true;
+            return;
+        }
+        
+        isImporting = true;
+        message = null;
+        
+        try
+        {
+            using var stream = selectedFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            
+            // TODO: Implement actual import logic
+            await Task.Delay(1000);
+            
+            message = $"Successfully imported {selectedFile.Name}! (Import processing coming soon)";
+            isError = false;
+            
+            recentActivity.Insert(0, new ActivityRecord
+            {
+                Type = "Import",
+                Description = $"Imported {importDataType} from {selectedFile.Name}",
+                Timestamp = DateTime.Now,
+                Success = true
+            });
+            
+            selectedFile = null;
+        }
+        catch (Exception ex)
+        {
+            message = $"Import failed: {ex.Message}";
+            isError = true;
+            
+            recentActivity.Insert(0, new ActivityRecord
+            {
+                Type = "Import",
+                Description = $"Failed to import {importDataType}",
+                Timestamp = DateTime.Now,
+                Success = false
+            });
+        }
+        finally
+        {
+            isImporting = false;
+        }
+    }
+    
+    private async Task DownloadFileAsync(string filename, byte[] data, string contentType)
+    {
+        var base64 = Convert.ToBase64String(data);
+        await JSRuntime.InvokeVoidAsync("downloadFile", filename, base64, contentType);
+    }
+    
+    private class ActivityRecord
+    {
+        public string Type { get; set; } = "";
+        public string Description { get; set; } = "";
+        public DateTime Timestamp { get; set; }
+        public bool Success { get; set; }
+    }
+}

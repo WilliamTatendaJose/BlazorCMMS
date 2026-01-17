@@ -15,6 +15,7 @@ public class UserManagementService
     private readonly RoleManager<IdentityRole> _roleManager;
     private readonly IDbContextFactory<ApplicationDbContext> _contextFactory;
     private readonly IEmailSender<ApplicationUser> _emailSender;
+    private readonly RolePermissionService _rolePermissionService;
     private readonly ILogger<UserManagementService> _logger;
 
     public UserManagementService(
@@ -22,12 +23,14 @@ public class UserManagementService
         RoleManager<IdentityRole> roleManager,
         IDbContextFactory<ApplicationDbContext> contextFactory,
         IEmailSender<ApplicationUser> emailSender,
+        RolePermissionService rolePermissionService,
         ILogger<UserManagementService> logger)
     {
         _userManager = userManager;
         _roleManager = roleManager;
         _contextFactory = contextFactory;
         _emailSender = emailSender;
+        _rolePermissionService = rolePermissionService;
         _logger = logger;
     }
 
@@ -64,7 +67,8 @@ public class UserManagementService
                 LastLoginDate = user.LastLoginDate,
                 Roles = roles.ToList(),
                 HasPasskeys = passkeys.Count > 0,
-                PasskeyCount = passkeys.Count
+                PasskeyCount = passkeys.Count,
+                TenantId = user.PrimaryTenantId
             });
         }
 
@@ -100,7 +104,8 @@ public class UserManagementService
             LastLoginDate = user.LastLoginDate,
             Roles = roles.ToList(),
             HasPasskeys = passkeys.Count > 0,
-            PasskeyCount = passkeys.Count
+            PasskeyCount = passkeys.Count,
+            TenantId = user.PrimaryTenantId
         };
     }
 
@@ -142,7 +147,7 @@ public class UserManagementService
         // Sync to legacy Users table
         await SyncToLegacyUsersTableAsync(user, model.Role ?? "Technician");
 
-        _logger.LogInformation("User {Email} created successfully", user.Email);
+        _logger.LogInformation("User {Email} created successfully with TenantId {TenantId}", user.Email, model.TenantId);
 
         // Send confirmation email if not auto-confirmed
         if (!model.EmailConfirmed)
@@ -154,7 +159,7 @@ public class UserManagementService
     }
 
     /// <summary>
-    /// Update user profile and role
+    /// Update an existing user
     /// </summary>
     public async Task<(bool Success, string[] Errors)> UpdateUserAsync(UpdateUserModel model)
     {
@@ -168,7 +173,11 @@ public class UserManagementService
         user.Department = model.Department;
         user.PhoneNumber = model.PhoneNumber;
         user.IsActive = model.IsActive;
-        user.PrimaryTenantId = model.TenantId;
+        
+        if (model.TenantId.HasValue)
+        {
+            user.PrimaryTenantId = model.TenantId;
+        }
 
         var result = await _userManager.UpdateAsync(user);
 
@@ -177,26 +186,19 @@ public class UserManagementService
             return (false, result.Errors.Select(e => e.Description).ToArray());
         }
 
-        string currentRole = model.Role ?? "Technician";
-        
         // Update role if changed
         if (!string.IsNullOrEmpty(model.Role))
         {
             var currentRoles = await _userManager.GetRolesAsync(user);
-            
-            // Remove from all current roles
-            if (currentRoles.Any())
+            if (!currentRoles.Contains(model.Role))
             {
                 await _userManager.RemoveFromRolesAsync(user, currentRoles);
+                await _userManager.AddToRoleAsync(user, model.Role);
             }
-            
-            // Add to new role
-            await _userManager.AddToRoleAsync(user, model.Role);
-            currentRole = model.Role;
         }
 
         // Sync to legacy Users table
-        await SyncToLegacyUsersTableAsync(user, currentRole);
+        await SyncToLegacyUsersTableAsync(user, model.Role ?? "Technician");
 
         _logger.LogInformation("User {Email} updated successfully", user.Email);
         return (true, []);
@@ -213,8 +215,8 @@ public class UserManagementService
             return (false, ["User not found"]);
         }
 
-        // Delete from legacy Users table first
-        await DeleteFromLegacyUsersTableAsync(userId, user.Email);
+        // Remove from legacy Users table first
+        await RemoveFromLegacyUsersTableAsync(user.Id);
 
         var result = await _userManager.DeleteAsync(user);
 
@@ -223,84 +225,8 @@ public class UserManagementService
             return (false, result.Errors.Select(e => e.Description).ToArray());
         }
 
-        _logger.LogInformation("User {Email} deleted", user.Email);
+        _logger.LogInformation("User {Email} deleted successfully", user.Email);
         return (true, []);
-    }
-
-    #endregion
-
-    #region Legacy Users Table Sync
-
-    /// <summary>
-    /// Syncs an Identity user to the legacy Users table
-    /// </summary>
-    private async Task SyncToLegacyUsersTableAsync(ApplicationUser identityUser, string role)
-    {
-        try
-        {
-            using var context = _contextFactory.CreateDbContext();
-            
-            var legacyUser = await context.Users
-                .FirstOrDefaultAsync(u => u.AspNetUserId == identityUser.Id || u.Email == identityUser.Email);
-
-            if (legacyUser == null)
-            {
-                legacyUser = new User
-                {
-                    Name = identityUser.FullName ?? identityUser.Email ?? "Unknown",
-                    Email = identityUser.Email ?? "",
-                    Role = role,
-                    Department = identityUser.Department ?? "",
-                    Phone = identityUser.PhoneNumber ?? "",
-                    IsActive = identityUser.IsActive,
-                    CreatedDate = identityUser.CreatedDate,
-                    AspNetUserId = identityUser.Id,
-                    TenantId = identityUser.PrimaryTenantId
-                };
-                context.Users.Add(legacyUser);
-            }
-            else
-            {
-                legacyUser.Name = identityUser.FullName ?? identityUser.Email ?? "Unknown";
-                legacyUser.Email = identityUser.Email ?? "";
-                legacyUser.Role = role;
-                legacyUser.Department = identityUser.Department ?? "";
-                legacyUser.Phone = identityUser.PhoneNumber ?? "";
-                legacyUser.IsActive = identityUser.IsActive;
-                legacyUser.AspNetUserId = identityUser.Id;
-                legacyUser.TenantId = identityUser.PrimaryTenantId;
-            }
-
-            await context.SaveChangesAsync();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to sync user {Email} to legacy Users table", identityUser.Email);
-        }
-    }
-
-    /// <summary>
-    /// Deletes a user from the legacy Users table
-    /// </summary>
-    private async Task DeleteFromLegacyUsersTableAsync(string aspNetUserId, string? email)
-    {
-        try
-        {
-            using var context = _contextFactory.CreateDbContext();
-            
-            var legacyUser = await context.Users
-                .FirstOrDefaultAsync(u => u.AspNetUserId == aspNetUserId || u.Email == email);
-
-            if (legacyUser != null)
-            {
-                context.Users.Remove(legacyUser);
-                await context.SaveChangesAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to delete user from legacy Users table");
-        }
     }
 
     #endregion
@@ -308,9 +234,9 @@ public class UserManagementService
     #region Password Management
 
     /// <summary>
-    /// Admin reset password - generates a new random password
+    /// Reset a user's password with a new generated password
     /// </summary>
-    public async Task<(bool Success, string[] Errors, string? NewPassword)> AdminResetPasswordAsync(string userId)
+    public async Task<(bool Success, string[] Errors, string? NewPassword)> ResetPasswordAsync(string userId)
     {
         var user = await _userManager.FindByIdAsync(userId);
         if (user == null)
@@ -318,10 +244,7 @@ public class UserManagementService
             return (false, ["User not found"], null);
         }
 
-        // Generate a temporary password
         var newPassword = GenerateRandomPassword();
-        
-        // Remove existing password and set new one
         var token = await _userManager.GeneratePasswordResetTokenAsync(user);
         var result = await _userManager.ResetPasswordAsync(user, token, newPassword);
 
@@ -330,36 +253,14 @@ public class UserManagementService
             return (false, result.Errors.Select(e => e.Description).ToArray(), null);
         }
 
-        _logger.LogInformation("Password reset by admin for user {Email}", user.Email);
+        _logger.LogInformation("Password reset for user {Email}", user.Email);
         return (true, [], newPassword);
     }
 
     /// <summary>
-    /// Send password reset email to user
+    /// Send a password reset email to the user
     /// </summary>
-    public async Task<(bool Success, string[] Errors)> SendPasswordResetEmailAsync(string email, string resetUrl)
-    {
-        var user = await _userManager.FindByEmailAsync(email);
-        if (user == null || !user.EmailConfirmed)
-        {
-            // Don't reveal if user exists
-            return (true, []);
-        }
-
-        var token = await _userManager.GeneratePasswordResetTokenAsync(user);
-        var encodedToken = System.Text.Encodings.Web.HtmlEncoder.Default.Encode(token);
-        var callbackUrl = $"{resetUrl}?code={encodedToken}";
-
-        await _emailSender.SendPasswordResetLinkAsync(user, email, callbackUrl);
-
-        _logger.LogInformation("Password reset email sent to {Email}", email);
-        return (true, []);
-    }
-
-    /// <summary>
-    /// Force password change on next login
-    /// </summary>
-    public async Task<(bool Success, string[] Errors)> RequirePasswordChangeAsync(string userId)
+    public async Task<(bool Success, string[] Errors)> SendPasswordResetEmailAsync(string userId, string resetUrl)
     {
         var user = await _userManager.FindByIdAsync(userId);
         if (user == null)
@@ -367,21 +268,132 @@ public class UserManagementService
             return (false, ["User not found"]);
         }
 
-        // Update security stamp to invalidate current sessions
-        await _userManager.UpdateSecurityStampAsync(user);
-        
-        _logger.LogInformation("Password change required for user {Email}", user.Email);
+        var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+        var encodedToken = System.Net.WebUtility.UrlEncode(token);
+        var fullResetUrl = $"{resetUrl}?userId={userId}&token={encodedToken}";
+
+        try
+        {
+            await _emailSender.SendPasswordResetLinkAsync(user, user.Email!, fullResetUrl);
+            _logger.LogInformation("Password reset email sent to {Email}", user.Email);
+            return (true, []);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send password reset email to {Email}", user.Email);
+            return (false, ["Failed to send email"]);
+        }
+    }
+
+    #endregion
+
+    #region Role Management
+
+    /// <summary>
+    /// Get all available roles
+    /// </summary>
+    public async Task<List<string>> GetAllRolesAsync()
+    {
+        return await _roleManager.Roles.Select(r => r.Name!).ToListAsync();
+    }
+
+    /// <summary>
+    /// Add user to a role
+    /// </summary>
+    public async Task<(bool Success, string[] Errors)> AddToRoleAsync(string userId, string role)
+    {
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user == null)
+        {
+            return (false, ["User not found"]);
+        }
+
+        var result = await _userManager.AddToRoleAsync(user, role);
+
+        if (!result.Succeeded)
+        {
+            return (false, result.Errors.Select(e => e.Description).ToArray());
+        }
+
+        await SyncToLegacyUsersTableAsync(user, role);
+
+        _logger.LogInformation("User {Email} added to role {Role}", user.Email, role);
+        return (true, []);
+    }
+
+    /// <summary>
+    /// Remove user from a role
+    /// </summary>
+    public async Task<(bool Success, string[] Errors)> RemoveFromRoleAsync(string userId, string role)
+    {
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user == null)
+        {
+            return (false, ["User not found"]);
+        }
+
+        var result = await _userManager.RemoveFromRoleAsync(user, role);
+
+        if (!result.Succeeded)
+        {
+            return (false, result.Errors.Select(e => e.Description).ToArray());
+        }
+
+        _logger.LogInformation("User {Email} removed from role {Role}", user.Email, role);
+        return (true, []);
+    }
+
+    /// <summary>
+    /// Create a new role
+    /// </summary>
+    public async Task<(bool Success, string[] Errors)> CreateRoleAsync(string roleName)
+    {
+        if (await _roleManager.RoleExistsAsync(roleName))
+        {
+            return (false, ["Role already exists"]);
+        }
+
+        var result = await _roleManager.CreateAsync(new IdentityRole(roleName));
+
+        if (!result.Succeeded)
+        {
+            return (false, result.Errors.Select(e => e.Description).ToArray());
+        }
+
+        _logger.LogInformation("Role {Role} created", roleName);
+        return (true, []);
+    }
+
+    /// <summary>
+    /// Delete a role
+    /// </summary>
+    public async Task<(bool Success, string[] Errors)> DeleteRoleAsync(string roleName)
+    {
+        var role = await _roleManager.FindByNameAsync(roleName);
+        if (role == null)
+        {
+            return (false, ["Role not found"]);
+        }
+
+        var result = await _roleManager.DeleteAsync(role);
+
+        if (!result.Succeeded)
+        {
+            return (false, result.Errors.Select(e => e.Description).ToArray());
+        }
+
+        _logger.LogInformation("Role {Role} deleted", roleName);
         return (true, []);
     }
 
     #endregion
 
-    #region Account Lockout Management
+    #region Account Management
 
     /// <summary>
     /// Lock a user account
     /// </summary>
-    public async Task<(bool Success, string[] Errors)> LockUserAsync(string userId, DateTimeOffset? lockoutEnd = null)
+    public async Task<(bool Success, string[] Errors)> LockUserAsync(string userId, int daysToLock = 365)
     {
         var user = await _userManager.FindByIdAsync(userId);
         if (user == null)
@@ -389,14 +401,7 @@ public class UserManagementService
             return (false, ["User not found"]);
         }
 
-        // Enable lockout if not already enabled
-        if (!user.LockoutEnabled)
-        {
-            await _userManager.SetLockoutEnabledAsync(user, true);
-        }
-
-        // Set lockout end (default to 100 years for permanent lock)
-        var end = lockoutEnd ?? DateTimeOffset.UtcNow.AddYears(100);
+        var end = DateTimeOffset.UtcNow.AddDays(daysToLock);
         var result = await _userManager.SetLockoutEndDateAsync(user, end);
 
         if (!result.Succeeded)
@@ -452,103 +457,101 @@ public class UserManagementService
             return (false, result.Errors.Select(e => e.Description).ToArray());
         }
 
-        _logger.LogInformation("User {Email} active status set to {IsActive}", user.Email, isActive);
+        // Sync to legacy table
+        await SyncToLegacyUsersTableAsync(user, (await _userManager.GetRolesAsync(user)).FirstOrDefault() ?? "Technician");
+
+        _logger.LogInformation("User {Email} active status set to {Status}", user.Email, isActive);
         return (true, []);
     }
 
-    #endregion
-
-    #region Email Confirmation
-
     /// <summary>
-    /// Send email confirmation
+    /// Send email confirmation to user
     /// </summary>
     public async Task<(bool Success, string[] Errors)> SendEmailConfirmationAsync(ApplicationUser user)
     {
-        var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-        // In production, this would generate a proper callback URL
-        await _emailSender.SendConfirmationLinkAsync(user, user.Email!, token);
-        
-        _logger.LogInformation("Confirmation email sent to {Email}", user.Email);
-        return (true, []);
-    }
-
-    /// <summary>
-    /// Admin confirm email manually
-    /// </summary>
-    public async Task<(bool Success, string[] Errors)> AdminConfirmEmailAsync(string userId)
-    {
-        var user = await _userManager.FindByIdAsync(userId);
-        if (user == null)
+        try
         {
-            return (false, ["User not found"]);
+            var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+            await _emailSender.SendConfirmationLinkAsync(user, user.Email!, $"/Account/ConfirmEmail?userId={user.Id}&token={System.Net.WebUtility.UrlEncode(token)}");
+            return (true, []);
         }
-
-        var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-        var result = await _userManager.ConfirmEmailAsync(user, token);
-
-        if (!result.Succeeded)
+        catch (Exception ex)
         {
-            return (false, result.Errors.Select(e => e.Description).ToArray());
+            _logger.LogError(ex, "Failed to send confirmation email to {Email}", user.Email);
+            return (false, ["Failed to send email"]);
         }
-
-        _logger.LogInformation("Email confirmed by admin for user {Email}", user.Email);
-        return (true, []);
     }
 
     #endregion
 
-    #region Role Management
+    #region Legacy Users Table Sync
 
     /// <summary>
-    /// Get all available roles
+    /// Sync user to the legacy Users table for backward compatibility
     /// </summary>
-    public async Task<List<string>> GetAllRolesAsync()
+    private async Task SyncToLegacyUsersTableAsync(ApplicationUser user, string role)
     {
-        return await _roleManager.Roles.Select(r => r.Name!).ToListAsync();
+        try
+        {
+            using var context = _contextFactory.CreateDbContext();
+            
+            var legacyUser = await context.Users.FirstOrDefaultAsync(u => u.AspNetUserId == user.Id);
+
+            if (legacyUser == null)
+            {
+                legacyUser = new User
+                {
+                    Name = user.FullName ?? user.Email ?? "Unknown",
+                    Email = user.Email ?? "",
+                    Role = role,
+                    Department = user.Department ?? "",
+                    Phone = user.PhoneNumber ?? "",
+                    IsActive = user.IsActive,
+                    CreatedDate = user.CreatedDate,
+                    AspNetUserId = user.Id,
+                    TenantId = user.PrimaryTenantId
+                };
+                context.Users.Add(legacyUser);
+            }
+            else
+            {
+                legacyUser.Name = user.FullName ?? user.Email ?? "Unknown";
+                legacyUser.Email = user.Email ?? "";
+                legacyUser.Role = role;
+                legacyUser.Department = user.Department ?? "";
+                legacyUser.Phone = user.PhoneNumber ?? "";
+                legacyUser.IsActive = user.IsActive;
+                legacyUser.TenantId = user.PrimaryTenantId;
+            }
+
+            await context.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to sync user {Email} to legacy Users table", user.Email);
+        }
     }
 
     /// <summary>
-    /// Create a new role
+    /// Remove user from legacy Users table
     /// </summary>
-    public async Task<(bool Success, string[] Errors)> CreateRoleAsync(string roleName)
+    private async Task RemoveFromLegacyUsersTableAsync(string aspNetUserId)
     {
-        if (await _roleManager.RoleExistsAsync(roleName))
+        try
         {
-            return (false, ["Role already exists"]);
+            using var context = _contextFactory.CreateDbContext();
+            
+            var legacyUser = await context.Users.FirstOrDefaultAsync(u => u.AspNetUserId == aspNetUserId);
+            if (legacyUser != null)
+            {
+                context.Users.Remove(legacyUser);
+                await context.SaveChangesAsync();
+            }
         }
-
-        var result = await _roleManager.CreateAsync(new IdentityRole(roleName));
-
-        if (!result.Succeeded)
+        catch (Exception ex)
         {
-            return (false, result.Errors.Select(e => e.Description).ToArray());
+            _logger.LogError(ex, "Failed to remove user from legacy Users table");
         }
-
-        _logger.LogInformation("Role {Role} created", roleName);
-        return (true, []);
-    }
-
-    /// <summary>
-    /// Delete a role
-    /// </summary>
-    public async Task<(bool Success, string[] Errors)> DeleteRoleAsync(string roleName)
-    {
-        var role = await _roleManager.FindByNameAsync(roleName);
-        if (role == null)
-        {
-            return (false, ["Role not found"]);
-        }
-
-        var result = await _roleManager.DeleteAsync(role);
-
-        if (!result.Succeeded)
-        {
-            return (false, result.Errors.Select(e => e.Description).ToArray());
-        }
-
-        _logger.LogInformation("Role {Role} deleted", roleName);
-        return (true, []);
     }
 
     #endregion
@@ -556,11 +559,23 @@ public class UserManagementService
     #region Statistics
 
     /// <summary>
-    /// Get user statistics
+    /// Get user statistics (tenant-filtered)
     /// </summary>
     public async Task<UserStatistics> GetUserStatisticsAsync()
     {
-        var users = await _userManager.Users.ToListAsync();
+        // Get tenant context for filtering
+        var isSuperAdmin = await _rolePermissionService.IsSuperAdminAsync();
+        var currentTenantId = await _rolePermissionService.GetCurrentTenantIdAsync();
+        
+        var allUsers = await _userManager.Users.ToListAsync();
+        
+        // Filter users by tenant if not SuperAdmin
+        var users = allUsers;
+        if (!isSuperAdmin && currentTenantId.HasValue)
+        {
+            users = allUsers.Where(u => u.PrimaryTenantId == currentTenantId).ToList();
+        }
+        
         var stats = new UserStatistics
         {
             TotalUsers = users.Count,
@@ -570,16 +585,21 @@ public class UserManagementService
             UnconfirmedEmails = users.Count(u => !u.EmailConfirmed),
             TwoFactorEnabled = users.Count(u => u.TwoFactorEnabled),
             RecentLogins = users.Count(u => u.LastLoginDate > DateTime.Now.AddDays(-7)),
-            NeverLoggedIn = users.Count(u => u.LastLoginDate == null)
+            NeverLoggedIn = users.Count(u => u.LastLoginDate == null),
+            TenantId = currentTenantId
         };
 
-        // Get role counts
+        // Get role counts (for filtered users)
         foreach (var role in await GetAllRolesAsync())
         {
             var usersInRole = await _userManager.GetUsersInRoleAsync(role);
-            stats.RoleCounts[role] = usersInRole.Count;
+            var count = usersInRole.Count(u => users.Any(filteredUser => filteredUser.Id == u.Id));
+            stats.RoleCounts[role] = count;
         }
 
+        _logger.LogDebug("Retrieved user statistics for tenant {TenantId}: {TotalUsers} total, {ActiveUsers} active", 
+            currentTenantId, stats.TotalUsers, stats.ActiveUsers);
+        
         return stats;
     }
 
@@ -632,6 +652,8 @@ public class UserViewModel
     public List<string> Roles { get; set; } = [];
     public bool HasPasskeys { get; set; }
     public int PasskeyCount { get; set; }
+    public int? TenantId { get; set; }
+    public string? TenantName { get; set; }
 
     public string PrimaryRole => Roles.FirstOrDefault() ?? "No Role";
     public bool IsLocked => LockoutEnd.HasValue && LockoutEnd > DateTimeOffset.UtcNow;
@@ -671,6 +693,7 @@ public class UserStatistics
     public int RecentLogins { get; set; }
     public int NeverLoggedIn { get; set; }
     public Dictionary<string, int> RoleCounts { get; set; } = [];
+    public int? TenantId { get; set; }
 }
 
 #endregion

@@ -34,8 +34,12 @@ builder.Services.AddScoped<DataExportService>();
 builder.Services.AddScoped<MaintenanceScheduleExportService>();
 builder.Services.AddScoped<RecurringMaintenanceScheduler>();
 
-// Register WhatsApp Service
-builder.Services.AddHttpClient("TwilioWhatsApp");
+// Register WhatsApp Service with Meta API
+builder.Services.AddHttpClient("MetaWhatsApp", client =>
+{
+    client.BaseAddress = new Uri("https://graph.facebook.com/");
+    client.DefaultRequestHeaders.Add("Accept", "application/json");
+});
 builder.Services.AddHttpClient("LLMClient"); // For Groq, OpenAI, Gemini, Azure OpenAI
 builder.Services.AddScoped<WhatsAppLLMService>();
 builder.Services.AddScoped<WhatsAppService>();
@@ -119,29 +123,56 @@ builder.Services.AddAuthorizationBuilder()
 
 var app = builder.Build();
 
-// Seed the database
+// Seed the database with timeout protection
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
+    var logger = services.GetRequiredService<ILogger<Program>>();
+    
     try
     {
-        // Seed RBM CMMS data
+        logger.LogInformation("Starting database initialization...");
+        
+        // Create a cancellation token with timeout (30 seconds)
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        
         var context = services.GetRequiredService<ApplicationDbContext>();
-        await DbInitializer.SeedAsync(context);
         
-        // Seed Identity roles and users (also syncs to legacy Users table)
-        var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
-        var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
-        await IdentityDataSeeder.SeedRolesAndUsersAsync(userManager, roleManager, context);
-        
-        // Sync any existing Identity users to legacy Users table
-        await IdentityDataSeeder.SyncAllUsersToLegacyTableAsync(userManager, context);
+        // Test database connection first
+        logger.LogInformation("Testing database connection...");
+        if (!await context.Database.CanConnectAsync(cts.Token))
+        {
+            logger.LogWarning("Cannot connect to database. Skipping seeding.");
+        }
+        else
+        {
+            logger.LogInformation("Database connected. Seeding data...");
+            
+            // Seed RBM CMMS data
+            await DbInitializer.SeedAsync(context);
+            logger.LogInformation("DbInitializer completed.");
+            
+            // Seed Identity roles and users
+            var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
+            var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
+            await IdentityDataSeeder.SeedRolesAndUsersAsync(userManager, roleManager, context);
+            logger.LogInformation("IdentityDataSeeder completed.");
+            
+            // Sync users to legacy table
+            await IdentityDataSeeder.SyncAllUsersToLegacyTableAsync(userManager, context);
+            logger.LogInformation("User sync completed.");
+        }
+    }
+    catch (OperationCanceledException)
+    {
+        logger.LogWarning("Database seeding timed out. The app will continue without seeding.");
     }
     catch (Exception ex)
     {
-        var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "An error occurred while seeding the database.");
+        logger.LogError(ex, "An error occurred while seeding the database. The app will continue.");
     }
+    
+    logger.LogInformation("Database initialization finished.");
 }
 
 app.MapDefaultEndpoints();

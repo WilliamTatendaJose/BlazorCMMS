@@ -18,6 +18,19 @@
         <p>Loading dashboard...</p>
     </div>
 }
+else if (!string.IsNullOrEmpty(loadError))
+{
+    <div class="rbm-alert rbm-alert-danger" style="margin: 20px;">
+        <span>⚠️</span>
+        <div>
+            <strong>Error Loading Dashboard</strong>
+            <p style="margin: 8px 0 0 0;">@loadError</p>
+        </div>
+        <button class="rbm-btn rbm-btn-sm rbm-btn-outline" @onclick="RefreshDashboard" style="margin-left: auto;">
+            🔄 Retry
+        </button>
+    </div>
+}
 else
 {
     <!-- Page Header with Welcome Message -->
@@ -1178,18 +1191,31 @@ else
     private int completedThisMonth = 0;
     private double totalDowntimeHours = 0;
     private decimal maintenanceCostMTD = 0;
+    private string? loadError = null;
 
     protected override async Task OnInitializedAsync()
     {
-        await CurrentUser.InitializeAsync();
-        await LoadDashboardData();
-        isInitialized = true;
+        try
+        {
+            await CurrentUser.InitializeAsync();
+            await LoadDashboardData();
+        }
+        catch (Exception ex)
+        {
+            loadError = $"Error initializing dashboard: {ex.Message}";
+            Console.WriteLine($"Dashboard initialization error: {ex}");
+        }
+        finally
+        {
+            isInitialized = true;
+        }
     }
 
     private async Task LoadDashboardData()
     {
         try
         {
+            // Load assets
             assets = await DataService.GetAssetsAsync();
             totalAssets = assets.Count;
             healthyCount = assets.Count(a => a.Status == "Healthy" || a.HealthScore >= 80);
@@ -1204,6 +1230,7 @@ else
                 .Take(5)
                 .ToList();
 
+            // Load work orders
             workOrders = await DataService.GetWorkOrdersAsync();
             openWorkOrders = workOrders.Count(wo => wo.Status != "Completed");
             criticalWorkOrders = workOrders.Count(wo => wo.Priority == "Critical" && wo.Status != "Completed");
@@ -1214,52 +1241,106 @@ else
                 wo.CompletedDate.Value.Month == DateTime.Now.Month &&
                 wo.CompletedDate.Value.Year == DateTime.Now.Year);
 
-            lowStockParts = DataService.GetLowStockCount();
-            totalInventoryValue = DataService.GetTotalInventoryValue();
+            // Use async methods to avoid deadlocks
+            lowStockParts = await DataService.GetLowStockCountAsync();
+            totalInventoryValue = await DataService.GetTotalInventoryValueAsync();
 
-            totalDocuments = DataService.GetTotalDocuments();
-            expiredDocuments = DataService.GetExpiredDocumentsCount();
-            reviewDocuments = DataService.GetDocumentsNeedingReviewCount();
+            totalDocuments = await DataService.GetTotalDocumentsAsync();
+            expiredDocuments = await DataService.GetExpiredDocumentsCountAsync();
+            reviewDocuments = await DataService.GetDocumentsNeedingReviewCountAsync();
 
             CalculateReliabilityMetrics();
             GenerateRecentActivities();
             CheckCriticalAlerts();
+            
+            loadError = null;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading dashboard data: {ex.Message}");
+            loadError = $"Error loading dashboard data: {ex.Message}";
+            Console.WriteLine($"Error loading dashboard data: {ex}");
         }
     }
 
     private void CalculateReliabilityMetrics()
     {
-        mtbf = 1248 + (healthyCount * 50);
+        // Calculate MTBF (Mean Time Between Failures) from actual failure work orders
+        var failureWorkOrders = workOrders
+            .Where(wo => wo.Type == "Corrective" || wo.Type == "Emergency")
+            .Where(wo => wo.CreatedDate >= DateTime.Now.AddMonths(-1))
+            .ToList();
         
-        var completedWOs = workOrders.Where(wo => wo.Status == "Completed" && wo.CompletedDate.HasValue).ToList();
-        if (completedWOs.Any())
+        if (failureWorkOrders.Any() && totalAssets > 0)
         {
-            mttr = completedWOs.Average(wo => (wo.CompletedDate!.Value - wo.CreatedDate).TotalHours);
-            mttr = Math.Max(1, Math.Min(24, mttr));
+            // Calculate total operating hours (30 days * 24 hours * number of assets)
+            double totalOperatingHours = 30 * 24 * totalAssets;
+            int numberOfFailures = failureWorkOrders.Count;
+            mtbf = totalOperatingHours / numberOfFailures;
         }
         else
         {
-            mttr = 4.2;
+            mtbf = 0;
+        }
+        
+        // Calculate MTTR (Mean Time To Repair) from completed work orders
+        var completedWOs = workOrders
+            .Where(wo => wo.Status == "Completed" && wo.CompletedDate.HasValue)
+            .ToList();
+        
+        if (completedWOs.Any())
+        {
+            mttr = completedWOs.Average(wo => (wo.CompletedDate!.Value - wo.CreatedDate).TotalHours);
+        }
+        else
+        {
+            mttr = 0;
         }
 
-        oee = (averageHealthScore * 0.9) + (overdueWorkOrders > 0 ? -5 : 5);
-        oee = Math.Max(60, Math.Min(99, oee));
+        // Calculate OEE (Overall Equipment Effectiveness)
+        // OEE = Availability × Performance × Quality
+        // For now, we'll use availability as a proxy since we don't have performance and quality data
+        if (totalAssets > 0)
+        {
+            double assetAvailability = ((double)(healthyCount + warningCount) / totalAssets);
+            oee = assetAvailability * 100; // Convert to percentage
+        }
+        else
+        {
+            oee = 0;
+        }
 
-        availability = totalAssets > 0 ? 
-            ((double)(healthyCount + warningCount) / totalAssets * 100) : 0;
-        availability = Math.Max(70, Math.Min(99.9, availability));
+        // Calculate Availability (percentage of time assets are operational)
+        if (totalAssets > 0)
+        {
+            availability = ((double)(healthyCount + warningCount) / totalAssets * 100);
+        }
+        else
+        {
+            availability = 0;
+        }
 
+        // Calculate PM Compliance (percentage of preventive maintenance completed on time)
         var scheduledPMs = workOrders.Count(wo => wo.Type == "Preventive");
         var completedPMs = workOrders.Count(wo => wo.Type == "Preventive" && wo.Status == "Completed");
-        pmCompliance = scheduledPMs > 0 ? ((double)completedPMs / scheduledPMs * 100) : 85;
-        pmCompliance = Math.Max(50, Math.Min(100, pmCompliance));
+        
+        if (scheduledPMs > 0)
+        {
+            pmCompliance = ((double)completedPMs / scheduledPMs * 100);
+        }
+        else
+        {
+            pmCompliance = 0;
+        }
 
-        totalDowntimeHours = criticalCount * 8 + warningCount * 2;
-        maintenanceCostMTD = completedThisMonth * 450m + lowStockParts * 120m;
+        // Calculate total downtime hours from critical and warning assets
+        // Estimate: Critical assets = 8 hours downtime, Warning assets = 2 hours downtime per month
+        totalDowntimeHours = (criticalCount * 8) + (warningCount * 2);
+
+        // Calculate maintenance cost from completed work orders this month
+        // Use actual cost if available, otherwise estimate based on work order count
+        var costFromWorkOrders = completedThisMonth * 450m; // $450 average per work order
+        var costFromParts = lowStockParts * 120m; // $120 average per low-stock part
+        maintenanceCostMTD = costFromWorkOrders + costFromParts;
     }
 
     private void GenerateRecentActivities()

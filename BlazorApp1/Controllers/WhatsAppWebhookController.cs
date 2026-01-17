@@ -1,10 +1,11 @@
 using BlazorApp1.Services;
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 
 namespace BlazorApp1.Controllers;
 
 /// <summary>
-/// Webhook controller for receiving WhatsApp messages from Twilio
+/// Webhook controller for receiving WhatsApp messages from Meta WhatsApp Business Cloud API
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -25,82 +26,83 @@ public class WhatsAppWebhookController : ControllerBase
     }
 
     /// <summary>
-    /// Twilio webhook endpoint for incoming WhatsApp messages
-    /// POST /api/whatsappwebhook/incoming
+    /// Webhook verification endpoint (GET) - Required by Meta for initial webhook setup
+    /// GET /api/whatsappwebhook
     /// </summary>
-    [HttpPost("incoming")]
-    public async Task<IActionResult> IncomingMessage([FromForm] TwilioWhatsAppRequest request)
+    [HttpGet]
+    public IActionResult VerifyWebhook(
+        [FromQuery(Name = "hub.mode")] string? mode,
+        [FromQuery(Name = "hub.verify_token")] string? token,
+        [FromQuery(Name = "hub.challenge")] string? challenge)
     {
-        try
+        _logger.LogInformation("Webhook verification request - Mode: {Mode}", mode);
+
+        if (_whatsAppService.VerifyWebhook(mode ?? "", token ?? "", challenge ?? "", out var response))
         {
-            _logger.LogInformation(
-                "Incoming WhatsApp from {From}: {Body}", 
-                request.From, 
-                request.Body);
-
-            // Validate Twilio signature (optional but recommended for production)
-            if (!ValidateTwilioSignature(Request))
-            {
-                _logger.LogWarning("Invalid Twilio signature");
-                // In production, return Unauthorized. For development, continue.
-                // return Unauthorized();
-            }
-
-            // Process the message
-            var response = await _whatsAppService.ProcessIncomingMessageAsync(
-                request.From?.Replace("whatsapp:", "") ?? "",
-                request.Body ?? "",
-                request.MessageSid);
-
-            // Return TwiML response
-            var twiml = $"""
-                <?xml version="1.0" encoding="UTF-8"?>
-                <Response>
-                    <Message>{EscapeXml(response.Message)}</Message>
-                </Response>
-                """;
-
-            return Content(twiml, "application/xml");
+            return Ok(response);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error processing WhatsApp webhook");
-            
-            var errorTwiml = """
-                <?xml version="1.0" encoding="UTF-8"?>
-                <Response>
-                    <Message>Sorry, an error occurred. Please try again or contact support.</Message>
-                </Response>
-                """;
 
-            return Content(errorTwiml, "application/xml");
-        }
+        return Forbidden();
     }
 
     /// <summary>
-    /// Status callback endpoint for delivery updates
-    /// POST /api/whatsappwebhook/status
+    /// Webhook endpoint for incoming messages and status updates (POST)
+    /// POST /api/whatsappwebhook
     /// </summary>
-    [HttpPost("status")]
-    public async Task<IActionResult> StatusCallback([FromForm] TwilioStatusCallback callback)
+    [HttpPost]
+    public async Task<IActionResult> ReceiveWebhook([FromBody] MetaWebhookPayload payload)
     {
         try
         {
-            _logger.LogInformation(
-                "WhatsApp status update - SID: {Sid}, Status: {Status}", 
-                callback.MessageSid, 
-                callback.MessageStatus);
+            // Verify the webhook signature (optional but recommended for production)
+            if (!VerifyWebhookSignature(Request))
+            {
+                _logger.LogWarning("Invalid webhook signature");
+                // For production, return Unauthorized()
+                // return Unauthorized();
+            }
 
-            // You could update message status in database here
-            // await _whatsAppService.UpdateMessageStatusAsync(callback.MessageSid, callback.MessageStatus);
+            _logger.LogInformation("Received webhook: {Object}", payload.Object);
 
+            if (payload.Object != "whatsapp_business_account")
+            {
+                return Ok(); // Not a WhatsApp webhook, ignore
+            }
+
+            // Process the webhook
+            var result = await _whatsAppService.ProcessWebhookAsync(payload);
+            
+            _logger.LogInformation("Webhook processed: {Success}", result.Success);
+            
+            // Always return 200 to acknowledge receipt
             return Ok();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing status callback");
-            return Ok(); // Return OK to prevent Twilio retries
+            _logger.LogError(ex, "Error processing WhatsApp webhook");
+            // Return 200 to prevent Meta from retrying
+            return Ok();
         }
+    }
+
+    /// <summary>
+    /// Alternative incoming message endpoint (for backward compatibility or custom routing)
+    /// POST /api/whatsappwebhook/incoming
+    /// </summary>
+    [HttpPost("incoming")]
+    public async Task<IActionResult> IncomingMessage([FromBody] MetaWebhookPayload payload)
+    {
+        return await ReceiveWebhook(payload);
+    }
+
+    /// <summary>
+    /// Status callback endpoint
+    /// POST /api/whatsappwebhook/status
+    /// </summary>
+    [HttpPost("status")]
+    public async Task<IActionResult> StatusCallback([FromBody] MetaWebhookPayload payload)
+    {
+        return await ReceiveWebhook(payload);
     }
 
     /// <summary>
@@ -110,61 +112,68 @@ public class WhatsAppWebhookController : ControllerBase
     [HttpGet("health")]
     public IActionResult Health()
     {
-        return Ok(new { status = "healthy", timestamp = DateTime.UtcNow });
+        var config = new
+        {
+            status = "healthy",
+            timestamp = DateTime.UtcNow,
+            whatsAppEnabled = _configuration.GetValue<bool>("WhatsApp:Enabled"),
+            apiVersion = _configuration["WhatsApp:Meta:ApiVersion"] ?? "v18.0",
+            hasPhoneNumberId = !string.IsNullOrEmpty(_configuration["WhatsApp:Meta:PhoneNumberId"]),
+            hasAccessToken = !string.IsNullOrEmpty(_configuration["WhatsApp:Meta:AccessToken"])
+        };
+
+        return Ok(config);
     }
 
-    private bool ValidateTwilioSignature(HttpRequest request)
+    /// <summary>
+    /// Test endpoint to send a message (for development/testing)
+    /// POST /api/whatsappwebhook/test
+    /// </summary>
+    [HttpPost("test")]
+    public async Task<IActionResult> TestMessage([FromBody] TestMessageRequest request)
     {
-        var authToken = _configuration["WhatsApp:TwilioAuthToken"];
-        if (string.IsNullOrEmpty(authToken))
+        if (string.IsNullOrEmpty(request.Phone) || string.IsNullOrEmpty(request.Message))
+        {
+            return BadRequest(new { error = "Phone and message are required" });
+        }
+
+        var result = await _whatsAppService.SendTextMessageAsync(request.Phone, request.Message);
+        
+        return Ok(new { success = result, phone = request.Phone });
+    }
+
+    /// <summary>
+    /// Verify the webhook signature from Meta
+    /// </summary>
+    private bool VerifyWebhookSignature(HttpRequest request)
+    {
+        var appSecret = _configuration["WhatsApp:Meta:AppSecret"];
+        if (string.IsNullOrEmpty(appSecret))
             return true; // Skip validation if not configured
 
-        var signature = request.Headers["X-Twilio-Signature"].FirstOrDefault();
+        var signature = request.Headers["X-Hub-Signature-256"].FirstOrDefault();
         if (string.IsNullOrEmpty(signature))
+        {
+            _logger.LogWarning("Missing X-Hub-Signature-256 header");
             return false;
+        }
 
-        // Full signature validation would use Twilio's RequestValidator
-        // For now, just check signature exists
-        return !string.IsNullOrEmpty(signature);
+        // In production, implement proper HMAC-SHA256 signature verification
+        // For now, just check that signature header exists
+        return signature.StartsWith("sha256=");
     }
 
-    private static string EscapeXml(string text)
+    private IActionResult Forbidden()
     {
-        return text
-            .Replace("&", "&amp;")
-            .Replace("<", "&lt;")
-            .Replace(">", "&gt;")
-            .Replace("\"", "&quot;")
-            .Replace("'", "&apos;");
+        return StatusCode(403, new { error = "Forbidden" });
     }
 }
 
 /// <summary>
-/// Model for incoming Twilio WhatsApp webhook request
+/// Request model for test endpoint
 /// </summary>
-public class TwilioWhatsAppRequest
+public class TestMessageRequest
 {
-    public string? MessageSid { get; set; }
-    public string? AccountSid { get; set; }
-    public string? From { get; set; }
-    public string? To { get; set; }
-    public string? Body { get; set; }
-    public int? NumMedia { get; set; }
-    public string? MediaUrl0 { get; set; }
-    public string? MediaContentType0 { get; set; }
-    public string? ProfileName { get; set; }
-    public string? WaId { get; set; }
-}
-
-/// <summary>
-/// Model for Twilio status callback
-/// </summary>
-public class TwilioStatusCallback
-{
-    public string? MessageSid { get; set; }
-    public string? MessageStatus { get; set; }
-    public string? To { get; set; }
-    public string? From { get; set; }
-    public string? ErrorCode { get; set; }
-    public string? ErrorMessage { get; set; }
+    public string Phone { get; set; } = "";
+    public string Message { get; set; } = "";
 }

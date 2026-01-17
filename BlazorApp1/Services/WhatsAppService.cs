@@ -2,13 +2,16 @@ using BlazorApp1.Data;
 using BlazorApp1.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace BlazorApp1.Services;
 
 /// <summary>
 /// WhatsApp communication service for technician notifications and interactions
-/// Uses Twilio WhatsApp Business API
+/// Uses Official Meta WhatsApp Business Cloud API
 /// </summary>
 public class WhatsAppService
 {
@@ -19,11 +22,17 @@ public class WhatsAppService
     private readonly HttpClient _httpClient;
     private readonly WhatsAppLLMService? _llmService;
     
-    private string AccountSid => _configuration["WhatsApp:TwilioAccountSid"] ?? "";
-    private string AuthToken => _configuration["WhatsApp:TwilioAuthToken"] ?? "";
-    private string WhatsAppNumber => _configuration["WhatsApp:FromNumber"] ?? "";
+    // Meta WhatsApp Business API Configuration
+    private string AccessToken => _configuration["WhatsApp:Meta:AccessToken"] ?? "";
+    private string PhoneNumberId => _configuration["WhatsApp:Meta:PhoneNumberId"] ?? "";
+    private string BusinessAccountId => _configuration["WhatsApp:Meta:BusinessAccountId"] ?? "";
+    private string WebhookVerifyToken => _configuration["WhatsApp:Meta:WebhookVerifyToken"] ?? "";
+    private string ApiVersion => _configuration["WhatsApp:Meta:ApiVersion"] ?? "v18.0";
+    
     private bool IsEnabled => _configuration.GetValue<bool>("WhatsApp:Enabled");
     private bool UseLLM => _configuration.GetValue<bool>("WhatsApp:UseLLM");
+    
+    private string BaseUrl => $"https://graph.facebook.com/{ApiVersion}/{PhoneNumberId}";
 
     public WhatsAppService(
         IDbContextFactory<ApplicationDbContext> contextFactory,
@@ -37,8 +46,12 @@ public class WhatsAppService
         _userManager = userManager;
         _logger = logger;
         _configuration = configuration;
-        _httpClient = httpClientFactory.CreateClient("TwilioWhatsApp");
+        _httpClient = httpClientFactory.CreateClient("MetaWhatsApp");
         _llmService = llmService;
+        
+        // Configure HttpClient for Meta API
+        _httpClient.DefaultRequestHeaders.Authorization = 
+            new AuthenticationHeaderValue("Bearer", AccessToken);
     }
 
     #region Work Order Notifications
@@ -68,7 +81,7 @@ public class WhatsAppService
             • *HELP* - Request assistance
             """;
 
-        return await SendWhatsAppMessageAsync(technicianPhone, message, workOrder.Id, WhatsAppMessageType.WorkOrderAssignment);
+        return await SendTextMessageAsync(technicianPhone, message, workOrder.Id, WhatsAppMessageType.WorkOrderAssignment);
     }
 
     /// <summary>
@@ -91,11 +104,11 @@ public class WhatsAppService
             
             Reply with:
             • *STATUS* - Update status
-            • *DELAY {"{reason}"}* - Report delay
+            • *DELAY [reason]* - Report delay
             • *COMPLETE* - Mark as done
             """;
 
-        return await SendWhatsAppMessageAsync(technicianPhone, message, workOrder.Id, WhatsAppMessageType.Reminder);
+        return await SendTextMessageAsync(technicianPhone, message, workOrder.Id, WhatsAppMessageType.Reminder);
     }
 
     /// <summary>
@@ -120,7 +133,7 @@ public class WhatsAppService
             • *ESCALATE* - Need supervisor
             """;
 
-        return await SendWhatsAppMessageAsync(technicianPhone, message, assetId, WhatsAppMessageType.CriticalAlert);
+        return await SendTextMessageAsync(technicianPhone, message, assetId, WhatsAppMessageType.CriticalAlert);
     }
 
     /// <summary>
@@ -142,7 +155,473 @@ public class WhatsAppService
             Reply *CONFIRM* to accept this assignment.
             """;
 
-        return await SendWhatsAppMessageAsync(technicianPhone, message, schedule.Id, WhatsAppMessageType.MaintenanceSchedule);
+        return await SendTextMessageAsync(technicianPhone, message, schedule.Id, WhatsAppMessageType.MaintenanceSchedule);
+    }
+
+    #endregion
+
+    #region Meta WhatsApp Cloud API - Message Sending
+
+    /// <summary>
+    /// Send a text message via Meta WhatsApp Cloud API
+    /// </summary>
+    public async Task<bool> SendTextMessageAsync(string toPhone, string message, int? relatedEntityId = null, WhatsAppMessageType messageType = WhatsAppMessageType.General)
+    {
+        if (!IsEnabled)
+        {
+            _logger.LogInformation("WhatsApp disabled. Would send to {Phone}: {Message}", toPhone, message);
+            return true;
+        }
+
+        try
+        {
+            var normalizedPhone = NormalizePhoneNumber(toPhone);
+            
+            var payload = new MetaTextMessageRequest
+            {
+                MessagingProduct = "whatsapp",
+                RecipientType = "individual",
+                To = normalizedPhone,
+                Type = "text",
+                Text = new MetaTextContent { Body = message }
+            };
+
+            var response = await SendMetaApiRequestAsync("/messages", payload);
+            
+            if (response.Success && response.MessageId != null)
+            {
+                await LogMessageAsync(normalizedPhone, message, WhatsAppMessageDirection.Outgoing, 
+                    response.MessageId, messageType, relatedEntityId);
+                
+                _logger.LogInformation("WhatsApp message sent to {Phone}, ID: {MessageId}", normalizedPhone, response.MessageId);
+                return true;
+            }
+            else
+            {
+                _logger.LogError("Failed to send WhatsApp message: {Error}", response.Error);
+                await LogMessageAsync(normalizedPhone, message, WhatsAppMessageDirection.Outgoing, 
+                    null, messageType, relatedEntityId, WhatsAppMessageStatus.Failed, response.Error);
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending WhatsApp message to {Phone}", toPhone);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Send a template message (required for business-initiated conversations outside 24h window)
+    /// </summary>
+    public async Task<bool> SendTemplateMessageAsync(string toPhone, string templateName, string languageCode = "en", 
+        List<MetaTemplateComponent>? components = null)
+    {
+        if (!IsEnabled)
+            return false;
+
+        try
+        {
+            var normalizedPhone = NormalizePhoneNumber(toPhone);
+            
+            var payload = new MetaTemplateMessageRequest
+            {
+                MessagingProduct = "whatsapp",
+                To = normalizedPhone,
+                Type = "template",
+                Template = new MetaTemplate
+                {
+                    Name = templateName,
+                    Language = new MetaLanguage { Code = languageCode },
+                    Components = components
+                }
+            };
+
+            var response = await SendMetaApiRequestAsync("/messages", payload);
+            
+            if (response.Success)
+            {
+                _logger.LogInformation("Template message '{Template}' sent to {Phone}", templateName, normalizedPhone);
+                return true;
+            }
+            
+            _logger.LogError("Failed to send template message: {Error}", response.Error);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending template message to {Phone}", toPhone);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Send an interactive button message
+    /// </summary>
+    public async Task<bool> SendInteractiveButtonsAsync(string toPhone, string bodyText, string footerText, 
+        List<MetaInteractiveButton> buttons)
+    {
+        if (!IsEnabled)
+            return false;
+
+        try
+        {
+            var normalizedPhone = NormalizePhoneNumber(toPhone);
+            
+            var payload = new MetaInteractiveMessageRequest
+            {
+                MessagingProduct = "whatsapp",
+                RecipientType = "individual",
+                To = normalizedPhone,
+                Type = "interactive",
+                Interactive = new MetaInteractiveContent
+                {
+                    Type = "button",
+                    Body = new MetaInteractiveBody { Text = bodyText },
+                    Footer = string.IsNullOrEmpty(footerText) ? null : new MetaInteractiveFooter { Text = footerText },
+                    Action = new MetaInteractiveAction { Buttons = buttons }
+                }
+            };
+
+            var response = await SendMetaApiRequestAsync("/messages", payload);
+            return response.Success;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending interactive buttons to {Phone}", toPhone);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Send an interactive list message
+    /// </summary>
+    public async Task<bool> SendInteractiveListAsync(string toPhone, string headerText, string bodyText, 
+        string buttonText, List<MetaInteractiveSection> sections)
+    {
+        if (!IsEnabled)
+            return false;
+
+        try
+        {
+            var normalizedPhone = NormalizePhoneNumber(toPhone);
+            
+            var payload = new MetaInteractiveMessageRequest
+            {
+                MessagingProduct = "whatsapp",
+                RecipientType = "individual",
+                To = normalizedPhone,
+                Type = "interactive",
+                Interactive = new MetaInteractiveContent
+                {
+                    Type = "list",
+                    Header = string.IsNullOrEmpty(headerText) ? null : new MetaInteractiveHeader { Type = "text", Text = headerText },
+                    Body = new MetaInteractiveBody { Text = bodyText },
+                    Action = new MetaInteractiveAction 
+                    { 
+                        Button = buttonText,
+                        Sections = sections 
+                    }
+                }
+            };
+
+            var response = await SendMetaApiRequestAsync("/messages", payload);
+            return response.Success;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending interactive list to {Phone}", toPhone);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Send a document/file message
+    /// </summary>
+    public async Task<bool> SendDocumentAsync(string toPhone, string documentUrl, string? filename = null, string? caption = null)
+    {
+        if (!IsEnabled)
+            return false;
+
+        try
+        {
+            var normalizedPhone = NormalizePhoneNumber(toPhone);
+            
+            var payload = new MetaMediaMessageRequest
+            {
+                MessagingProduct = "whatsapp",
+                RecipientType = "individual",
+                To = normalizedPhone,
+                Type = "document",
+                Document = new MetaMediaContent
+                {
+                    Link = documentUrl,
+                    Filename = filename,
+                    Caption = caption
+                }
+            };
+
+            var response = await SendMetaApiRequestAsync("/messages", payload);
+            return response.Success;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending document to {Phone}", toPhone);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Send an image message
+    /// </summary>
+    public async Task<bool> SendImageAsync(string toPhone, string imageUrl, string? caption = null)
+    {
+        if (!IsEnabled)
+            return false;
+
+        try
+        {
+            var normalizedPhone = NormalizePhoneNumber(toPhone);
+            
+            var payload = new MetaMediaMessageRequest
+            {
+                MessagingProduct = "whatsapp",
+                RecipientType = "individual",
+                To = normalizedPhone,
+                Type = "image",
+                Image = new MetaMediaContent
+                {
+                    Link = imageUrl,
+                    Caption = caption
+                }
+            };
+
+            var response = await SendMetaApiRequestAsync("/messages", payload);
+            return response.Success;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending image to {Phone}", toPhone);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Mark a message as read
+    /// </summary>
+    public async Task<bool> MarkMessageAsReadAsync(string messageId)
+    {
+        if (!IsEnabled || string.IsNullOrEmpty(messageId))
+            return false;
+
+        try
+        {
+            var payload = new
+            {
+                messaging_product = "whatsapp",
+                status = "read",
+                message_id = messageId
+            };
+
+            var response = await SendMetaApiRequestAsync("/messages", payload);
+            return response.Success;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error marking message as read: {MessageId}", messageId);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Send request to Meta Graph API
+    /// </summary>
+    private async Task<MetaApiResponse> SendMetaApiRequestAsync<T>(string endpoint, T payload)
+    {
+        try
+        {
+            var url = $"{BaseUrl}{endpoint}";
+            var jsonOptions = new JsonSerializerOptions 
+            { 
+                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            };
+            
+            var json = JsonSerializer.Serialize(payload, jsonOptions);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            _logger.LogDebug("Sending to Meta API: {Url} - {Payload}", url, json);
+
+            var response = await _httpClient.PostAsync(url, content);
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            _logger.LogDebug("Meta API response: {StatusCode} - {Body}", response.StatusCode, responseBody);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = JsonSerializer.Deserialize<MetaMessageResponse>(responseBody, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                return new MetaApiResponse
+                {
+                    Success = true,
+                    MessageId = result?.Messages?.FirstOrDefault()?.Id
+                };
+            }
+            else
+            {
+                var error = JsonSerializer.Deserialize<MetaErrorResponse>(responseBody, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                return new MetaApiResponse
+                {
+                    Success = false,
+                    Error = error?.Error?.Message ?? $"HTTP {response.StatusCode}: {responseBody}"
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            return new MetaApiResponse
+            {
+                Success = false,
+                Error = ex.Message
+            };
+        }
+    }
+
+    #endregion
+
+    #region Webhook Processing
+
+    /// <summary>
+    /// Verify webhook from Meta (for initial setup)
+    /// </summary>
+    public bool VerifyWebhook(string mode, string token, string challenge, out string? response)
+    {
+        response = null;
+        
+        if (mode == "subscribe" && token == WebhookVerifyToken)
+        {
+            response = challenge;
+            _logger.LogInformation("Webhook verified successfully");
+            return true;
+        }
+        
+        _logger.LogWarning("Webhook verification failed. Mode: {Mode}, Token valid: {TokenValid}", 
+            mode, token == WebhookVerifyToken);
+        return false;
+    }
+
+    /// <summary>
+    /// Process incoming webhook from Meta
+    /// </summary>
+    public async Task<WhatsAppResponse> ProcessWebhookAsync(MetaWebhookPayload payload)
+    {
+        try
+        {
+            if (payload.Entry == null || !payload.Entry.Any())
+            {
+                return new WhatsAppResponse { Success = false, Message = "No entry in webhook" };
+            }
+
+            foreach (var entry in payload.Entry)
+            {
+                foreach (var change in entry.Changes ?? [])
+                {
+                    if (change.Value?.Messages != null)
+                    {
+                        foreach (var message in change.Value.Messages)
+                        {
+                            var result = await ProcessIncomingMessageAsync(
+                                message.From,
+                                GetMessageText(message),
+                                message.Id);
+                            
+                            // Send reply
+                            if (!string.IsNullOrEmpty(result.Message))
+                            {
+                                await SendTextMessageAsync(message.From, result.Message);
+                            }
+                        }
+                    }
+                    
+                    // Process status updates
+                    if (change.Value?.Statuses != null)
+                    {
+                        foreach (var status in change.Value.Statuses)
+                        {
+                            await ProcessStatusUpdateAsync(status);
+                        }
+                    }
+                }
+            }
+
+            return new WhatsAppResponse { Success = true, Message = "Webhook processed" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing webhook");
+            return new WhatsAppResponse { Success = false, Message = ex.Message };
+        }
+    }
+
+    /// <summary>
+    /// Extract text content from different message types
+    /// </summary>
+    private string GetMessageText(MetaWebhookMessage message)
+    {
+        return message.Type switch
+        {
+            "text" => message.Text?.Body ?? "",
+            "interactive" => message.Interactive?.ButtonReply?.Id ?? 
+                            message.Interactive?.ListReply?.Id ?? "",
+            "button" => message.Button?.Text ?? "",
+            _ => ""
+        };
+    }
+
+    /// <summary>
+    /// Process status update from webhook
+    /// </summary>
+    private async Task ProcessStatusUpdateAsync(MetaWebhookStatus status)
+    {
+        try
+        {
+            await using var context = await _contextFactory.CreateDbContextAsync();
+            
+            var log = await context.Set<WhatsAppMessageLog>()
+                .FirstOrDefaultAsync(l => l.ExternalMessageId == status.Id);
+
+            if (log != null)
+            {
+                log.Status = status.Status switch
+                {
+                    "sent" => WhatsAppMessageStatus.Sent,
+                    "delivered" => WhatsAppMessageStatus.Delivered,
+                    "read" => WhatsAppMessageStatus.Read,
+                    "failed" => WhatsAppMessageStatus.Failed,
+                    _ => log.Status
+                };
+
+                if (status.Status == "delivered")
+                    log.DeliveredAt = DateTime.Now;
+                else if (status.Status == "read")
+                    log.ReadAt = DateTime.Now;
+                else if (status.Status == "failed")
+                    log.ErrorMessage = status.Errors?.FirstOrDefault()?.Message;
+
+                await context.SaveChangesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing status update for message {MessageId}", status.Id);
+        }
     }
 
     #endregion
@@ -159,10 +638,16 @@ public class WhatsAppService
         
         _logger.LogInformation("Processing WhatsApp message from {Phone}: {Message}", normalizedPhone, messageBody);
 
+        // Mark message as read
+        if (!string.IsNullOrEmpty(messageId))
+        {
+            _ = MarkMessageAsReadAsync(messageId);
+        }
+
         // Log incoming message
         await LogMessageAsync(normalizedPhone, messageBody, WhatsAppMessageDirection.Incoming, messageId);
 
-        // Find user by phone number - check ApplicationUser (Identity) first
+        // Find user by phone number
         var identityUser = await FindUserByPhoneAsync(normalizedPhone, fromPhone);
         
         if (identityUser == null)
@@ -170,7 +655,7 @@ public class WhatsAppService
             return new WhatsAppResponse
             {
                 Success = false,
-                Message = "Phone number not registered. Please contact your administrator to link your phone to your account."
+                Message = "?? Phone number not registered.\n\nPlease contact your administrator to link your phone to your account."
             };
         }
 
@@ -180,7 +665,6 @@ public class WhatsAppService
         // Check if LLM mode is enabled and this is not a direct command
         if (UseLLM && _llmService != null && !IsDirectCommand(command))
         {
-            // Use LLM for natural language processing
             var llmResponse = await _llmService.ProcessMessageAsync(messageBody, userName, userId);
             
             var responseMessage = llmResponse.Message;
@@ -196,7 +680,7 @@ public class WhatsAppService
             };
         }
 
-        // Fallback to command-based processing
+        // Command-based processing
         return command switch
         {
             "HELP" or "?" => await GetHelpMenuAsync(),
@@ -219,14 +703,11 @@ public class WhatsAppService
                 : new WhatsAppResponse
                 {
                     Success = false,
-                    Message = "Unknown command. Reply *HELP* for available commands."
+                    Message = "? Unknown command.\n\nReply *HELP* for available commands."
                 }
         };
     }
 
-    /// <summary>
-    /// Check if the message is a direct command (should bypass LLM)
-    /// </summary>
     private bool IsDirectCommand(string command)
     {
         var directCommands = new[] 
@@ -238,9 +719,6 @@ public class WhatsAppService
         return directCommands.Any(c => command == c || command.StartsWith(c + " "));
     }
 
-    /// <summary>
-    /// Process message with LLM as fallback
-    /// </summary>
     private async Task<WhatsAppResponse> ProcessWithLLMFallbackAsync(string message, string userName, string userId)
     {
         if (_llmService == null)
@@ -248,7 +726,7 @@ public class WhatsAppService
             return new WhatsAppResponse
             {
                 Success = false,
-                Message = "Unknown command. Reply *HELP* for available commands."
+                Message = "? Unknown command.\n\nReply *HELP* for available commands."
             };
         }
 
@@ -269,7 +747,6 @@ public class WhatsAppService
 
     private async Task<ApplicationUser?> FindUserByPhoneAsync(string normalizedPhone, string originalPhone)
     {
-        // Try to find by normalized phone
         var users = _userManager.Users.ToList();
         
         foreach (var user in users)
@@ -285,10 +762,6 @@ public class WhatsAppService
         return null;
     }
 
-    /// <summary>
-    /// Verify that a work order belongs to the specified technician
-    /// This ensures technicians can only access their own assigned work orders
-    /// </summary>
     private async Task<(bool IsAuthorized, WorkOrder? WorkOrder)> VerifyWorkOrderOwnershipAsync(string workOrderId, string userName)
     {
         await using var context = await _contextFactory.CreateDbContextAsync();
@@ -297,11 +770,8 @@ public class WhatsAppService
             .FirstOrDefaultAsync(w => w.WorkOrderId == workOrderId);
 
         if (workOrder == null)
-        {
             return (false, null);
-        }
 
-        // Check if work order is assigned to this technician
         var isOwner = workOrder.AssignedTo == userName ||
                      string.Equals(workOrder.AssignedTo, userName, StringComparison.OrdinalIgnoreCase);
 
@@ -315,27 +785,9 @@ public class WhatsAppService
         return (isOwner, isOwner ? workOrder : null);
     }
 
-    /// <summary>
-    /// Get work orders that belong to the specified technician only
-    /// </summary>
-    private async Task<List<WorkOrder>> GetTechnicianWorkOrdersAsync(string userName, bool activeOnly = true)
-    {
-        await using var context = await _contextFactory.CreateDbContextAsync();
-        
-        var query = context.Set<WorkOrder>()
-            .Where(w => w.AssignedTo == userName);
+    #endregion
 
-        if (activeOnly)
-        {
-            query = query.Where(w => w.Status != "Completed" && w.Status != "Cancelled");
-        }
-
-        return await query
-            .OrderByDescending(w => w.Priority == "Critical")
-            .ThenByDescending(w => w.Priority == "High")
-            .ThenBy(w => w.DueDate)
-            .ToListAsync();
-    }
+    #region Work Order Commands
 
     private async Task<WhatsAppResponse> GetHelpMenuAsync()
     {
@@ -354,8 +806,8 @@ public class WhatsAppService
             • COMPLETE WO-123 - Complete specific WO
             
             ?? *Updates:*
-            • DELAY {reason} - Report delay
-            • NOTE {text} - Add note to latest WO
+            • DELAY [reason] - Report delay
+            • NOTE [text] - Add note to latest WO
             • ESCALATE - Request supervisor help
             
             ?? *Alerts:*
@@ -483,7 +935,6 @@ public class WhatsAppService
 
     private async Task<WhatsAppResponse> AcknowledgeWorkOrderAsync(string woId, string userName)
     {
-        // Verify the technician owns this work order
         var (isAuthorized, workOrder) = await VerifyWorkOrderOwnershipAsync(woId, userName);
         
         if (workOrder == null)
@@ -496,7 +947,7 @@ public class WhatsAppService
             return new WhatsAppResponse 
             { 
                 Success = false, 
-                Message = $"?? Work Order *{woId}* is not assigned to you. You can only manage your own work orders." 
+                Message = $"?? Work Order *{woId}* is not assigned to you." 
             };
         }
 
@@ -522,7 +973,6 @@ public class WhatsAppService
     {
         await using var context = await _contextFactory.CreateDbContextAsync();
         
-        // Only get work orders assigned to this technician
         var workOrder = await context.Set<WorkOrder>()
             .Where(w => w.AssignedTo == userName)
             .Where(w => w.Status == "Open" && w.IsAcknowledged)
@@ -542,13 +992,12 @@ public class WhatsAppService
         return new WhatsAppResponse
         {
             Success = true,
-            Message = $"?? Work Order *{workOrder.WorkOrderId}* started.\n?? Timer running.\n\nReply *COMPLETE* when finished or *NOTE {"{details}"}* to add notes."
+            Message = $"?? Work Order *{workOrder.WorkOrderId}* started.\n?? Timer running.\n\nReply *COMPLETE* when finished."
         };
     }
 
     private async Task<WhatsAppResponse> StartWorkOrderAsync(string woId, string userName)
     {
-        // Verify the technician owns this work order
         var (isAuthorized, workOrder) = await VerifyWorkOrderOwnershipAsync(woId, userName);
         
         if (workOrder == null)
@@ -561,7 +1010,7 @@ public class WhatsAppService
             return new WhatsAppResponse 
             { 
                 Success = false, 
-                Message = $"?? Work Order *{woId}* is not assigned to you. You can only manage your own work orders." 
+                Message = $"?? Work Order *{woId}* is not assigned to you." 
             };
         }
 
@@ -626,7 +1075,6 @@ public class WhatsAppService
 
     private async Task<WhatsAppResponse> CompleteWorkOrderAsync(string woId, string userName)
     {
-        // Verify the technician owns this work order
         var (isAuthorized, workOrder) = await VerifyWorkOrderOwnershipAsync(woId, userName);
         
         if (workOrder == null)
@@ -639,7 +1087,7 @@ public class WhatsAppService
             return new WhatsAppResponse 
             { 
                 Success = false, 
-                Message = $"?? Work Order *{woId}* is not assigned to you. You can only manage your own work orders." 
+                Message = $"?? Work Order *{woId}* is not assigned to you." 
             };
         }
 
@@ -682,7 +1130,6 @@ public class WhatsAppService
             return new WhatsAppResponse { Success = false, Message = "No active work order found to report delay." };
         }
 
-        // Add delay note
         workOrder.CompletionNotes = string.IsNullOrEmpty(workOrder.CompletionNotes)
             ? $"[{DateTime.Now:MMM dd HH:mm}] DELAY: {reason}"
             : $"{workOrder.CompletionNotes}\n[{DateTime.Now:MMM dd HH:mm}] DELAY: {reason}";
@@ -755,7 +1202,6 @@ public class WhatsAppService
 
     private Task<WhatsAppResponse> MarkRespondingAsync(string userId)
     {
-        // This would integrate with your alert system
         return Task.FromResult(new WhatsAppResponse
         {
             Success = true,
@@ -774,109 +1220,11 @@ public class WhatsAppService
 
     #endregion
 
-    #region Core Messaging
-
-    /// <summary>
-    /// Send WhatsApp message via Twilio API
-    /// </summary>
-    private async Task<bool> SendWhatsAppMessageAsync(string toPhone, string message, int? relatedEntityId, WhatsAppMessageType messageType)
-    {
-        if (!IsEnabled)
-        {
-            _logger.LogInformation("WhatsApp disabled. Would send to {Phone}: {Message}", toPhone, message);
-            return true;
-        }
-
-        try
-        {
-            var normalizedPhone = NormalizePhoneNumber(toPhone);
-            
-            // Twilio API endpoint
-            var url = $"https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Messages.json";
-            
-            var content = new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["From"] = $"whatsapp:{WhatsAppNumber}",
-                ["To"] = $"whatsapp:{normalizedPhone}",
-                ["Body"] = message
-            });
-
-            // Add Basic Auth
-            var authBytes = System.Text.Encoding.ASCII.GetBytes($"{AccountSid}:{AuthToken}");
-            _httpClient.DefaultRequestHeaders.Authorization = 
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", Convert.ToBase64String(authBytes));
-
-            var response = await _httpClient.PostAsync(url, content);
-            
-            if (response.IsSuccessStatusCode)
-            {
-                var responseBody = await response.Content.ReadAsStringAsync();
-                var messageData = JsonSerializer.Deserialize<JsonElement>(responseBody);
-                var messageSid = messageData.GetProperty("sid").GetString();
-                
-                await LogMessageAsync(normalizedPhone, message, WhatsAppMessageDirection.Outgoing, messageSid, messageType, relatedEntityId);
-                
-                _logger.LogInformation("WhatsApp message sent to {Phone}, SID: {Sid}", normalizedPhone, messageSid);
-                return true;
-            }
-            else
-            {
-                var errorBody = await response.Content.ReadAsStringAsync();
-                _logger.LogError("Failed to send WhatsApp message: {StatusCode} - {Error}", response.StatusCode, errorBody);
-                return false;
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error sending WhatsApp message to {Phone}", toPhone);
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// Send template message (for business-initiated conversations)
-    /// </summary>
-    public async Task<bool> SendTemplateMessageAsync(string toPhone, string templateName, Dictionary<string, string> parameters)
-    {
-        if (!IsEnabled)
-            return false;
-
-        try
-        {
-            var normalizedPhone = NormalizePhoneNumber(toPhone);
-            var url = $"https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Messages.json";
-            
-            // Build content SID for template
-            var contentVariables = JsonSerializer.Serialize(parameters);
-            
-            var formContent = new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["From"] = $"whatsapp:{WhatsAppNumber}",
-                ["To"] = $"whatsapp:{normalizedPhone}",
-                ["ContentSid"] = templateName,
-                ["ContentVariables"] = contentVariables
-            });
-
-            var authBytes = System.Text.Encoding.ASCII.GetBytes($"{AccountSid}:{AuthToken}");
-            _httpClient.DefaultRequestHeaders.Authorization = 
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", Convert.ToBase64String(authBytes));
-
-            var response = await _httpClient.PostAsync(url, formContent);
-            return response.IsSuccessStatusCode;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error sending template message to {Phone}", toPhone);
-            return false;
-        }
-    }
-
-    #endregion
-
     #region Logging & Utilities
 
     private async Task LogMessageAsync(string phone, string message, WhatsAppMessageDirection direction, 
-        string? externalId = null, WhatsAppMessageType? messageType = null, int? relatedEntityId = null)
+        string? externalId = null, WhatsAppMessageType? messageType = null, int? relatedEntityId = null,
+        WhatsAppMessageStatus status = WhatsAppMessageStatus.Sent, string? errorMessage = null)
     {
         try
         {
@@ -891,7 +1239,8 @@ public class WhatsAppService
                 MessageType = messageType ?? WhatsAppMessageType.General,
                 RelatedEntityId = relatedEntityId,
                 Timestamp = DateTime.Now,
-                Status = WhatsAppMessageStatus.Sent
+                Status = status,
+                ErrorMessage = errorMessage
             };
 
             context.Set<WhatsAppMessageLog>().Add(log);
@@ -908,11 +1257,11 @@ public class WhatsAppService
         // Remove all non-digit characters
         var digits = new string(phone.Where(char.IsDigit).ToArray());
         
-        // Ensure it starts with country code (assume +1 if not present)
+        // Ensure it starts with country code (assume +1 if not present for 10-digit US numbers)
         if (digits.Length == 10)
             digits = "1" + digits;
         
-        return "+" + digits;
+        return digits; // Meta API expects phone without + prefix
     }
 
     private static string GetPriorityEmoji(string priority) => priority switch
@@ -937,12 +1286,581 @@ public class WhatsAppService
     #endregion
 }
 
-/// <summary>
-/// Response from WhatsApp message processing
-/// </summary>
+#region Response Classes
+
 public class WhatsAppResponse
 {
     public bool Success { get; set; }
     public string Message { get; set; } = "";
     public Dictionary<string, object>? Data { get; set; }
 }
+
+public class MetaApiResponse
+{
+    public bool Success { get; set; }
+    public string? MessageId { get; set; }
+    public string? Error { get; set; }
+}
+
+#endregion
+
+#region Meta API Request Models
+
+public class MetaTextMessageRequest
+{
+    [JsonPropertyName("messaging_product")]
+    public string MessagingProduct { get; set; } = "whatsapp";
+    
+    [JsonPropertyName("recipient_type")]
+    public string RecipientType { get; set; } = "individual";
+    
+    [JsonPropertyName("to")]
+    public string To { get; set; } = "";
+    
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "text";
+    
+    [JsonPropertyName("text")]
+    public MetaTextContent? Text { get; set; }
+}
+
+public class MetaTextContent
+{
+    [JsonPropertyName("preview_url")]
+    public bool PreviewUrl { get; set; } = false;
+    
+    [JsonPropertyName("body")]
+    public string Body { get; set; } = "";
+}
+
+public class MetaTemplateMessageRequest
+{
+    [JsonPropertyName("messaging_product")]
+    public string MessagingProduct { get; set; } = "whatsapp";
+    
+    [JsonPropertyName("to")]
+    public string To { get; set; } = "";
+    
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "template";
+    
+    [JsonPropertyName("template")]
+    public MetaTemplate? Template { get; set; }
+}
+
+public class MetaTemplate
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+    
+    [JsonPropertyName("language")]
+    public MetaLanguage? Language { get; set; }
+    
+    [JsonPropertyName("components")]
+    public List<MetaTemplateComponent>? Components { get; set; }
+}
+
+public class MetaLanguage
+{
+    [JsonPropertyName("code")]
+    public string Code { get; set; } = "en";
+}
+
+public class MetaTemplateComponent
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = ""; // header, body, button
+    
+    [JsonPropertyName("parameters")]
+    public List<MetaTemplateParameter>? Parameters { get; set; }
+    
+    [JsonPropertyName("sub_type")]
+    public string? SubType { get; set; } // quick_reply, url
+    
+    [JsonPropertyName("index")]
+    public int? Index { get; set; }
+}
+
+public class MetaTemplateParameter
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "text"; // text, currency, date_time, image, document, video
+    
+    [JsonPropertyName("text")]
+    public string? Text { get; set; }
+    
+    [JsonPropertyName("image")]
+    public MetaMediaContent? Image { get; set; }
+    
+    [JsonPropertyName("document")]
+    public MetaMediaContent? Document { get; set; }
+}
+
+public class MetaInteractiveMessageRequest
+{
+    [JsonPropertyName("messaging_product")]
+    public string MessagingProduct { get; set; } = "whatsapp";
+    
+    [JsonPropertyName("recipient_type")]
+    public string RecipientType { get; set; } = "individual";
+    
+    [JsonPropertyName("to")]
+    public string To { get; set; } = "";
+    
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "interactive";
+    
+    [JsonPropertyName("interactive")]
+    public MetaInteractiveContent? Interactive { get; set; }
+}
+
+public class MetaInteractiveContent
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = ""; // button, list, product, product_list
+    
+    [JsonPropertyName("header")]
+    public MetaInteractiveHeader? Header { get; set; }
+    
+    [JsonPropertyName("body")]
+    public MetaInteractiveBody? Body { get; set; }
+    
+    [JsonPropertyName("footer")]
+    public MetaInteractiveFooter? Footer { get; set; }
+    
+    [JsonPropertyName("action")]
+    public MetaInteractiveAction? Action { get; set; }
+}
+
+public class MetaInteractiveHeader
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "text"; // text, image, video, document
+    
+    [JsonPropertyName("text")]
+    public string? Text { get; set; }
+}
+
+public class MetaInteractiveBody
+{
+    [JsonPropertyName("text")]
+    public string Text { get; set; } = "";
+}
+
+public class MetaInteractiveFooter
+{
+    [JsonPropertyName("text")]
+    public string Text { get; set; } = "";
+}
+
+public class MetaInteractiveAction
+{
+    [JsonPropertyName("button")]
+    public string? Button { get; set; } // For list messages
+    
+    [JsonPropertyName("buttons")]
+    public List<MetaInteractiveButton>? Buttons { get; set; } // For button messages
+    
+    [JsonPropertyName("sections")]
+    public List<MetaInteractiveSection>? Sections { get; set; } // For list messages
+}
+
+public class MetaInteractiveButton
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "reply";
+    
+    [JsonPropertyName("reply")]
+    public MetaButtonReply? Reply { get; set; }
+}
+
+public class MetaButtonReply
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = "";
+    
+    [JsonPropertyName("title")]
+    public string Title { get; set; } = "";
+}
+
+public class MetaInteractiveSection
+{
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
+    
+    [JsonPropertyName("rows")]
+    public List<MetaInteractiveRow>? Rows { get; set; }
+}
+
+public class MetaInteractiveRow
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = "";
+    
+    [JsonPropertyName("title")]
+    public string Title { get; set; } = "";
+    
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+}
+
+public class MetaMediaMessageRequest
+{
+    [JsonPropertyName("messaging_product")]
+    public string MessagingProduct { get; set; } = "whatsapp";
+    
+    [JsonPropertyName("recipient_type")]
+    public string RecipientType { get; set; } = "individual";
+    
+    [JsonPropertyName("to")]
+    public string To { get; set; } = "";
+    
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "";
+    
+    [JsonPropertyName("image")]
+    public MetaMediaContent? Image { get; set; }
+    
+    [JsonPropertyName("document")]
+    public MetaMediaContent? Document { get; set; }
+    
+    [JsonPropertyName("video")]
+    public MetaMediaContent? Video { get; set; }
+    
+    [JsonPropertyName("audio")]
+    public MetaMediaContent? Audio { get; set; }
+}
+
+public class MetaMediaContent
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; set; } // Media ID if uploaded
+    
+    [JsonPropertyName("link")]
+    public string? Link { get; set; } // URL if hosted externally
+    
+    [JsonPropertyName("caption")]
+    public string? Caption { get; set; }
+    
+    [JsonPropertyName("filename")]
+    public string? Filename { get; set; }
+}
+
+#endregion
+
+#region Meta API Response Models
+
+public class MetaMessageResponse
+{
+    [JsonPropertyName("messaging_product")]
+    public string? MessagingProduct { get; set; }
+    
+    [JsonPropertyName("contacts")]
+    public List<MetaContact>? Contacts { get; set; }
+    
+    [JsonPropertyName("messages")]
+    public List<MetaMessageInfo>? Messages { get; set; }
+}
+
+public class MetaContact
+{
+    [JsonPropertyName("input")]
+    public string? Input { get; set; }
+    
+    [JsonPropertyName("wa_id")]
+    public string? WaId { get; set; }
+}
+
+public class MetaMessageInfo
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+}
+
+public class MetaErrorResponse
+{
+    [JsonPropertyName("error")]
+    public MetaError? Error { get; set; }
+}
+
+public class MetaError
+{
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+    
+    [JsonPropertyName("type")]
+    public string? Type { get; set; }
+    
+    [JsonPropertyName("code")]
+    public int? Code { get; set; }
+    
+    [JsonPropertyName("error_subcode")]
+    public int? ErrorSubcode { get; set; }
+    
+    [JsonPropertyName("fbtrace_id")]
+    public string? FbTraceId { get; set; }
+}
+
+#endregion
+
+#region Meta Webhook Models
+
+public class MetaWebhookPayload
+{
+    [JsonPropertyName("object")]
+    public string? Object { get; set; }
+    
+    [JsonPropertyName("entry")]
+    public List<MetaWebhookEntry>? Entry { get; set; }
+}
+
+public class MetaWebhookEntry
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+    
+    [JsonPropertyName("changes")]
+    public List<MetaWebhookChange>? Changes { get; set; }
+}
+
+public class MetaWebhookChange
+{
+    [JsonPropertyName("value")]
+    public MetaWebhookValue? Value { get; set; }
+    
+    [JsonPropertyName("field")]
+    public string? Field { get; set; }
+}
+
+public class MetaWebhookValue
+{
+    [JsonPropertyName("messaging_product")]
+    public string? MessagingProduct { get; set; }
+    
+    [JsonPropertyName("metadata")]
+    public MetaWebhookMetadata? Metadata { get; set; }
+    
+    [JsonPropertyName("contacts")]
+    public List<MetaWebhookContact>? Contacts { get; set; }
+    
+    [JsonPropertyName("messages")]
+    public List<MetaWebhookMessage>? Messages { get; set; }
+    
+    [JsonPropertyName("statuses")]
+    public List<MetaWebhookStatus>? Statuses { get; set; }
+}
+
+public class MetaWebhookMetadata
+{
+    [JsonPropertyName("display_phone_number")]
+    public string? DisplayPhoneNumber { get; set; }
+    
+    [JsonPropertyName("phone_number_id")]
+    public string? PhoneNumberId { get; set; }
+}
+
+public class MetaWebhookContact
+{
+    [JsonPropertyName("profile")]
+    public MetaWebhookProfile? Profile { get; set; }
+    
+    [JsonPropertyName("wa_id")]
+    public string? WaId { get; set; }
+}
+
+public class MetaWebhookProfile
+{
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+}
+
+public class MetaWebhookMessage
+{
+    [JsonPropertyName("from")]
+    public string From { get; set; } = "";
+    
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = "";
+    
+    [JsonPropertyName("timestamp")]
+    public string? Timestamp { get; set; }
+    
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "";
+    
+    [JsonPropertyName("text")]
+    public MetaWebhookText? Text { get; set; }
+    
+    [JsonPropertyName("image")]
+    public MetaWebhookMedia? Image { get; set; }
+    
+    [JsonPropertyName("document")]
+    public MetaWebhookMedia? Document { get; set; }
+    
+    [JsonPropertyName("audio")]
+    public MetaWebhookMedia? Audio { get; set; }
+    
+    [JsonPropertyName("video")]
+    public MetaWebhookMedia? Video { get; set; }
+    
+    [JsonPropertyName("interactive")]
+    public MetaWebhookInteractive? Interactive { get; set; }
+    
+    [JsonPropertyName("button")]
+    public MetaWebhookButton? Button { get; set; }
+    
+    [JsonPropertyName("context")]
+    public MetaWebhookContext? Context { get; set; }
+}
+
+public class MetaWebhookText
+{
+    [JsonPropertyName("body")]
+    public string? Body { get; set; }
+}
+
+public class MetaWebhookMedia
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+    
+    [JsonPropertyName("mime_type")]
+    public string? MimeType { get; set; }
+    
+    [JsonPropertyName("sha256")]
+    public string? Sha256 { get; set; }
+    
+    [JsonPropertyName("caption")]
+    public string? Caption { get; set; }
+    
+    [JsonPropertyName("filename")]
+    public string? Filename { get; set; }
+}
+
+public class MetaWebhookInteractive
+{
+    [JsonPropertyName("type")]
+    public string? Type { get; set; }
+    
+    [JsonPropertyName("button_reply")]
+    public MetaWebhookButtonReply? ButtonReply { get; set; }
+    
+    [JsonPropertyName("list_reply")]
+    public MetaWebhookListReply? ListReply { get; set; }
+}
+
+public class MetaWebhookButtonReply
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+    
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
+}
+
+public class MetaWebhookListReply
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+    
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
+    
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+}
+
+public class MetaWebhookButton
+{
+    [JsonPropertyName("text")]
+    public string? Text { get; set; }
+    
+    [JsonPropertyName("payload")]
+    public string? Payload { get; set; }
+}
+
+public class MetaWebhookContext
+{
+    [JsonPropertyName("from")]
+    public string? From { get; set; }
+    
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+}
+
+public class MetaWebhookStatus
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = "";
+    
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "";
+    
+    [JsonPropertyName("timestamp")]
+    public string? Timestamp { get; set; }
+    
+    [JsonPropertyName("recipient_id")]
+    public string? RecipientId { get; set; }
+    
+    [JsonPropertyName("conversation")]
+    public MetaWebhookConversation? Conversation { get; set; }
+    
+    [JsonPropertyName("pricing")]
+    public MetaWebhookPricing? Pricing { get; set; }
+    
+    [JsonPropertyName("errors")]
+    public List<MetaWebhookError>? Errors { get; set; }
+}
+
+public class MetaWebhookConversation
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+    
+    [JsonPropertyName("origin")]
+    public MetaWebhookOrigin? Origin { get; set; }
+    
+    [JsonPropertyName("expiration_timestamp")]
+    public string? ExpirationTimestamp { get; set; }
+}
+
+public class MetaWebhookOrigin
+{
+    [JsonPropertyName("type")]
+    public string? Type { get; set; }
+}
+
+public class MetaWebhookPricing
+{
+    [JsonPropertyName("billable")]
+    public bool? Billable { get; set; }
+    
+    [JsonPropertyName("pricing_model")]
+    public string? PricingModel { get; set; }
+    
+    [JsonPropertyName("category")]
+    public string? Category { get; set; }
+}
+
+public class MetaWebhookError
+{
+    [JsonPropertyName("code")]
+    public int? Code { get; set; }
+    
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
+    
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+    
+    [JsonPropertyName("error_data")]
+    public MetaWebhookErrorData? ErrorData { get; set; }
+}
+
+public class MetaWebhookErrorData
+{
+    [JsonPropertyName("details")]
+    public string? Details { get; set; }
+}
+
+#endregion

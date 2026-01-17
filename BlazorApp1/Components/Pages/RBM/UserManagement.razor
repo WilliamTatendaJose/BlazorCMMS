@@ -5,9 +5,12 @@
 @using Microsoft.AspNetCore.Identity
 @using BlazorApp1.Data
 @using BlazorApp1.Services
+@using BlazorApp1.Models
 @attribute [Authorize(Roles = "SuperAdmin,TenantAdmin,Admin")]
 @inject UserManagementService UserService
 @inject RolePermissionService PermissionService
+@inject ITenantManagementService TenantService
+@inject CurrentUserService CurrentUser
 @inject NavigationManager Navigation
 
 <PageTitle>User Management | RBM CMMS</PageTitle>
@@ -19,7 +22,17 @@
             <p class="rbm-page-subtitle">Manage users, roles, and access permissions</p>
             @if (!string.IsNullOrEmpty(currentUserRole))
             {
-                <span class="rbm-badge" style="margin-top: 8px;">Your Role: @currentUserRole</span>
+                <div style="display: flex; gap: 8px; margin-top: 8px;">
+                    <span class="rbm-badge">Your Role: @currentUserRole</span>
+                    @if (isSuperAdmin)
+                    {
+                        <span class="rbm-badge rbm-badge-primary">SuperAdmin Mode</span>
+                    }
+                    else if (currentTenantName != null)
+                    {
+                        <span class="rbm-badge rbm-badge-info">Tenant: @currentTenantName</span>
+                    }
+                </div>
             }
         </div>
     </div>
@@ -87,6 +100,17 @@ else
             </div>
         </div>
         <div style="display: flex; gap: 12px;">
+            @if (isSuperAdmin && tenants.Count > 0)
+            {
+                <select class="rbm-form-select" @bind="filterTenant" style="min-width: 180px;">
+                    <option value="">All Tenants</option>
+                    <option value="none">No Tenant</option>
+                    @foreach (var tenant in tenants)
+                    {
+                        <option value="@tenant.Id">@tenant.Name</option>
+                    }
+                </select>
+            }
             <select class="rbm-form-select" @bind="filterRole" style="min-width: 150px;">
                 <option value="">All Roles</option>
                 @foreach (var role in roles)
@@ -125,6 +149,10 @@ else
                         <tr>
                             <th>User</th>
                             <th>Role</th>
+                            @if (isSuperAdmin)
+                            {
+                                <th>Tenant</th>
+                            }
                             <th>Department</th>
                             <th>Status</th>
                             <th>Security</th>
@@ -152,6 +180,20 @@ else
                                         @user.PrimaryRole
                                     </span>
                                 </td>
+                                @if (isSuperAdmin)
+                                {
+                                    <td>
+                                        @if (user.TenantId.HasValue)
+                                        {
+                                            var tenantName = tenants.FirstOrDefault(t => t.Id == user.TenantId)?.Name ?? "Unknown";
+                                            <span class="rbm-badge-pill rbm-badge-info">@tenantName</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="color: var(--rbm-text-light);">—</span>
+                                        }
+                                    </td>
+                                }
                                 <td>@(string.IsNullOrEmpty(user.Department) ? "—" : user.Department)</td>
                                 <td>
                                     <div style="display: flex; flex-direction: column; gap: 4px;">
@@ -256,6 +298,16 @@ else
                 </thead>
                 <tbody>
                     <tr>
+                        <td><span class="rbm-badge-pill" style="@GetRoleBadgeStyle("SuperAdmin")">SuperAdmin</span></td>
+                        <td>Global system access</td>
+                        <td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td>
+                    </tr>
+                    <tr>
+                        <td><span class="rbm-badge-pill" style="@GetRoleBadgeStyle("TenantAdmin")">TenantAdmin</span></td>
+                        <td>Tenant-level admin</td>
+                        <td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td>
+                    </tr>
+                    <tr>
                         <td><span class="rbm-badge-pill" style="@GetRoleBadgeStyle("Admin")">Admin</span></td>
                         <td>Full system access</td>
                         <td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td>
@@ -263,17 +315,20 @@ else
                     <tr>
                         <td><span class="rbm-badge-pill" style="@GetRoleBadgeStyle("Reliability Engineer")">Reliability Engineer</span></td>
                         <td>FMEA & analytics</td>
-                        <td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>✅</td><td>✅</td>
+                        <td>✅</td><td>✅</td><td>✅</td>
+                        <td>❌</td><td>✅</td><td>✅</td>
                     </tr>
                     <tr>
                         <td><span class="rbm-badge-pill" style="@GetRoleBadgeStyle("Planner")">Planner</span></td>
                         <td>Scheduling & planning</td>
-                        <td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td>
+                        <td>✅</td><td>✅</td><td>❌</td>
+                        <td>❌</td><td>❌</td><td>✅</td>
                     </tr>
                     <tr>
                         <td><span class="rbm-badge-pill" style="@GetRoleBadgeStyle("Technician")">Technician</span></td>
                         <td>Execute work orders</td>
-                        <td>✅</td><td>Limited</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td>
+                        <td>✅</td><td>Limited</td><td>❌</td>
+                        <td>❌</td><td>❌</td><td>❌</td>
                     </tr>
                 </tbody>
             </table>
@@ -324,11 +379,43 @@ else
                     </div>
                 }
 
+                <!-- Tenant Selection (Required for multi-tenancy) -->
+                @if (isSuperAdmin || isTenantAdmin)
+                {
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">
+                            🏢 Tenant * 
+                            <span style="font-weight: normal; color: var(--rbm-text-light);">(Organization)</span>
+                        </label>
+                        @if (isSuperAdmin)
+                        {
+                            <select class="rbm-form-select" @bind="userForm.TenantId">
+                                <option value="">-- Select a Tenant --</option>
+                                @foreach (var tenant in tenants.Where(t => t.IsActive))
+                                {
+                                    <option value="@tenant.Id">@tenant.Name (@tenant.TenantCode)</option>
+                                }
+                            </select>
+                            <small style="color: var(--rbm-text-light);">
+                                User will only have access to data within this tenant
+                            </small>
+                        }
+                        else
+                        {
+                            <!-- TenantAdmin can only add to their own tenant -->
+                            <input type="text" class="rbm-form-input" value="@currentTenantName" disabled />
+                            <small style="color: var(--rbm-text-light);">
+                                User will be added to your current tenant
+                            </small>
+                        }
+                    </div>
+                }
+
                 <div class="rbm-grid rbm-grid-2">
                     <div class="rbm-form-group">
                         <label class="rbm-form-label">Role *</label>
                         <select class="rbm-form-select" @bind="userForm.Role">
-                            @foreach (var role in roles)
+                            @foreach (var role in GetAvailableRoles())
                             {
                                 <option value="@role">@role</option>
                             }
@@ -493,11 +580,16 @@ else
     private bool canManageUsers = false;
     private bool canDeleteUsers = false;
     private bool isSuperAdmin = false;
+    private bool isTenantAdmin = false;
     private string currentUserRole = "";
-    
+    private List<Tenant> tenants = [];
+    private string? currentTenantName;
+    private int? currentTenantId;
+
     private string searchTerm = "";
     private string filterRole = "";
     private string filterStatus = "";
+    private string filterTenant = "";
     
     // Modals
     private bool showUserModal = false;
@@ -521,8 +613,13 @@ else
         canManageUsers = await PermissionService.CanManageUsersAsync();
         canDeleteUsers = await PermissionService.CanDeleteUsersAsync();
         isSuperAdmin = await PermissionService.IsSuperAdminAsync();
+        isTenantAdmin = await PermissionService.IsTenantAdminAsync();
         currentUserRole = await PermissionService.GetCurrentUserRoleAsync();
         assignableRoles = await PermissionService.GetAssignableRolesAsync();
+        
+        // Get current tenant info
+        await CurrentUser.InitializeAsync();
+        currentTenantId = CurrentUser.TenantId;
         
         if (canManageUsers)
         {
@@ -537,6 +634,35 @@ else
         users = await UserService.GetAllUsersAsync();
         roles = await UserService.GetAllRolesAsync();
         statistics = await UserService.GetUserStatisticsAsync();
+        
+        // Load tenants for SuperAdmin
+        if (isSuperAdmin)
+        {
+            tenants = await TenantService.GetAllTenantsAsync();
+        }
+        else if (currentTenantId.HasValue)
+        {
+            // Load current tenant name for TenantAdmin
+            var tenant = await TenantService.GetTenantByIdAsync(currentTenantId.Value);
+            if (tenant != null)
+            {
+                currentTenantName = tenant.Name;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Get roles available for assignment based on current user's permissions
+    /// </summary>
+    private List<string> GetAvailableRoles()
+    {
+        if (isSuperAdmin)
+        {
+            return roles;
+        }
+        
+        // TenantAdmin and Admin can't assign SuperAdmin or TenantAdmin
+        return roles.Where(r => r != "SuperAdmin" && r != "TenantAdmin").ToList();
     }
 
     /// <summary>
@@ -556,6 +682,12 @@ else
     private List<UserViewModel> GetFilteredUsers()
     {
         var filtered = users.AsEnumerable();
+
+        // Non-SuperAdmin users only see users in their tenant
+        if (!isSuperAdmin && currentTenantId.HasValue)
+        {
+            filtered = filtered.Where(u => u.TenantId == currentTenantId);
+        }
 
         // Filter to only show users the current user can manage
         filtered = filtered.Where(u => CanManageUser(u) || u.Email == userForm.Email);
@@ -585,6 +717,19 @@ else
             };
         }
 
+        // SuperAdmin tenant filter
+        if (isSuperAdmin && !string.IsNullOrEmpty(filterTenant))
+        {
+            if (filterTenant == "none")
+            {
+                filtered = filtered.Where(u => !u.TenantId.HasValue);
+            }
+            else if (int.TryParse(filterTenant, out var tenantId))
+            {
+                filtered = filtered.Where(u => u.TenantId == tenantId);
+            }
+        }
+
         return filtered.ToList();
     }
 
@@ -592,7 +737,13 @@ else
 
     private void ShowCreateModal()
     {
-        userForm = new UserFormModel { Role = "Technician", EmailConfirmed = true, IsActive = true };
+        userForm = new UserFormModel 
+        { 
+            Role = "Technician", 
+            EmailConfirmed = true, 
+            IsActive = true,
+            TenantId = isSuperAdmin ? null : currentTenantId // Default to current tenant for non-SuperAdmin
+        };
         editMode = false;
         modalError = "";
         showUserModal = true;
@@ -609,7 +760,8 @@ else
             Department = user.Department,
             PhoneNumber = user.PhoneNumber,
             Role = user.PrimaryRole,
-            IsActive = user.IsActive
+            IsActive = user.IsActive,
+            TenantId = user.TenantId
         };
         editMode = true;
         modalError = "";
@@ -638,6 +790,19 @@ else
             return;
         }
 
+        // Validate tenant selection for new users (required for multi-tenancy)
+        if (!editMode && !userForm.TenantId.HasValue && !isSuperAdmin)
+        {
+            // For non-SuperAdmin, auto-assign to their tenant
+            userForm.TenantId = currentTenantId;
+        }
+
+        if (!editMode && !userForm.TenantId.HasValue && isSuperAdmin)
+        {
+            modalError = "Please select a tenant for this user.";
+            return;
+        }
+
         isSaving = true;
 
         try
@@ -651,7 +816,8 @@ else
                     Department = userForm.Department,
                     PhoneNumber = userForm.PhoneNumber,
                     Role = userForm.Role,
-                    IsActive = userForm.IsActive
+                    IsActive = userForm.IsActive,
+                    TenantId = userForm.TenantId
                 });
 
                 if (!success)
@@ -672,7 +838,8 @@ else
                     Department = userForm.Department,
                     PhoneNumber = userForm.PhoneNumber,
                     Role = userForm.Role,
-                    EmailConfirmed = userForm.EmailConfirmed
+                    EmailConfirmed = userForm.EmailConfirmed,
+                    TenantId = userForm.TenantId
                 });
 
                 if (!success)
@@ -718,7 +885,7 @@ else
         isSaving = true;
         try
         {
-            var (success, errors, newPassword) = await UserService.AdminResetPasswordAsync(selectedUser.Id);
+            var (success, errors, newPassword) = await UserService.ResetPasswordAsync(selectedUser.Id);
             
             if (success && newPassword != null)
             {
@@ -743,7 +910,7 @@ else
         try
         {
             var resetUrl = Navigation.ToAbsoluteUri("Account/ResetPassword").AbsoluteUri;
-            await UserService.SendPasswordResetEmailAsync(selectedUser.Email, resetUrl);
+            await UserService.SendPasswordResetEmailAsync(selectedUser.Id, resetUrl);
             ShowSuccess("Password reset email sent!");
             CloseResetPasswordModal();
         }
@@ -810,7 +977,7 @@ else
             }
             else
             {
-                ShowSuccess("Failed to delete  the user: " + string.Join(", ", errors));
+                ShowSuccess("Failed to delete the user: " + string.Join(", ", errors));
             }
         }
         finally
@@ -838,6 +1005,8 @@ else
 
     private string GetRoleBadgeStyle(string role) => role switch
     {
+        "SuperAdmin" => "background: rgba(156, 39, 176, 0.1); color: #9c27b0;",
+        "TenantAdmin" => "background: rgba(103, 58, 183, 0.1); color: #673ab7;",
         "Admin" => "background: rgba(229, 57, 53, 0.1); color: #e53935;",
         "Reliability Engineer" => "background: rgba(2, 136, 209, 0.1); color: #0288d1;",
         "Planner" => "background: rgba(251, 140, 0, 0.1); color: #fb8c00;",
@@ -858,5 +1027,6 @@ else
         public string Role { get; set; } = "Technician";
         public bool IsActive { get; set; } = true;
         public bool EmailConfirmed { get; set; } = true;
+        public int? TenantId { get; set; }
     }
 }

@@ -1,0 +1,82 @@
+@page "/health"
+@rendermode InteractiveServer
+
+<PageTitle>Health Check</PageTitle>
+
+<div style="padding: 20px; font-family: monospace;">
+    <h1>?? Health Check</h1>
+    
+    <p><strong>Status:</strong> @status</p>
+    <p><strong>Timestamp:</strong> @DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")</p>
+    
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div style="color: red; background: #fee; padding: 10px; border-radius: 4px; margin-top: 10px;">
+            <strong>Error:</strong> @error
+        </div>
+    }
+    
+    <h2>?? Services</h2>
+    <ul>
+        <li>DataService: @(dataServiceOk ? "?" : "?")</li>
+        <li>CurrentUserService: @(currentUserOk ? "?" : "?")</li>
+        <li>Database: @(databaseOk ? "?" : "?")</li>
+    </ul>
+    
+    <button class="btn btn-primary" @onclick="RunCheck">Refresh Check</button>
+</div>
+
+@code {
+    [Inject] private BlazorApp1.Services.DataService? DataService { get; set; }
+    [Inject] private BlazorApp1.Services.CurrentUserService? CurrentUser { get; set; }
+    
+    private string status = "Checking...";
+    private string error = "";
+    private bool dataServiceOk = false;
+    private bool currentUserOk = false;
+    private bool databaseOk = false;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await RunCheck();
+    }
+    
+    private async Task RunCheck()
+    {
+        status = "Checking...";
+        error = "";
+        dataServiceOk = false;
+        currentUserOk = false;
+        databaseOk = false;
+        
+        try
+        {
+            // Check DataService
+            if (DataService != null)
+            {
+                dataServiceOk = true;
+            }
+            
+            // Check CurrentUserService
+            if (CurrentUser != null)
+            {
+                await CurrentUser.InitializeAsync();
+                currentUserOk = true;
+            }
+            
+            // Check Database
+            if (DataService != null)
+            {
+                var assets = await DataService.GetAssetsAsync();
+                databaseOk = true;
+            }
+            
+            status = "All checks passed! ?";
+        }
+        catch (Exception ex)
+        {
+            status = "Error ?";
+            error = ex.Message;
+        }
+    }
+}

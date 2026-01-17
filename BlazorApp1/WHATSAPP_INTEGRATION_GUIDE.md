@@ -1,260 +1,316 @@
-# WhatsApp Integration for RBM CMMS
+# WhatsApp Business Cloud API Integration Guide
 
 ## Overview
 
-This feature enables two-way WhatsApp communication between technicians and the RBM CMMS system, allowing field technicians to manage work orders, receive alerts, and update task status directly from their mobile phones.
+RBM CMMS integrates with the **Official Meta WhatsApp Business Cloud API** to enable real-time communication with technicians directly through WhatsApp.
 
-## Architecture
+## Setup Requirements
 
-```
-???????????????????     ???????????????????     ???????????????????
-?   Technician    ???????  Twilio/Meta    ???????   RBM CMMS      ?
-?   WhatsApp      ???????  WhatsApp API   ???????   Server        ?
-???????????????????     ???????????????????     ???????????????????
-                               ?
-                               ?
-                        ???????????????????
-                        ?    Webhook      ?
-                        ?  /api/whatsapp  ?
-                        ?   webhook/      ?
-                        ?   incoming      ?
-                        ???????????????????
-```
+### 1. Meta Business Account
 
-## Quick Start
+1. Go to [Meta for Developers](https://developers.facebook.com/)
+2. Create a new app or use an existing one
+3. Add the **WhatsApp** product to your app
+4. Complete business verification
 
-### 1. Get Twilio Credentials
+### 2. WhatsApp Business API Access
 
-1. Sign up at [twilio.com](https://www.twilio.com)
-2. Go to Console ? Account Info
-3. Copy your **Account SID** and **Auth Token**
-4. Navigate to Messaging ? Try it out ? Send a WhatsApp message
-5. Note the sandbox number (e.g., +14155238886)
+1. In your Meta App dashboard, go to **WhatsApp > Getting Started**
+2. Note down your:
+   - **Phone Number ID**
+   - **WhatsApp Business Account ID**
+   - **Permanent Access Token** (generate from System Users in Business Settings)
 
-### 2. Configure appsettings.json
+### 3. Configure appsettings.json
 
 ```json
 {
   "WhatsApp": {
     "Enabled": true,
-    "TwilioAccountSid": "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "TwilioAuthToken": "your_auth_token_here",
-    "FromNumber": "+14155238886"
+    "UseLLM": true,
+    "Meta": {
+      "AccessToken": "YOUR_PERMANENT_ACCESS_TOKEN",
+      "PhoneNumberId": "YOUR_PHONE_NUMBER_ID",
+      "BusinessAccountId": "YOUR_BUSINESS_ACCOUNT_ID",
+      "AppSecret": "YOUR_APP_SECRET",
+      "WebhookVerifyToken": "YOUR_CUSTOM_VERIFY_TOKEN",
+      "ApiVersion": "v18.0"
+    }
   }
 }
 ```
 
-### 3. Set Up Webhook
+### 4. Configure Webhook
 
-In Twilio Console:
-1. Go to Messaging ? Settings ? WhatsApp sandbox settings
-2. Set "When a message comes in" to: `https://your-domain.com/api/whatsappwebhook/incoming`
-3. Set "Status callback URL" to: `https://your-domain.com/api/whatsappwebhook/status`
+In your Meta App Dashboard:
 
-### 4. Run Database Migration
+1. Go to **WhatsApp > Configuration**
+2. Set Webhook URL: `https://yourdomain.com/api/whatsappwebhook`
+3. Set Verify Token: Same value as `WebhookVerifyToken` in appsettings
+4. Subscribe to webhook fields:
+   - `messages`
+   - `message_deliveries`
+   - `message_reads`
 
-Execute the SQL migration script:
-```sql
--- Run BlazorApp1/Migrations/ADD_WHATSAPP_SUPPORT.sql
+## API Features
+
+### Text Messages
+
+```csharp
+await whatsAppService.SendTextMessageAsync(
+    "1234567890",  // Phone number
+    "Hello! This is a test message."
+);
 ```
 
-### 5. Link Technician Phone Numbers
+### Template Messages (Business-Initiated)
 
-Ensure all technicians have their phone numbers (with country code) in their user profiles.
+Required for messaging users outside the 24-hour window:
+
+```csharp
+var components = new List<MetaTemplateComponent>
+{
+    new() 
+    { 
+        Type = "body",
+        Parameters = new List<MetaTemplateParameter>
+        {
+            new() { Type = "text", Text = "John Smith" },
+            new() { Type = "text", Text = "WO-2024-001" }
+        }
+    }
+};
+
+await whatsAppService.SendTemplateMessageAsync(
+    "1234567890",
+    "work_order_notification",  // Template name
+    "en",                       // Language code
+    components
+);
+```
+
+### Interactive Buttons
+
+```csharp
+var buttons = new List<MetaInteractiveButton>
+{
+    new() 
+    { 
+        Type = "reply",
+        Reply = new MetaButtonReply { Id = "ack", Title = "Acknowledge" }
+    },
+    new() 
+    { 
+        Type = "reply",
+        Reply = new MetaButtonReply { Id = "start", Title = "Start Work" }
+    }
+};
+
+await whatsAppService.SendInteractiveButtonsAsync(
+    "1234567890",
+    "New work order assigned to you",
+    "Reply to take action",
+    buttons
+);
+```
+
+### Interactive Lists
+
+```csharp
+var sections = new List<MetaInteractiveSection>
+{
+    new()
+    {
+        Title = "Work Orders",
+        Rows = new List<MetaInteractiveRow>
+        {
+            new() { Id = "wo-001", Title = "WO-2024-001", Description = "Pump maintenance" },
+            new() { Id = "wo-002", Title = "WO-2024-002", Description = "Motor repair" }
+        }
+    }
+};
+
+await whatsAppService.SendInteractiveListAsync(
+    "1234567890",
+    "Your Work Orders",
+    "Select a work order to view details",
+    "View Options",
+    sections
+);
+```
+
+### Media Messages
+
+```csharp
+// Send document
+await whatsAppService.SendDocumentAsync(
+    "1234567890",
+    "https://example.com/manual.pdf",
+    "Equipment_Manual.pdf",
+    "Here is the equipment manual"
+);
+
+// Send image
+await whatsAppService.SendImageAsync(
+    "1234567890",
+    "https://example.com/diagram.png",
+    "Wiring diagram for reference"
+);
+```
 
 ## Technician Commands
 
-### Work Order Management
+| Command | Description |
+|---------|-------------|
+| `HELP` | Show available commands |
+| `MY WORK` | List assigned work orders |
+| `PENDING` | List pending acknowledgements |
+| `STATUS` | Quick status summary |
+| `ACK` | Acknowledge latest work order |
+| `ACK WO-123` | Acknowledge specific work order |
+| `START` | Start latest acknowledged work order |
+| `START WO-123` | Start specific work order |
+| `COMPLETE` | Complete current work order |
+| `COMPLETE WO-123` | Complete specific work order |
+| `DELAY [reason]` | Report delay on current work |
+| `NOTE [text]` | Add note to current work order |
+| `ESCALATE` | Request supervisor assistance |
+| `RESPONDING` | Confirm response to alert |
+| `CONFIRM` | Accept scheduled maintenance |
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `MY WORK` | View all assigned work orders | `MY WORK` |
-| `PENDING` | View pending tasks requiring action | `PENDING` |
-| `STATUS` | Quick summary of work order counts | `STATUS` |
-| `ACK` | Acknowledge latest work order | `ACK` |
-| `ACK WO-123` | Acknowledge specific work order | `ACK WO-2024-001` |
-| `START` | Start latest acknowledged work order | `START` |
-| `START WO-123` | Start specific work order | `START WO-2024-001` |
-| `COMPLETE` | Complete current in-progress work | `COMPLETE` |
-| `COMPLETE WO-123` | Complete specific work order | `COMPLETE WO-2024-001` |
+## Webhook Events
 
-### Updates & Notes
+The system processes these webhook events:
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `NOTE {text}` | Add note to current work order | `NOTE Replaced bearing, needs alignment` |
-| `DELAY {reason}` | Report delay with reason | `DELAY Waiting for spare parts` |
-| `ESCALATE` | Escalate to supervisor | `ESCALATE` |
+### Incoming Messages
+- Text messages
+- Interactive button replies
+- Interactive list selections
+- Media messages (logged)
 
-### Alerts & Confirmations
+### Status Updates
+- `sent` - Message sent to WhatsApp servers
+- `delivered` - Message delivered to user's device
+- `read` - Message read by user
+- `failed` - Message delivery failed
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `RESPONDING` | Confirm responding to critical alert | `RESPONDING` |
-| `CONFIRM` | Accept scheduled maintenance | `CONFIRM` |
-| `HELP` | Show all available commands | `HELP` |
+## Message Templates
 
-## Automatic Notifications
+Create message templates in Meta Business Manager for:
 
-The system automatically sends WhatsApp messages for:
+1. **Work Order Assignment** - `work_order_assignment`
+2. **Work Order Reminder** - `work_order_reminder`
+3. **Critical Alert** - `critical_equipment_alert`
+4. **Schedule Notification** - `maintenance_schedule`
 
-### Work Order Assignment
-```
-?? *New Work Order Assigned*
+Templates must be approved by Meta before use.
 
-?? *WO#:* WO-2024-001
-?? *Title:* Replace Motor Bearing
-?? *Asset:* Conveyor Belt A-01
-? *Priority:* High
-?? *Due:* Dec 25, 2024
+## Rate Limits
 
-Bearing showing signs of wear, needs replacement.
+Meta WhatsApp API has rate limits:
 
-Reply with:
-• *ACK* - Acknowledge receipt
-• *START* - Start work
-• *HELP* - Request assistance
-```
+| Tier | Messages/day |
+|------|--------------|
+| Tier 1 | 1,000 |
+| Tier 2 | 10,000 |
+| Tier 3 | 100,000 |
+| Tier 4 | Unlimited |
 
-### Due Date Reminders
-```
-?? *Work Order Reminder*
+Quality rating affects tier movement.
 
-?? *WO#:* WO-2024-001
-?? *Title:* Replace Motor Bearing
-? *Due in:* 2 day(s)
-?? *Due Date:* Dec 25, 2024
+## Pricing
 
-Reply with:
-• *STATUS* - Update status
-• *DELAY {reason}* - Report delay
-• *COMPLETE* - Mark as done
-```
+WhatsApp Business API charges per conversation:
 
-### Critical Alerts
-```
-?? *CRITICAL EQUIPMENT ALERT*
-
-?? *Asset:* Pump Station P-01
-?? *Alert:* Temperature exceeds 95°C threshold
-?? *Time:* 14:30 Dec 22
-
-Immediate attention required!
-
-Reply with:
-• *RESPONDING* - On my way
-• *ESCALATE* - Need supervisor
-```
-
-## API Endpoints
-
-### Webhook Endpoint (Twilio)
-```
-POST /api/whatsappwebhook/incoming
-```
-Receives incoming WhatsApp messages from Twilio and processes commands.
-
-### Status Callback
-```
-POST /api/whatsappwebhook/status
-```
-Receives delivery status updates from Twilio.
-
-### Health Check
-```
-GET /api/whatsappwebhook/health
-```
-Returns health status for monitoring.
-
-## Integration with Existing Features
-
-### Work Order Service
-- Automatically sends WhatsApp when work orders are assigned
-- Updates work order status based on WhatsApp commands
-
-### Notification Service
-- WhatsApp notifications complement email/SMS
-- Respects user notification preferences
-
-### Condition Monitoring
-- Sends critical alerts when thresholds are exceeded
-- Tracks technician response times
-
-## Security Considerations
-
-1. **Signature Validation**: Enable Twilio signature validation in production
-2. **Phone Number Verification**: Only registered phone numbers can execute commands
-3. **Tenant Isolation**: Messages are logged per tenant
-4. **Audit Trail**: All messages are logged with timestamps
+| Type | Initiated By | Cost (varies by country) |
+|------|--------------|--------------------------|
+| Business-initiated | Your business | Higher |
+| User-initiated | Customer | Lower |
+| Service | Within 24h window | Free |
 
 ## Troubleshooting
 
 ### Messages Not Sending
 
-1. Check `WhatsApp:Enabled` is `true` in config
-2. Verify Twilio credentials are correct
-3. Ensure phone number format includes country code (+1...)
-4. Check Twilio console for error logs
+1. Check `WhatsApp:Enabled` is `true`
+2. Verify Access Token is valid and not expired
+3. Check Phone Number ID is correct
+4. Ensure phone number format is correct (no + prefix)
 
-### Messages Not Received
+### Webhook Not Working
 
 1. Verify webhook URL is publicly accessible
-2. Check webhook URL is configured in Twilio console
-3. Ensure HTTPS certificate is valid
-4. Check application logs for webhook errors
+2. Check `WebhookVerifyToken` matches configuration
+3. Ensure HTTPS is enabled
+4. Check webhook subscriptions in Meta dashboard
 
-### Commands Not Working
+### Template Messages Failing
 
-1. Verify technician's phone is linked to their account
-2. Check phone number format matches (with/without +)
-3. Review command spelling (case-insensitive)
+1. Ensure template is approved
+2. Check template name and language code
+3. Verify all required parameters are provided
+4. Check parameter types match template definition
 
-## Production Deployment
+## Security
 
-### For Twilio Sandbox (Testing)
-- Technicians must join sandbox by sending code to Twilio number
-- Limited to sandbox-approved numbers
+### Webhook Signature Verification
 
-### For Twilio Production
-1. Apply for Twilio WhatsApp Business Profile
-2. Get approved message templates from Meta
-3. Use your business phone number
-4. Update configuration with production credentials
+Enable signature verification for production:
 
-### For Meta WhatsApp Cloud API (Alternative)
-If you prefer direct Meta integration:
-1. Create Meta Business Account
-2. Set up WhatsApp Business API
-3. Modify `WhatsAppService.cs` to use Meta's API endpoints
+```csharp
+// In appsettings.json
+"AppSecret": "YOUR_APP_SECRET"
+```
 
-## Files Created
+The controller verifies the `X-Hub-Signature-256` header.
 
-| File | Description |
-|------|-------------|
-| `Services/WhatsAppService.cs` | Core WhatsApp messaging service |
-| `Models/WhatsAppMessageLog.cs` | Message logging model |
-| `Controllers/WhatsAppWebhookController.cs` | Webhook endpoint |
-| `Components/Pages/RBM/WhatsAppSettings.razor` | Admin settings UI |
-| `Migrations/ADD_WHATSAPP_SUPPORT.sql` | Database migration |
+### Access Token Management
 
-## Next Steps
+- Use permanent access tokens from System Users
+- Rotate tokens periodically
+- Never expose tokens in client-side code
 
-1. ? Configure Twilio credentials
-2. ? Run database migration
-3. ? Set up webhook URL in Twilio
-4. ? Link technician phone numbers
-5. ? Test with sandbox
-6. ?? Apply for WhatsApp Business approval (production)
-7. ?? Create approved message templates
+## Testing
 
-## Support
+### Test Endpoint
 
-For issues or questions, check:
-- Twilio Console logs
-- Application logs
-- `/api/whatsappwebhook/health` endpoint
-- WhatsApp Settings page in admin panel
+```bash
+curl -X POST https://yourdomain.com/api/whatsappwebhook/test \
+  -H "Content-Type: application/json" \
+  -d '{"phone": "1234567890", "message": "Test message"}'
+```
 
----
+### Health Check
 
-*WhatsApp Integration v1.0 - RBM CMMS*
+```bash
+curl https://yourdomain.com/api/whatsappwebhook/health
+```
+
+Returns:
+```json
+{
+  "status": "healthy",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "whatsAppEnabled": true,
+  "apiVersion": "v18.0",
+  "hasPhoneNumberId": true,
+  "hasAccessToken": true
+}
+```
+
+## Migration from Twilio
+
+If migrating from Twilio:
+
+1. Update `appsettings.json` with Meta configuration
+2. Remove Twilio-specific settings
+3. Update webhook URL in your deployment
+4. Create and approve message templates
+5. Test with a small group before full rollout
+
+## Resources
+
+- [Meta WhatsApp Business Platform](https://business.whatsapp.com/)
+- [Cloud API Documentation](https://developers.facebook.com/docs/whatsapp/cloud-api)
+- [Message Templates](https://developers.facebook.com/docs/whatsapp/message-templates)
+- [Webhook Documentation](https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks)

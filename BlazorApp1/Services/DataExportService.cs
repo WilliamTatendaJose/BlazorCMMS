@@ -16,10 +16,22 @@ namespace BlazorApp1.Services;
 public class DataExportService
 {
     private readonly IDbContextFactory<ApplicationDbContext> _contextFactory;
+    private readonly RolePermissionService _rolePermissionService;
 
-    public DataExportService(IDbContextFactory<ApplicationDbContext> contextFactory)
+    public DataExportService(IDbContextFactory<ApplicationDbContext> contextFactory, RolePermissionService rolePermissionService)
     {
         _contextFactory = contextFactory;
+        _rolePermissionService = rolePermissionService;
+    }
+    
+    /// <summary>
+    /// Get tenant context for filtering
+    /// </summary>
+    private async Task<(bool IsSuperAdmin, int? TenantId)> GetTenantContextAsync()
+    {
+        var isSuperAdmin = await _rolePermissionService.IsSuperAdminAsync();
+        var tenantId = await _rolePermissionService.GetCurrentTenantIdAsync();
+        return (isSuperAdmin, tenantId);
     }
 
     #region CSV Export
@@ -791,19 +803,19 @@ public class DataExportService
                 if (existingAsset != null)
                 {
                     existingAsset.Name = record.Name;
-                    existingAsset.ModelNumber = record.ModelNumber;
-                    existingAsset.SerialNumber = record.SerialNumber;
-                    existingAsset.EquipmentManufacturer = record.Manufacturer;
-                    existingAsset.Location = record.Location;
-                    existingAsset.Department = record.Department;
-                    existingAsset.Criticality = record.Criticality;
-                    existingAsset.Status = record.Status;
+                    existingAsset.ModelNumber = record.ModelNumber ?? existingAsset.ModelNumber;
+                    existingAsset.SerialNumber = record.SerialNumber ?? existingAsset.SerialNumber;
+                    existingAsset.EquipmentManufacturer = record.Manufacturer ?? existingAsset.EquipmentManufacturer;
+                    existingAsset.Location = record.Location ?? existingAsset.Location;
+                    existingAsset.Department = record.Department ?? existingAsset.Department;
+                    existingAsset.Criticality = record.Criticality ?? existingAsset.Criticality;
+                    existingAsset.Status = record.Status ?? existingAsset.Status;
                 }
                 else
                 {
                     var asset = new Asset
                     {
-                        AssetId = record.AssetId,
+                        AssetId = record.AssetId ?? $"AST-{DateTime.Now.Ticks}",
                         Name = record.Name,
                         ModelNumber = record.ModelNumber ?? "",
                         SerialNumber = record.SerialNumber ?? "",
@@ -856,12 +868,12 @@ public class DataExportService
 
                 if (existingWO != null)
                 {
-                    existingWO.Type = record.Type;
-                    existingWO.Priority = record.Priority;
-                    existingWO.Status = record.Status;
-                    existingWO.AssignedTo = record.AssignedTo;
+                    existingWO.Type = record.Type ?? existingWO.Type;
+                    existingWO.Priority = record.Priority ?? existingWO.Priority;
+                    existingWO.Status = record.Status ?? existingWO.Status;
+                    existingWO.AssignedTo = record.AssignedTo ?? existingWO.AssignedTo;
                     existingWO.DueDate = record.DueDate;
-                    existingWO.Description = record.Description;
+                    existingWO.Description = record.Description ?? existingWO.Description;
                     if (!string.IsNullOrEmpty(record.CompletedDate) && DateTime.TryParse(record.CompletedDate, out var completedDate))
                     {
                         existingWO.CompletedDate = completedDate;
@@ -871,7 +883,7 @@ public class DataExportService
                 {
                     var workOrder = new WorkOrder
                     {
-                        WorkOrderId = record.WorkOrderId,
+                        WorkOrderId = record.WorkOrderId ?? $"WO-{DateTime.Now.Ticks}",
                         AssetId = asset.Id,
                         Type = record.Type ?? "Maintenance",
                         Priority = record.Priority ?? "Medium",
@@ -924,12 +936,12 @@ public class DataExportService
 
                 if (existingSP != null)
                 {
-                    existingSP.Description = record.Description;
-                    existingSP.Manufacturer = record.Manufacturer;
+                    existingSP.Description = record.Description ?? existingSP.Description;
+                    existingSP.Manufacturer = record.Manufacturer ?? existingSP.Manufacturer;
                     existingSP.QuantityInStock = record.QuantityInStock;
                     existingSP.ReorderPoint = record.ReorderPoint;
                     existingSP.UnitCost = record.UnitCost;
-                    existingSP.Status = record.Status;
+                    existingSP.Status = record.Status ?? existingSP.Status;
                 }
                 else
                 {
@@ -1055,7 +1067,46 @@ public class DataExportService
     #region Summary Statistics
 
     /// <summary>
-    /// Generate export summary with statistics
+    /// Generate export summary with statistics (async with tenant filtering)
+    /// </summary>
+    public async Task<ExportSummary> GetExportSummaryAsync()
+    {
+        using var context = _contextFactory.CreateDbContext();
+        var (isSuperAdmin, tenantId) = await GetTenantContextAsync();
+        
+        var assetsQuery = context.Assets.Where(a => !a.IsRetired);
+        var workOrdersQuery = context.WorkOrders.AsQueryable();
+        var sparePartsQuery = context.SpareParts.AsQueryable();
+        var documentsQuery = context.Documents.AsQueryable();
+        var failureModesQuery = context.FailureModes.AsQueryable();
+        
+        if (!isSuperAdmin && tenantId.HasValue)
+        {
+            assetsQuery = assetsQuery.Where(a => a.TenantId == tenantId);
+            workOrdersQuery = workOrdersQuery.Where(w => w.TenantId == tenantId);
+            sparePartsQuery = sparePartsQuery.Where(sp => sp.TenantId == tenantId);
+            documentsQuery = documentsQuery.Where(d => d.TenantId == tenantId);
+            failureModesQuery = failureModesQuery.Where(fm => fm.TenantId == tenantId);
+        }
+        
+        return new ExportSummary
+        {
+            TotalAssets = await assetsQuery.CountAsync(),
+            TotalWorkOrders = await workOrdersQuery.CountAsync(),
+            TotalSpareParts = await sparePartsQuery.CountAsync(),
+            TotalDocuments = await documentsQuery.CountAsync(),
+            TotalFailureModes = await failureModesQuery.CountAsync(),
+            CriticalAssets = await assetsQuery.CountAsync(a => a.Status == "Critical"),
+            OverdueWorkOrders = await workOrdersQuery.CountAsync(wo => wo.Status != "Completed" && wo.DueDate < DateTime.Now),
+            LowStockItems = await sparePartsQuery.CountAsync(sp => sp.QuantityInStock <= sp.ReorderPoint),
+            ExpiredDocuments = await documentsQuery.CountAsync(d => d.ExpiryDate.HasValue && d.ExpiryDate.Value < DateTime.Now),
+            ExportDate = DateTime.Now,
+            ExportedBy = "System"
+        };
+    }
+
+    /// <summary>
+    /// Generate export summary with statistics (synchronous - no tenant filtering)
     /// </summary>
     public ExportSummary GetExportSummary()
     {

@@ -5,17 +5,41 @@
 @attribute [Authorize]
 @inject BlazorApp1.Services.DataService DataService
 @inject BlazorApp1.Services.CurrentUserService CurrentUser
+@inject BlazorApp1.Services.RolePermissionService RolePermissionService
+@inject BlazorApp1.Services.ITenantManagementService TenantService
 @inject NavigationManager Navigation
 @using BlazorApp1.Models
 @using BlazorApp1.Components.Shared
 
+@if (!isInitialized)
+{
+    <div style="text-align: center; padding: 60px;">
+        <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
+        <div style="color: var(--rbm-text-light);">Loading analytics data...</div>
+    </div>
+}
+else
+{
 <div class="rbm-page-header">
     <h1 class="rbm-page-title">Reliability Analytics</h1>
-    <p class="rbm-page-subtitle">Performance metrics and predictive insights</p>
+    <p class="rbm-page-subtitle">
+        Performance metrics and predictive insights
+        @if (!string.IsNullOrEmpty(tenantName))
+        {
+            <span style="margin-left: 8px; font-size: 12px; color: var(--rbm-accent);">📊 @tenantName</span>
+        }
+    </p>
 </div>
 
 <div class="rbm-action-bar">
-    <div></div>
+    <div>
+        @if (isSuperAdmin)
+        {
+            <span class="rbm-badge-pill" style="background: var(--rbm-accent); color: white;">
+                🔓 Viewing All Tenants Data
+            </span>
+        }
+    </div>
     @if (CurrentUser.CanEdit)
     {
         <button class="rbm-btn rbm-btn-primary" @onclick="ExportReport">
@@ -28,23 +52,23 @@
 <div class="rbm-grid rbm-grid-4">
     <div class="rbm-stat-card">
         <div class="rbm-stat-label">Overall MTBF</div>
-        <div class="rbm-stat-value">1,248</div>
-        <div class="rbm-stat-trend positive">↑ 12% vs last month</div>
+        <div class="rbm-stat-value">@overallMTBF.ToString("F0")</div>
+        <div class="rbm-stat-trend @(mtbfTrend >= 0 ? "positive" : "negative")">@(mtbfTrend >= 0 ? "↑" : "↓") @Math.Abs(mtbfTrend).ToString("F1")% vs last month</div>
     </div>
     <div class="rbm-stat-card">
         <div class="rbm-stat-label">Overall MTTR</div>
-        <div class="rbm-stat-value">4.2</div>
-        <div class="rbm-stat-trend negative">↑ 8% vs last month</div>
+        <div class="rbm-stat-value">@overallMTTR.ToString("F1")</div>
+        <div class="rbm-stat-trend @(mttrTrend <= 0 ? "positive" : "negative")">@(mttrTrend >= 0 ? "↑" : "↓") @Math.Abs(mttrTrend).ToString("F1")% vs last month</div>
     </div>
     <div class="rbm-stat-card">
         <div class="rbm-stat-label">Equipment Availability</div>
-        <div class="rbm-stat-value">96.5%</div>
-        <div class="rbm-stat-trend positive">↑ 2.1% improvement</div>
+        <div class="rbm-stat-value">@overallAvailability.ToString("F1")%</div>
+        <div class="rbm-stat-trend @(availabilityTrend >= 0 ? "positive" : "negative")">@(availabilityTrend >= 0 ? "↑" : "↓") @Math.Abs(availabilityTrend).ToString("F1")% improvement</div>
     </div>
     <div class="rbm-stat-card">
         <div class="rbm-stat-label">Reliability Score</div>
-        <div class="rbm-stat-value">94.2%</div>
-        <div class="rbm-stat-trend positive">↑ 1.5% improvement</div>
+        <div class="rbm-stat-value">@overallReliability.ToString("F1")%</div>
+        <div class="rbm-stat-trend @(reliabilityTrend >= 0 ? "positive" : "negative")">@(reliabilityTrend >= 0 ? "↑" : "↓") @Math.Abs(reliabilityTrend).ToString("F1")% improvement</div>
     </div>
 </div>
 
@@ -93,41 +117,25 @@
                 </tr>
             </thead>
             <tbody>
-                <tr>
-                    <td><strong>Lack of Lubrication</strong></td>
-                    <td>45</td>
-                    <td>35%</td>
-                    <td>35%</td>
-                    <td><span class="rbm-badge-pill rbm-badge-critical">Critical</span></td>
-                </tr>
-                <tr>
-                    <td><strong>Wear and Tear</strong></td>
-                    <td>32</td>
-                    <td>25%</td>
-                    <td>60%</td>
-                    <td><span class="rbm-badge-pill rbm-badge-high">High</span></td>
-                </tr>
-                <tr>
-                    <td><strong>Overheating</strong></td>
-                    <td>18</td>
-                    <td>14%</td>
-                    <td>74%</td>
-                    <td><span class="rbm-badge-pill rbm-badge-high">High</span></td>
-                </tr>
-                <tr>
-                    <td><strong>Corrosion</strong></td>
-                    <td>15</td>
-                    <td>12%</td>
-                    <td>86%</td>
-                    <td><span class="rbm-badge-pill rbm-badge-medium">Medium</span></td>
-                </tr>
-                <tr>
-                    <td><strong>Other</strong></td>
-                    <td>18</td>
-                    <td>14%</td>
-                    <td>100%</td>
-                    <td><span class="rbm-badge-pill rbm-badge-low">Low</span></td>
-                </tr>
+                @if (paretoData.Any())
+                {
+                    @foreach (var item in paretoData)
+                    {
+                        <tr>
+                            <td><strong>@item.Cause</strong></td>
+                            <td>@item.Occurrences</td>
+                            <td>@item.Percentage.ToString("F0")%</td>
+                            <td>@item.Cumulative.ToString("F0")%</td>
+                            <td><span class="rbm-badge-pill @item.ImpactClass">@item.ImpactLevel</span></td>
+                        </tr>
+                    }
+                }
+                else
+                {
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: var(--rbm-text-light);">No failure data available</td>
+                    </tr>
+                }
             </tbody>
         </table>
     </div>
@@ -139,50 +147,42 @@
         <h3 class="rbm-card-title">🤖 AI-Powered Predictive Maintenance Recommendations</h3>
     </div>
     <div style="padding: 20px;">
-        <div style="padding: 16px; background: rgba(229, 57, 53, 0.1); border-left: 4px solid var(--rbm-danger); border-radius: 8px; margin-bottom: 12px;">
-            <div style="display: flex; justify-content: space-between; align-items: start;">
-                <div>
-                    <strong style="color: var(--rbm-danger);">🚨 Air Compressor C - High Failure Risk</strong>
-                    <p style="margin: 8px 0 0 0;">Predicted failure probability: 85% within next 7 days</p>
-                    <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--rbm-text-light);">
-                        Based on vibration trend analysis and historical failure patterns
-                    </p>
+        @if (predictiveRecommendations.Any())
+        {
+            @foreach (var rec in predictiveRecommendations)
+            {
+                <div style="padding: 16px; background: @rec.BackgroundColor; border-left: 4px solid @rec.BorderColor; border-radius: 8px; margin-bottom: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div>
+                            <strong style="color: @rec.TextColor;">@rec.Icon @rec.AssetName - @rec.RiskLevel</strong>
+                            <p style="margin: 8px 0 0 0;">@rec.MainMessage</p>
+                            <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--rbm-text-light);">
+                                @rec.SubMessage
+                            </p>
+                        </div>
+                        @if (CurrentUser.CanEdit && rec.ActionType == "CreateWO")
+                        {
+                            <button class="rbm-btn rbm-btn-danger rbm-btn-sm" @onclick="() => CreateWorkOrderForAsset(rec.AssetId, true)">Create WO</button>
+                        }
+                        else if (CurrentUser.CanEdit && rec.ActionType == "Schedule")
+                        {
+                            <button class="rbm-btn rbm-btn-warning rbm-btn-sm" @onclick="() => CreateScheduleForAsset(rec.AssetId)">Schedule</button>
+                        }
+                        else
+                        {
+                            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => ViewAssetDetails(rec.AssetId)">View Details</button>
+                        }
+                    </div>
                 </div>
-                @if (CurrentUser.CanEdit)
-                {
-                    <button class="rbm-btn rbm-btn-danger rbm-btn-sm" @onclick="() => CreateWorkOrderForAsset(3, true)">Create WO</button>
-                }
+            }
+        }
+        else
+        {
+            <div style="padding: 16px; background: rgba(67, 160, 71, 0.1); border-left: 4px solid var(--rbm-success); border-radius: 8px;">
+                <strong style="color: var(--rbm-success);">✅ All equipment is operating within normal parameters</strong>
+                <p style="margin: 8px 0 0 0;">No immediate maintenance recommendations at this time.</p>
             </div>
-        </div>
-        
-        <div style="padding: 16px; background: rgba(251, 140, 0, 0.1); border-left: 4px solid var(--rbm-warning); border-radius: 8px; margin-bottom: 12px;">
-            <div style="display: flex; justify-content: space-between; align-items: start;">
-                <div>
-                    <strong style="color: var(--rbm-warning);">⚠️ Electric Motor B - Preventive Action Recommended</strong>
-                    <p style="margin: 8px 0 0 0;">Temperature trending above normal operating range</p>
-                    <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--rbm-text-light);">
-                        Schedule inspection within 14 days to prevent potential failure
-                    </p>
-                </div>
-                @if (CurrentUser.CanEdit)
-                {
-                    <button class="rbm-btn rbm-btn-warning rbm-btn-sm" @onclick="() => CreateScheduleForAsset(2)">Schedule</button>
-                }
-            </div>
-        </div>
-        
-        <div style="padding: 16px; background: rgba(2, 136, 209, 0.1); border-left: 4px solid var(--rbm-accent); border-radius: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: start;">
-                <div>
-                    <strong style="color: var(--rbm-accent);">ℹ️ Gearbox I - Optimal Maintenance Window</strong>
-                    <p style="margin: 8px 0 0 0;">Ideal time for scheduled maintenance: Next week</p>
-                    <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--rbm-text-light);">
-                        Production schedule analysis shows minimal impact during this period
-                    </p>
-                </div>
-                <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick="() => ViewAssetDetails(9)">View Details</button>
-            </div>
-        </div>
+        }
     </div>
 </div>
 
@@ -221,6 +221,7 @@
         </table>
     </div>
 </div>
+}
 
 @if (showSuccessMessage)
 {
@@ -238,58 +239,414 @@
 @code {
     private List<Asset> assets = new();
     private List<WorkOrder> workOrders = new();
+    private List<FailureMode> failureModes = new();
+    private List<ReliabilityMetric> reliabilityMetrics = new();
     private bool showSuccessMessage = false;
     private string successMessage = "";
+    private bool isInitialized = false;
+    
+    // Tenant context
+    private bool isSuperAdmin = false;
+    private int? currentTenantId = null;
+    private string tenantName = "";
     
     private List<SimpleLineChart.ChartDataPoint> mtbfTrendData = new();
     private List<SimpleLineChart.ChartDataPoint> mttrTrendData = new();
+    
+    // KPI values
+    private double overallMTBF = 0;
+    private double overallMTTR = 0;
+    private double overallAvailability = 0;
+    private double overallReliability = 0;
+    
+    // Trend percentages
+    private double mtbfTrend = 0;
+    private double mttrTrend = 0;
+    private double availabilityTrend = 0;
+    private double reliabilityTrend = 0;
+    
+    // Pareto data
+    private List<ParetoItem> paretoData = new();
+    
+    // Predictive recommendations
+    private List<PredictiveRecommendation> predictiveRecommendations = new();
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
+            // Get tenant context first
+            isSuperAdmin = await RolePermissionService.IsSuperAdminAsync();
+            currentTenantId = await RolePermissionService.GetCurrentTenantIdAsync();
+            
+            // Get tenant name for display
+            if (currentTenantId.HasValue && !isSuperAdmin)
+            {
+                var tenant = await TenantService.GetTenantByIdAsync(currentTenantId.Value);
+                tenantName = tenant?.Name ?? "";
+            }
+            
+            // All DataService methods already filter by tenant internally
             assets = await DataService.GetAssetsAsync();
             workOrders = await DataService.GetWorkOrdersAsync();
+            failureModes = await DataService.GetFailureModesAsync();
             
-            // Generate sample MTBF trend data (12 months)
-            mtbfTrendData = new List<SimpleLineChart.ChartDataPoint>
+            // Get reliability metrics for tenant-filtered assets
+            reliabilityMetrics = new List<ReliabilityMetric>();
+            foreach (var asset in assets.Take(20)) // Limit to avoid performance issues
             {
-                new() { Label = "Jan", Value = 1050 },
-                new() { Label = "Feb", Value = 1080 },
-                new() { Label = "Mar", Value = 1100 },
-                new() { Label = "Apr", Value = 1120 },
-                new() { Label = "May", Value = 1110 },
-                new() { Label = "Jun", Value = 1150 },
-                new() { Label = "Jul", Value = 1180 },
-                new() { Label = "Aug", Value = 1190 },
-                new() { Label = "Sep", Value = 1210 },
-                new() { Label = "Oct", Value = 1220 },
-                new() { Label = "Nov", Value = 1240 },
-                new() { Label = "Dec", Value = 1248 }
-            };
+                try
+                {
+                    var assetMetrics = await DataService.GetReliabilityMetricsAsync(asset.Id);
+                    reliabilityMetrics.AddRange(assetMetrics);
+                }
+                catch { /* Skip assets that fail */ }
+            }
             
-            // Generate sample MTTR trend data (12 months)
-            mttrTrendData = new List<SimpleLineChart.ChartDataPoint>
-            {
-                new() { Label = "Jan", Value = 3.8 },
-                new() { Label = "Feb", Value = 3.9 },
-                new() { Label = "Mar", Value = 3.7 },
-                new() { Label = "Apr", Value = 3.8 },
-                new() { Label = "May", Value = 4.0 },
-                new() { Label = "Jun", Value = 3.9 },
-                new() { Label = "Jul", Value = 4.1 },
-                new() { Label = "Aug", Value = 4.0 },
-                new() { Label = "Sep", Value = 4.1 },
-                new() { Label = "Oct", Value = 4.2 },
-                new() { Label = "Nov", Value = 4.3 },
-                new() { Label = "Dec", Value = 4.2 }
-            };
+            CalculateKPIs();
+            GenerateTrendData();
+            GenerateParetoData();
+            GeneratePredictiveRecommendations();
             
+            isInitialized = true;
             StateHasChanged();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error loading analytics data: {ex.Message}");
+            isInitialized = true;
+        }
+    }
+    
+    private void CalculateKPIs()
+    {
+        // Calculate MTBF (Mean Time Between Failures) from actual failure work orders
+        var failureWorkOrders = workOrders
+            .Where(wo => wo.Type == "Corrective" || wo.Type == "Emergency")
+            .Where(wo => wo.CreatedDate >= DateTime.Now.AddMonths(-12))
+            .OrderBy(wo => wo.CreatedDate)
+            .ToList();
+        
+        if (failureWorkOrders.Count > 1 && assets.Any())
+        {
+            // Calculate time between failures
+            var timeBetweenFailures = new List<double>();
+            for (int i = 1; i < failureWorkOrders.Count; i++)
+            {
+                var hoursBetween = (failureWorkOrders[i].CreatedDate - failureWorkOrders[i-1].CreatedDate).TotalHours;
+                timeBetweenFailures.Add(hoursBetween);
+            }
+            overallMTBF = timeBetweenFailures.Any() ? timeBetweenFailures.Average() : 0;
+        }
+        else if (reliabilityMetrics.Any())
+        {
+            // Use reliability metrics if available
+            var mtbfValues = reliabilityMetrics.Where(r => r.MTBF > 0).ToList();
+            overallMTBF = mtbfValues.Any() ? mtbfValues.Average(r => r.MTBF) : 0;
+        }
+        else
+        {
+            overallMTBF = 0;
+        }
+        
+        // Calculate MTTR (Mean Time To Repair) from completed work orders
+        var completedWOs = workOrders
+            .Where(w => w.Status == "Completed" && w.CompletedDate.HasValue)
+            .ToList();
+        
+        if (completedWOs.Any())
+        {
+            // Calculate actual repair time for each work order
+            var repairTimes = completedWOs
+                .Select(wo => (wo.CompletedDate!.Value - wo.CreatedDate).TotalHours)
+                .Where(hours => hours > 0 && hours < 720) // Filter out unrealistic values (> 30 days)
+                .ToList();
+            
+            overallMTTR = repairTimes.Any() ? repairTimes.Average() : 0;
+        }
+        else if (reliabilityMetrics.Any())
+        {
+            var mttrValues = reliabilityMetrics.Where(r => r.MTTR > 0).ToList();
+            overallMTTR = mttrValues.Any() ? mttrValues.Average(r => r.MTTR) : 0;
+        }
+        else
+        {
+            overallMTTR = 0;
+        }
+        
+        // Calculate Equipment Availability from assets
+        if (assets.Any())
+        {
+            overallAvailability = assets.Average(a => a.Uptime);
+        }
+        else if (reliabilityMetrics.Any())
+        {
+            var availValues = reliabilityMetrics.Where(r => r.Availability > 0).ToList();
+            overallAvailability = availValues.Any() ? availValues.Average(r => r.Availability) : 0;
+        }
+        else
+        {
+            overallAvailability = 0;
+        }
+        
+        // Calculate Reliability Score (OEE or Health Score)
+        if (reliabilityMetrics.Any())
+        {
+            var oeeValues = reliabilityMetrics.Where(r => r.OEE > 0).ToList();
+            overallReliability = oeeValues.Any() ? oeeValues.Average(r => r.OEE) : 0;
+        }
+        
+        // Fallback to health score if no OEE data
+        if (overallReliability == 0 && assets.Any())
+        {
+            overallReliability = assets.Average(a => a.HealthScore);
+        }
+        
+        // Calculate trends by comparing current month vs previous month
+        CalculateTrends();
+    }
+    
+    private void CalculateTrends()
+    {
+        var now = DateTime.Now;
+        var currentMonthStart = new DateTime(now.Year, now.Month, 1);
+        var previousMonthStart = currentMonthStart.AddMonths(-1);
+        var previousMonthEnd = currentMonthStart.AddDays(-1);
+        
+        // Get metrics for current and previous month
+        var currentMetrics = reliabilityMetrics
+            .Where(r => r.MetricDate >= currentMonthStart)
+            .ToList();
+        
+        var previousMetrics = reliabilityMetrics
+            .Where(r => r.MetricDate >= previousMonthStart && r.MetricDate <= previousMonthEnd)
+            .ToList();
+        
+        if (currentMetrics.Any() && previousMetrics.Any())
+        {
+            // Calculate averages for each period
+            var currentMTBF = currentMetrics.Where(r => r.MTBF > 0).DefaultIfEmpty().Average(r => r?.MTBF ?? 0);
+            var previousMTBF = previousMetrics.Where(r => r.MTBF > 0).DefaultIfEmpty().Average(r => r?.MTBF ?? 0);
+            
+            var currentMTTR = currentMetrics.Where(r => r.MTTR > 0).DefaultIfEmpty().Average(r => r?.MTTR ?? 0);
+            var previousMTTR = previousMetrics.Where(r => r.MTTR > 0).DefaultIfEmpty().Average(r => r?.MTTR ?? 0);
+            
+            var currentAvail = currentMetrics.Where(r => r.Availability > 0).DefaultIfEmpty().Average(r => r?.Availability ?? 0);
+            var previousAvail = previousMetrics.Where(r => r.Availability > 0).DefaultIfEmpty().Average(r => r?.Availability ?? 0);
+            
+            var currentOEE = currentMetrics.Where(r => r.OEE > 0).DefaultIfEmpty().Average(r => r?.OEE ?? 0);
+            var previousOEE = previousMetrics.Where(r => r.OEE > 0).DefaultIfEmpty().Average(r => r?.OEE ?? 0);
+            
+            // Calculate percentage changes
+            mtbfTrend = previousMTBF > 0 ? ((currentMTBF - previousMTBF) / previousMTBF) * 100 : 0;
+            mttrTrend = previousMTTR > 0 ? ((currentMTTR - previousMTTR) / previousMTTR) * 100 : 0;
+            availabilityTrend = previousAvail > 0 ? ((currentAvail - previousAvail) / previousAvail) * 100 : 0;
+            reliabilityTrend = previousOEE > 0 ? ((currentOEE - previousOEE) / previousOEE) * 100 : 0;
+        }
+        else
+        {
+            // No trend data available - set to 0
+            mtbfTrend = 0;
+            mttrTrend = 0;
+            availabilityTrend = 0;
+            reliabilityTrend = 0;
+        }
+    }
+    
+    private void GenerateTrendData()
+    {
+        var months = new[] { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+        var currentMonth = DateTime.Now.Month;
+        var currentYear = DateTime.Now.Year;
+        
+        mtbfTrendData.Clear();
+        mttrTrendData.Clear();
+        
+        // Generate 12 months of actual historical data
+        for (int i = 11; i >= 0; i--)
+        {
+            var targetDate = DateTime.Now.AddMonths(-i);
+            var monthIndex = targetDate.Month - 1; // 0-based index
+            var monthLabel = months[monthIndex];
+            var year = targetDate.Year;
+            var monthStart = new DateTime(year, targetDate.Month, 1);
+            var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+            
+            // Get actual metrics for this month
+            var monthMetrics = reliabilityMetrics
+                .Where(r => r.MetricDate >= monthStart && r.MetricDate <= monthEnd)
+                .ToList();
+            
+            if (monthMetrics.Any())
+            {
+                // Use actual average values from reliability metrics
+                var mtbfValues = monthMetrics.Where(r => r.MTBF > 0).ToList();
+                var mttrValues = monthMetrics.Where(r => r.MTTR > 0).ToList();
+                
+                var mtbfValue = mtbfValues.Any() ? mtbfValues.Average(r => r.MTBF) : 0;
+                var mttrValue = mttrValues.Any() ? mttrValues.Average(r => r.MTTR) : 0;
+                
+                mtbfTrendData.Add(new SimpleLineChart.ChartDataPoint { Label = monthLabel, Value = mtbfValue });
+                mttrTrendData.Add(new SimpleLineChart.ChartDataPoint { Label = monthLabel, Value = mttrValue });
+            }
+            else
+            {
+                // Calculate from work orders for this month if no reliability metrics exist
+                var monthWorkOrders = workOrders
+                    .Where(wo => wo.CreatedDate >= monthStart && wo.CreatedDate <= monthEnd)
+                    .ToList();
+                
+                double mtbfValue = 0;
+                double mttrValue = 0;
+                
+                // Calculate MTTR from completed work orders in this month
+                var completedWOs = monthWorkOrders
+                    .Where(wo => wo.Status == "Completed" && wo.CompletedDate.HasValue)
+                    .ToList();
+                
+                if (completedWOs.Any())
+                {
+                    var repairTimes = completedWOs
+                        .Select(wo => (wo.CompletedDate!.Value - wo.CreatedDate).TotalHours)
+                        .Where(hours => hours > 0 && hours < 720)
+                        .ToList();
+                    
+                    mttrValue = repairTimes.Any() ? repairTimes.Average() : 0;
+                }
+                
+                // Calculate MTBF from failure work orders in this month
+                var failures = monthWorkOrders
+                    .Where(wo => wo.Type == "Corrective" || wo.Type == "Emergency")
+                    .OrderBy(wo => wo.CreatedDate)
+                    .ToList();
+                
+                if (failures.Count > 1)
+                {
+                    var timeBetweenFailures = new List<double>();
+                    for (int j = 1; j < failures.Count; j++)
+                    {
+                        var hoursBetween = (failures[j].CreatedDate - failures[j-1].CreatedDate).TotalHours;
+                        if (hoursBetween > 0)
+                        {
+                            timeBetweenFailures.Add(hoursBetween);
+                        }
+                    }
+                    mtbfValue = timeBetweenFailures.Any() ? timeBetweenFailures.Average() : 0;
+                }
+                
+                mtbfTrendData.Add(new SimpleLineChart.ChartDataPoint { Label = monthLabel, Value = mtbfValue });
+                mttrTrendData.Add(new SimpleLineChart.ChartDataPoint { Label = monthLabel, Value = mttrValue });
+            }
+        }
+    }
+    
+    private void GenerateParetoData()
+    {
+        paretoData.Clear();
+        
+        // Group failure modes by cause/category
+        var failureCauses = failureModes
+            .GroupBy(f => !string.IsNullOrEmpty(f.Cause) ? f.Cause : f.Mode)
+            .Select(g => new { Cause = g.Key, Count = g.Count() })
+            .OrderByDescending(x => x.Count)
+            .Take(5)
+            .ToList();
+        
+        if (!failureCauses.Any())
+        {
+            // Fallback: generate from work order types
+            failureCauses = workOrders
+                .Where(w => w.Status == "Completed")
+                .GroupBy(w => w.Type ?? "Unknown")
+                .Select(g => new { Cause = g.Key, Count = g.Count() })
+                .OrderByDescending(x => x.Count)
+                .Take(5)
+                .ToList();
+        }
+        
+        var totalCount = failureCauses.Sum(x => x.Count);
+        if (totalCount == 0) return;
+        
+        double cumulative = 0;
+        foreach (var cause in failureCauses)
+        {
+            var percentage = (cause.Count / (double)totalCount) * 100;
+            cumulative += percentage;
+            
+            var impact = cumulative <= 35 ? "Critical" : 
+                        cumulative <= 60 ? "High" : 
+                        cumulative <= 86 ? "Medium" : "Low";
+                        
+            var impactClass = impact == "Critical" ? "rbm-badge-critical" :
+                             impact == "High" ? "rbm-badge-high" :
+                             impact == "Medium" ? "rbm-badge-medium" : "rbm-badge-low";
+            
+            paretoData.Add(new ParetoItem
+            {
+                Cause = cause.Cause,
+                Occurrences = cause.Count,
+                Percentage = percentage,
+                Cumulative = cumulative,
+                ImpactLevel = impact,
+                ImpactClass = impactClass
+            });
+        }
+    }
+    
+    private void GeneratePredictiveRecommendations()
+    {
+        predictiveRecommendations.Clear();
+        
+        // Find assets with low health scores or approaching maintenance
+        var atRiskAssets = assets
+            .OrderBy(a => a.HealthScore)
+            .ThenByDescending(a => 100 - a.Uptime) // Lower uptime = more at risk
+            .Take(3)
+            .ToList();
+        
+        foreach (var asset in atRiskAssets)
+        {
+            var rec = new PredictiveRecommendation
+            {
+                AssetId = asset.Id,
+                AssetName = asset.Name
+            };
+            
+            if (asset.HealthScore < 50)
+            {
+                rec.RiskLevel = "High Failure Risk";
+                rec.Icon = "🚨";
+                rec.MainMessage = $"Predicted failure probability: {(100 - asset.HealthScore):F0}% within next 7 days";
+                rec.SubMessage = "Based on health score trend analysis and historical failure patterns";
+                rec.BackgroundColor = "rgba(229, 57, 53, 0.1)";
+                rec.BorderColor = "var(--rbm-danger)";
+                rec.TextColor = "var(--rbm-danger)";
+                rec.ActionType = "CreateWO";
+            }
+            else if (asset.HealthScore < 70)
+            {
+                rec.RiskLevel = "Preventive Action Recommended";
+                rec.Icon = "⚠️";
+                rec.MainMessage = $"Health score declining: currently at {asset.HealthScore:F0}%";
+                rec.SubMessage = "Schedule inspection within 14 days to prevent potential failure";
+                rec.BackgroundColor = "rgba(251, 140, 0, 0.1)";
+                rec.BorderColor = "var(--rbm-warning)";
+                rec.TextColor = "var(--rbm-warning)";
+                rec.ActionType = "Schedule";
+            }
+            else
+            {
+                rec.RiskLevel = "Optimal Maintenance Window";
+                rec.Icon = "ℹ️";
+                rec.MainMessage = $"Ideal time for scheduled maintenance: Next week";
+                rec.SubMessage = $"Asset running at {asset.Uptime:F0}% availability - schedule during planned downtime";
+                rec.BackgroundColor = "rgba(2, 136, 209, 0.1)";
+                rec.BorderColor = "var(--rbm-accent)";
+                rec.TextColor = "var(--rbm-accent)";
+                rec.ActionType = "ViewDetails";
+            }
+            
+            predictiveRecommendations.Add(rec);
         }
     }
 
@@ -380,6 +737,31 @@
             InvokeAsync(StateHasChanged);
         });
     }
+    
+    // Helper classes
+    private class ParetoItem
+    {
+        public string Cause { get; set; } = "";
+        public int Occurrences { get; set; }
+        public double Percentage { get; set; }
+        public double Cumulative { get; set; }
+        public string ImpactLevel { get; set; } = "";
+        public string ImpactClass { get; set; } = "";
+    }
+    
+    private class PredictiveRecommendation
+    {
+        public int AssetId { get; set; }
+        public string AssetName { get; set; } = "";
+        public string RiskLevel { get; set; } = "";
+        public string Icon { get; set; } = "";
+        public string MainMessage { get; set; } = "";
+        public string SubMessage { get; set; } = "";
+        public string BackgroundColor { get; set; } = "";
+        public string BorderColor { get; set; } = "";
+        public string TextColor { get; set; } = "";
+        public string ActionType { get; set; } = "";
+    }
 
     private class LocationStats
     {
@@ -402,8 +784,8 @@
             {
                 Name = location,
                 AssetCount = locationAssets.Count,
-                Availability = locationAssets.Average(a => a.Uptime),
-                AvgHealth = locationAssets.Average(a => a.HealthScore),
+                Availability = locationAssets.Any() ? locationAssets.Average(a => a.Uptime) : 0,
+                AvgHealth = locationAssets.Any() ? locationAssets.Average(a => a.HealthScore) : 0,
                 OpenWorkOrders = workOrders.Count(w => 
                     locationAssets.Any(a => a.Id == w.AssetId) && 
                     w.Status != "Completed")

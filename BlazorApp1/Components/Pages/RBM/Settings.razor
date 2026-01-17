@@ -5,7 +5,7 @@
 @using BlazorApp1.Services
 @using BlazorApp1.Models
 @using BlazorApp1.Data
-@attribute [Authorize(Roles = "Admin")]
+@attribute [Authorize(Roles = "SuperAdmin,TenantAdmin,Admin")]
 @inject BlazorApp1.Services.DataService DataService
 @inject BlazorApp1.Services.NotificationService NotificationService
 @inject BlazorApp1.Services.ThemeService ThemeService

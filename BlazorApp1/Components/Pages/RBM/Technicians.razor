@@ -2,7 +2,7 @@
 @rendermode InteractiveServer
 @layout RBMLayout
 @using Microsoft.AspNetCore.Authorization
-@attribute [Authorize(Roles = "Technician,Supervisor,Admin")]
+@attribute [Authorize(Roles = "SuperAdmin,TenantAdmin,Admin,Supervisor,Technician")]
 @inject BlazorApp1.Services.DataService DataService
 @inject BlazorApp1.Services.CurrentUserService CurrentUser
 @inject NavigationManager Navigation
@@ -567,7 +567,7 @@ else
             await CurrentUser.InitializeAsync();
             
             // Only allow Technicians to access this page
-            if (CurrentUser.Role != "Technician" && CurrentUser.Role != "Supervisor" && CurrentUser.Role != "Admin")
+            if (CurrentUser.Role != "Technician" && CurrentUser.Role != "Supervisor" && CurrentUser.Role != "Admin" && CurrentUser.Role != "SuperAdmin" && CurrentUser.Role != "TenantAdmin")
             {
                 errorMessage = "You don't have permission to access this page.";
                 isInitialized = true;
