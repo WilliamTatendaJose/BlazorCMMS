@@ -44,9 +44,9 @@
                     </NavLink>
                 </div>
                 <div class="nav-item px-3">
-                    <form action="Account/Logout" method="post">
+                    <form action="/Account/Logout" method="post">
                         <AntiforgeryToken />
-                        <input type="hidden" name="ReturnUrl" value="@currentUrl" />
+                        <input type="hidden" name="returnUrl" value="Account/Login" />
                         <button type="submit" class="nav-link">
                             <span class="bi bi-arrow-bar-left-nav-menu" aria-hidden="true"></span> Logout
                         </button>

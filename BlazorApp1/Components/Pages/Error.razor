@@ -1,30 +1,301 @@
 ﻿@page "/Error"
 @using System.Diagnostics
+@layout BlazorApp1.Components.Layout.SimpleLayout
+@inject NavigationManager Navigation
 
-<PageTitle>Error</PageTitle>
+<PageTitle>Error | RBM CMMS</PageTitle>
 
-<h1 class="text-danger">Error.</h1>
-<h2 class="text-danger">An error occurred while processing your request.</h2>
+<div class="error-container">
+    <div class="error-card">
+        <div class="error-icon">
+            <svg width="120" height="120" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" stroke="#e53935" stroke-width="1.5" fill="none"/>
+                <path d="M12 8v4" stroke="#e53935" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="12" cy="16" r="1" fill="#e53935"/>
+            </svg>
+        </div>
+        
+        <h1 class="error-title">Oops!</h1>
+        <h2 class="error-subtitle">Something went wrong</h2>
+        <p class="error-message">
+            We encountered an unexpected error while processing your request. 
+            Don't worry, our team has been notified and is working on it.
+        </p>
 
-@if (ShowRequestId)
-{
-    <p>
-        <strong>Request ID:</strong> <code>@RequestId</code>
-    </p>
-}
+        @if (ShowRequestId)
+        {
+            <div class="error-details">
+                <span class="error-label">Request ID:</span>
+                <code class="error-code">@RequestId</code>
+            </div>
+        }
 
-<h3>Development Mode</h3>
-<p>
-    Swapping to <strong>Development</strong> environment will display more detailed information about the error that occurred.
-</p>
-<p>
-    <strong>The Development environment shouldn't be enabled for deployed applications.</strong>
-    It can result in displaying sensitive information from exceptions to end users.
-    For local debugging, enable the <strong>Development</strong> environment by setting the <strong>ASPNETCORE_ENVIRONMENT</strong> environment variable to <strong>Development</strong>
-    and restarting the app.
-</p>
+        <div class="error-actions">
+            <button class="rbm-btn rbm-btn-primary" @onclick="GoHome">
+                🏠 Go to Dashboard
+            </button>
+            <button class="rbm-btn rbm-btn-outline" @onclick="TryAgain">
+                🔄 Try Again
+            </button>
+        </div>
 
-@code{
+        <div class="error-help">
+            <h3>Need Help?</h3>
+            <p>If this problem persists, please contact your system administrator or try these options:</p>
+            <div class="help-links-grid">
+                <a href="/rbm" class="help-link">
+                    <span class="help-link-icon">📊</span>
+                    <span class="help-link-text">Dashboard</span>
+                </a>
+                <a href="/rbm/assets" class="help-link">
+                    <span class="help-link-icon">⚙️</span>
+                    <span class="help-link-text">Assets</span>
+                </a>
+                <a href="/rbm/work-orders" class="help-link">
+                    <span class="help-link-icon">📋</span>
+                    <span class="help-link-text">Work Orders</span>
+                </a>
+                <a href="/Account/Login" class="help-link">
+                    <span class="help-link-icon">🔐</span>
+                    <span class="help-link-text">Re-Login</span>
+                </a>
+            </div>
+        </div>
+
+        <div class="error-footer">
+            <span class="footer-icon">🛠️</span>
+            <span>RBM CMMS - Reliability Based Maintenance</span>
+        </div>
+    </div>
+</div>
+
+<style>
+    .error-container {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #37474f 0%, #607d8b 100%);
+        padding: 20px;
+    }
+
+    .error-card {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        max-width: 600px;
+        width: 100%;
+        padding: 60px 40px;
+        text-align: center;
+    }
+
+    .error-icon {
+        margin-bottom: 24px;
+        display: flex;
+        justify-content: center;
+        animation: pulse 2s ease-in-out infinite;
+    }
+
+    @@keyframes pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.05); opacity: 0.8; }
+    }
+
+    .error-title {
+        font-size: 64px;
+        font-weight: 700;
+        color: #37474f;
+        margin: 0;
+        line-height: 1;
+        background: linear-gradient(135deg, #e53935 0%, #ff7043 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .error-subtitle {
+        font-size: 24px;
+        font-weight: 600;
+        color: #37474f;
+        margin: 16px 0;
+    }
+
+    .error-message {
+        color: #607d8b;
+        font-size: 16px;
+        line-height: 1.6;
+        margin: 0 0 24px 0;
+    }
+
+    .error-details {
+        background: #f5f5f5;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .error-label {
+        color: #607d8b;
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .error-code {
+        background: #eceff1;
+        color: #37474f;
+        padding: 4px 12px;
+        border-radius: 4px;
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 13px;
+        word-break: break-all;
+    }
+
+    .error-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-bottom: 32px;
+    }
+
+    .rbm-btn {
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .rbm-btn-primary {
+        background: linear-gradient(135deg, #0288d1 0%, #0277bd 100%);
+        color: white;
+        box-shadow: 0 4px 12px rgba(2, 136, 209, 0.3);
+    }
+
+    .rbm-btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(2, 136, 209, 0.4);
+    }
+
+    .rbm-btn-outline {
+        background: transparent;
+        color: #37474f;
+        border: 2px solid #cfd8dc;
+    }
+
+    .rbm-btn-outline:hover {
+        background: #f5f5f5;
+        border-color: #b0bec5;
+    }
+
+    .error-help {
+        border-top: 1px solid #eceff1;
+        padding-top: 24px;
+        margin-top: 8px;
+    }
+
+    .error-help h3 {
+        color: #37474f;
+        font-size: 18px;
+        margin: 0 0 8px 0;
+    }
+
+    .error-help p {
+        color: #607d8b;
+        font-size: 14px;
+        margin: 0 0 16px 0;
+    }
+
+    .help-links-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+    }
+
+    .help-link {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 16px 12px;
+        background: #f8f9fa;
+        border-radius: 12px;
+        text-decoration: none;
+        transition: all 0.2s ease;
+        border: 1px solid transparent;
+    }
+
+    .help-link:hover {
+        background: #eceff1;
+        border-color: #0288d1;
+        transform: translateY(-2px);
+    }
+
+    .help-link-icon {
+        font-size: 24px;
+    }
+
+    .help-link-text {
+        color: #37474f;
+        font-size: 13px;
+        font-weight: 500;
+    }
+
+    .error-footer {
+        margin-top: 24px;
+        padding-top: 16px;
+        border-top: 1px solid #eceff1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        color: #90a4ae;
+        font-size: 13px;
+    }
+
+    .footer-icon {
+        font-size: 16px;
+    }
+
+    @@media (max-width: 600px) {
+        .error-card {
+            padding: 40px 24px;
+        }
+
+        .error-title {
+            font-size: 48px;
+        }
+
+        .error-subtitle {
+            font-size: 20px;
+        }
+
+        .help-links-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .error-actions {
+            flex-direction: column;
+        }
+
+        .rbm-btn {
+            width: 100%;
+            justify-content: center;
+        }
+    }
+</style>
+
+@code {
     [CascadingParameter]
     private HttpContext? HttpContext { get; set; }
 
@@ -33,4 +304,14 @@
 
     protected override void OnInitialized() =>
         RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+
+    private void GoHome()
+    {
+        Navigation.NavigateTo("/rbm");
+    }
+
+    private void TryAgain()
+    {
+        Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+    }
 }

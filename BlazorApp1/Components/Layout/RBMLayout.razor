@@ -33,9 +33,9 @@
             {
                 <span title="@initError" style="color: #e53935; font-size: 14px;">⚠️</span>
             }
-            <form action="Account/Logout" method="post" style="margin: 0;">
+            <form action="/Account/Logout" method="post" style="margin: 0;">
                 <AntiforgeryToken />
-                <input type="hidden" name="ReturnUrl" value="~/" />
+                <input type="hidden" name="returnUrl" value="Account/Login" />
                 <button type="submit" class="rbm-mobile-logout-btn" title="Sign out" aria-label="Sign out">
                     <span class="logout-icon">🚪</span>
                 </button>
@@ -175,9 +175,9 @@
                 </button>
 
                 <!-- Logout Button -->
-                <form action="Account/Logout" method="post" style="margin: 0;">
+                <form action="/Account/Logout" method="post" style="margin: 0;">
                     <AntiforgeryToken />
-                    <input type="hidden" name="ReturnUrl" value="~/" />
+                    <input type="hidden" name="returnUrl" value="Account/Login" />
                     <button type="submit" class="rbm-btn rbm-btn-outline rbm-btn-sm" title="Sign out" aria-label="Sign out">
                         <span class="logout-icon" aria-hidden="true">🚪</span> <span class="logout-text">Logout</span>
                     </button>
@@ -271,6 +271,8 @@
                         <span class="settings-icon" aria-hidden="true">⚙️</span> Account Settings
                     </a>
                     <form action="/Account/Logout" method="post" style="margin-top: 8px;">
+                        <AntiforgeryToken />
+                        <input type="hidden" name="returnUrl" value="Account/Login" />
                         <button type="submit" class="rbm-btn rbm-btn-outline" style="width: 100%; color: var(--rbm-danger);" title="Sign out">
                             <span class="logout-icon" aria-hidden="true">🚪</span> Logout
                         </button>

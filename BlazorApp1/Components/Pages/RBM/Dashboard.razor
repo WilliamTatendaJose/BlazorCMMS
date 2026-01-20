@@ -1222,7 +1222,9 @@ else
             warningCount = assets.Count(a => a.Status == "Warning" || (a.HealthScore >= 50 && a.HealthScore < 80));
             criticalCount = assets.Count(a => a.Status == "Critical" || a.HealthScore < 50);
             averageHealthScore = assets.Any() ? assets.Average(a => a.HealthScore) : 0;
-            healthTrend = 3.2;
+            
+            // Calculate real health trend based on work order patterns
+            healthTrend = CalculateHealthTrend();
 
             criticalAssets = assets
                 .Where(a => a.Status == "Critical" || a.Status == "Warning" || a.HealthScore < 80)
@@ -1341,6 +1343,91 @@ else
         var costFromWorkOrders = completedThisMonth * 450m; // $450 average per work order
         var costFromParts = lowStockParts * 120m; // $120 average per low-stock part
         maintenanceCostMTD = costFromWorkOrders + costFromParts;
+    }
+
+    /// <summary>
+    /// Calculate health trend based on work order patterns and asset status changes
+    /// Compares current month vs previous month maintenance activity
+    /// </summary>
+    private double CalculateHealthTrend()
+    {
+        if (!assets.Any() || !workOrders.Any())
+            return 0;
+
+        var currentDate = DateTime.Now;
+        var currentMonthStart = new DateTime(currentDate.Year, currentDate.Month, 1);
+        var previousMonthStart = currentMonthStart.AddMonths(-1);
+        var previousMonthEnd = currentMonthStart.AddDays(-1);
+
+        // Count failure/corrective work orders by month
+        var currentMonthFailures = workOrders.Count(wo => 
+            (wo.Type == "Corrective" || wo.Type == "Emergency") &&
+            wo.CreatedDate >= currentMonthStart);
+        
+        var previousMonthFailures = workOrders.Count(wo => 
+            (wo.Type == "Corrective" || wo.Type == "Emergency") &&
+            wo.CreatedDate >= previousMonthStart && wo.CreatedDate < currentMonthStart);
+
+        // Count completed preventive maintenance by month
+        var currentMonthPM = workOrders.Count(wo =>
+            wo.Type == "Preventive" && wo.Status == "Completed" &&
+            wo.CompletedDate.HasValue && wo.CompletedDate.Value >= currentMonthStart);
+        
+        var previousMonthPM = workOrders.Count(wo =>
+            wo.Type == "Preventive" && wo.Status == "Completed" &&
+            wo.CompletedDate.HasValue && 
+            wo.CompletedDate.Value >= previousMonthStart && wo.CompletedDate.Value < currentMonthStart);
+
+        // Calculate trend based on multiple factors:
+        // 1. Fewer failures = positive trend
+        // 2. More PM completed = positive trend
+        // 3. Higher average health score = positive trend
+        
+        double trend = 0;
+        
+        // Factor 1: Failure rate change (fewer failures = positive)
+        if (previousMonthFailures > 0)
+        {
+            double failureChange = ((double)(previousMonthFailures - currentMonthFailures) / previousMonthFailures) * 100;
+            trend += failureChange * 0.4; // 40% weight
+        }
+        else if (currentMonthFailures == 0)
+        {
+            trend += 5; // Bonus for no failures
+        }
+        
+        // Factor 2: PM completion change (more PM = positive)
+        if (previousMonthPM > 0)
+        {
+            double pmChange = ((double)(currentMonthPM - previousMonthPM) / previousMonthPM) * 100;
+            trend += pmChange * 0.3; // 30% weight
+        }
+        else if (currentMonthPM > 0)
+        {
+            trend += 3; // Bonus for starting PM program
+        }
+        
+        // Factor 3: Current health status (more healthy assets = positive)
+        if (totalAssets > 0)
+        {
+            double healthyRatio = (double)healthyCount / totalAssets;
+            double criticalRatio = (double)criticalCount / totalAssets;
+            
+            // If mostly healthy assets, add positive trend
+            if (healthyRatio > 0.8)
+                trend += 3;
+            else if (healthyRatio > 0.6)
+                trend += 1;
+            
+            // If many critical assets, subtract from trend
+            if (criticalRatio > 0.2)
+                trend -= 4;
+            else if (criticalRatio > 0.1)
+                trend -= 2;
+        }
+
+        // Clamp trend between -15% and +15%
+        return Math.Clamp(trend, -15, 15);
     }
 
     private void GenerateRecentActivities()
