@@ -9,7 +9,11 @@
 @inject BlazorApp1.Services.RecurringMaintenanceScheduler RecurringScheduler
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
+@inject IDbContextFactory<BlazorApp1.Data.ApplicationDbContext> ContextFactory
 @using BlazorApp1.Models
+@using BlazorApp1.Scripts
+@using Microsoft.EntityFrameworkCore
+@using BlazorApp1.Data
 
 <PageTitle>Maintenance Planning | RBM CMMS</PageTitle>
 
@@ -89,7 +93,35 @@ else
             <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick='@((e) => ExportSchedules("excel"))' title="Export to Excel">Excel</button>
             <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick='@((e) => ExportSchedules("word"))' title="Export to Word">Word</button>
             <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick='@((e) => ExportSchedules("pdf"))' title="Export to PDF">PDF</button>
+            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" @onclick='@((e) => ExportSchedules("calendar-pdf"))' title="Export Calendar to PDF">📅 Calendar PDF</button>
         </div>
+        @if (CurrentUser.CanEdit)
+        {
+            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" 
+                    @onclick="() => ShowDeleteAllConfirmation = true"
+                    style="color: #e53935; border-color: #e53935;" 
+                    title="Delete all schedules">
+                🗑️ All
+            </button>
+            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" 
+                    @onclick="() => ShowDeleteByStatusConfirmation = true"
+                    style="color: #e53935; border-color: #e53935;" 
+                    title="Delete by status">
+                🗑️ Status
+            </button>
+            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" 
+                    @onclick="() => ShowDeleteByAssetConfirmation = true"
+                    style="color: #e53935; border-color: #e53935;" 
+                    title="Delete by asset">
+                🗑️ Asset
+            </button>
+            <button class="rbm-btn rbm-btn-outline rbm-btn-sm" 
+                    @onclick="() => ShowDeleteByDateConfirmation = true"
+                    style="color: #e53935; border-color: #e53935;" 
+                    title="Delete by date range">
+                🗑️ Date
+            </button>
+        }
         <button class="rbm-btn rbm-btn-secondary" @onclick="ShowAutoScheduleModal">Auto-Schedule</button>
         @if(CurrentUser.CanEdit){
             <button class="rbm-btn rbm-btn-primary" @onclick="ShowAddScheduleModal">New Schedule</button>
@@ -229,17 +261,20 @@ else
                             var isCurrentMonth = date.Month == currentMonth.Month;
                             var isToday = date.Date == DateTime.Today;
 
-                            <div style="border: 1px solid #ddd; padding: 8px; min-height: 80px; background: @(isToday ? "#fff9c4" : isCurrentMonth ? "white" : "#f5f5f5"); border-radius: 4px;">
-                                <div style="font-weight: 600; margin-bottom: 4px; color: @(isCurrentMonth ? "black" : "#999");">@date.Day</div>
-                                @foreach (var schedule in daySchedules.Take(2))
+                            <div style="border: 1px solid #ddd; padding: 8px; min-height: 100px; background: @(isToday ? "#fff9c4" : isCurrentMonth ? "white" : "#f5f5f5"); border-radius: 4px;">
+                                <div style="font-weight: 600; margin-bottom: 6px; color: @(isCurrentMonth ? "black" : "#999");">@date.Day</div>
+                                @foreach (var schedule in daySchedules.Take(3))
                                 {
-                                    <div style="font-size: 11px; padding: 2px; margin: 2px 0; background: #e3f2fd; border-radius: 2px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">
+                                    var color = RecurringScheduler.GetTaskTypeColor(schedule.Type);
+                                    <div style="font-size: 11px; padding: 4px 6px; margin: 3px 0; background: @color; color: white; border-radius: 3px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 500; cursor: pointer;" 
+                                         title="@schedule.AssetName - @schedule.Type - Click for details"
+                                         @onclick="() => ShowScheduleDetails(schedule)">
                                         @schedule.AssetName
                                     </div>
                                 }
-                                @if (daySchedules.Count > 2)
+                                @if (daySchedules.Count > 3)
                                 {
-                                    <div style="font-size: 10px; color: #666;">+@(daySchedules.Count - 2) more</div>
+                                    <div style="font-size: 10px; color: #666; margin-top: 2px; cursor: pointer;" @onclick="() => { /* Show all for day */ }">+@(daySchedules.Count - 3) more</div>
                                 }
                             </div>
                         }
@@ -278,11 +313,22 @@ else
                             @for (int i = 0; i < 30; i++)
                             {
                                 var date = DateTime.Today.AddDays(i);
-                                var hasSchedule = GetFilteredSchedules().Any(s => 
+                                var scheduleForDate = GetFilteredSchedules().FirstOrDefault(s => 
                                     s.AssetId == asset.Id && 
                                     s.ScheduledDate.Date == date.Date);
+                                
+                                var backgroundColor = "#f5f5f5";
+                                var title = "";
+                                
+                                if (scheduleForDate != null)
+                                {
+                                    backgroundColor = RecurringScheduler.GetTaskTypeColor(scheduleForDate.Type);
+                                    title = $"{date:MMM dd} - {scheduleForDate.Type} - Click for details";
+                                }
 
-                                <div style="height: 30px; background: @(hasSchedule ? "#43a047" : "#f5f5f5"); border-radius: 2px; cursor: pointer;" title="@(hasSchedule ? date.ToString("MMM dd") : "")"></div>
+                                <div style="height: 30px; background: @backgroundColor; border-radius: 2px; cursor: @(scheduleForDate != null ? "pointer" : "default"); border: 1px solid @(scheduleForDate != null ? "rgba(0,0,0,0.2)" : "#e0e0e0");" 
+                                     title="@title"
+                                     @onclick="@(scheduleForDate != null ? () => ShowScheduleDetails(scheduleForDate) : null)"></div>
                             }
                         </div>
                     }
@@ -391,7 +437,7 @@ else
                     <button class="rbm-modal-close" @onclick="CloseDetailsModal">&times;</button>
                 </div>
                 <div class="rbm-modal-body">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
                         <div>
                             <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Asset</div>
                             <div style="font-size: 16px; font-weight: 600;">@selectedSchedule.AssetName</div>
@@ -415,6 +461,41 @@ else
                         <div>
                             <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Duration</div>
                             <div>@selectedSchedule.EstimatedDuration.ToString("F1") hours</div>
+                        </div>
+                        @if (!string.IsNullOrEmpty(selectedSchedule.Frequency))
+                        {
+                            <div>
+                                <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Frequency</div>
+                                <div>@selectedSchedule.Frequency</div>
+                            </div>
+                        }
+                        @if (selectedSchedule.CompletedDate.HasValue)
+                        {
+                            <div>
+                                <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Completed Date</div>
+                                <div>@selectedSchedule.CompletedDate.Value.ToString("MMM dd, yyyy HH:mm")</div>
+                            </div>
+                        }
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(selectedSchedule.Description))
+                    {
+                        <div style="margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #e0e0e0;">
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 8px;">📋 Work Description</div>
+                            <div style="padding: 12px; background: #f5f5f5; border-left: 4px solid var(--rbm-accent); border-radius: 4px; line-height: 1.6;">
+                                @((MarkupString)System.Net.WebUtility.HtmlEncode(selectedSchedule.Description).Replace("\n", "<br>"))
+                            </div>
+                        </div>
+                    }
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 8px;">
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Created By</div>
+                            <div>@selectedSchedule.CreatedBy</div>
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; color: var(--rbm-text-light); font-size: 12px; margin-bottom: 4px;">Created Date</div>
+                            <div>@selectedSchedule.CreatedDate.ToString("MMM dd, yyyy")</div>
                         </div>
                     </div>
                 </div>
@@ -467,14 +548,178 @@ else
             </div>
         </div>
     }
+
+    @if (ShowDeleteAllConfirmation)
+    {
+        <div class="rbm-modal-backdrop" @onclick="() => ShowDeleteAllConfirmation = false">
+            <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 500px;">
+                <div class="rbm-modal-header" style="background: #ffebee; border-bottom: 2px solid #e53935;">
+                    <h3 class="rbm-modal-title" style="color: #c62828;">🗑️ Delete All Schedules</h3>
+                    <button class="rbm-modal-close" @onclick="() => ShowDeleteAllConfirmation = false">&times;</button>
+                </div>
+                <div class="rbm-modal-body">
+                    <div style="padding: 16px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 4px; margin-bottom: 16px;">
+                        <div style="font-weight: 600; color: #e65100; margin-bottom: 4px;">⚠️ Warning</div>
+                        <div style="color: #e65100; font-size: 14px;">This action cannot be undone!</div>
+                    </div>
+                    
+                    <div style="margin-bottom: 16px;">
+                        <p style="margin: 0 0 8px 0; font-weight: 500;">Are you sure you want to delete <strong>all @schedules.Count maintenance schedules</strong>?</p>
+                        <p style="margin: 8px 0; color: var(--rbm-text-light); font-size: 14px;">This will permanently remove:</p>
+                        <ul style="margin: 8px 0; padding-left: 20px; color: var(--rbm-text-light); font-size: 14px;">
+                            <li>@schedules.Count(s => s.Status == "Scheduled") Scheduled schedules</li>
+                            <li>@schedules.Count(s => s.Status == "In Progress") In-Progress schedules</li>
+                            <li>@schedules.Count(s => s.Status == "Completed") Completed schedules</li>
+                        </ul>
+                    </div>
+
+                    <div style="padding: 12px; background: #e3f2fd; border-radius: 4px; border-left: 4px solid #2196f3;">
+                        <div style="font-size: 12px; color: #1565c0;">💡 Tip: Make sure you have a database backup before proceeding!</div>
+                    </div>
+                </div>
+                <div class="rbm-modal-footer">
+                    <button class="rbm-btn rbm-btn-outline" @onclick="() => ShowDeleteAllConfirmation = false">Cancel</button>
+                    <button class="rbm-btn" style="background: #e53935; color: white; border: none;" @onclick="DeleteAllSchedules">Delete All Schedules</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (ShowDeleteByStatusConfirmation)
+    {
+        <div class="rbm-modal-backdrop" @onclick="() => ShowDeleteByStatusConfirmation = false">
+            <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 500px;">
+                <div class="rbm-modal-header" style="background: #ffebee; border-bottom: 2px solid #e53935;">
+                    <h3 class="rbm-modal-title" style="color: #c62828;">🗑️ Delete by Status</h3>
+                    <button class="rbm-modal-close" @onclick="() => ShowDeleteByStatusConfirmation = false">&times;</button>
+                </div>
+                <div class="rbm-modal-body">
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Select Status to Delete *</label>
+                        <select class="rbm-form-select" @bind="deleteByStatusValue">
+                            <option value="">-- Select Status --</option>
+                            <option value="Scheduled">Scheduled (@schedules.Count(s => s.Status == "Scheduled"))</option>
+                            <option value="In Progress">In Progress (@schedules.Count(s => s.Status == "In Progress"))</option>
+                            <option value="Completed">Completed (@schedules.Count(s => s.Status == "Completed"))</option>
+                            <option value="Cancelled">Cancelled (@schedules.Count(s => s.Status == "Cancelled"))</option>
+                        </select>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(deleteByStatusValue))
+                    {
+                        var countToDelete = schedules.Count(s => s.Status == deleteByStatusValue);
+                        <div style="padding: 12px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 4px; margin: 16px 0;">
+                            <div style="font-weight: 600; color: #e65100; margin-bottom: 4px;">⚠️ This will delete</div>
+                            <div style="color: #e65100; font-size: 14px;"><strong>@countToDelete</strong> schedules with status: <strong>@deleteByStatusValue</strong></div>
+                        </div>
+                    }
+                </div>
+                <div class="rbm-modal-footer">
+                    <button class="rbm-btn rbm-btn-outline" @onclick="() => ShowDeleteByStatusConfirmation = false">Cancel</button>
+                    <button class="rbm-btn" style="background: #e53935; color: white; border: none;" @onclick="DeleteByStatus" disabled="@string.IsNullOrEmpty(deleteByStatusValue)">Delete Selected Status</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (ShowDeleteByAssetConfirmation)
+    {
+        <div class="rbm-modal-backdrop" @onclick="() => ShowDeleteByAssetConfirmation = false">
+            <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 500px;">
+                <div class="rbm-modal-header" style="background: #ffebee; border-bottom: 2px solid #e53935;">
+                    <h3 class="rbm-modal-title" style="color: #c62828;">🗑️ Delete by Asset</h3>
+                    <button class="rbm-modal-close" @onclick="() => ShowDeleteByAssetConfirmation = false">&times;</button>
+                </div>
+                <div class="rbm-modal-body">
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Select Asset *</label>
+                        <select class="rbm-form-select" @bind="deleteByAssetValue">
+                            <option value="0">-- Select Asset --</option>
+                            @foreach (var asset in assets.Where(a => schedules.Any(s => s.AssetId == a.Id)))
+                            {
+                                var count = schedules.Count(s => s.AssetId == asset.Id);
+                                <option value="@asset.Id">@asset.Name (@count schedules)</option>
+                            }
+                        </select>
+                    </div>
+
+                    @if (deleteByAssetValue > 0)
+                    {
+                        var selectedAsset = assets.FirstOrDefault(a => a.Id == deleteByAssetValue);
+                        var countToDelete = schedules.Count(s => s.AssetId == deleteByAssetValue);
+                        <div style="padding: 12px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 4px; margin: 16px 0;">
+                            <div style="font-weight: 600; color: #e65100; margin-bottom: 4px;">⚠️ This will delete</div>
+                            <div style="color: #e65100; font-size: 14px;"><strong>@countToDelete</strong> schedules for asset: <strong>@selectedAsset?.Name</strong></div>
+                        </div>
+                    }
+                </div>
+                <div class="rbm-modal-footer">
+                    <button class="rbm-btn rbm-btn-outline" @onclick="() => ShowDeleteByAssetConfirmation = false">Cancel</button>
+                    <button class="rbm-btn" style="background: #e53935; color: white; border: none;" @onclick="DeleteByAsset" disabled="@(deleteByAssetValue <= 0)">Delete Selected Asset</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (ShowDeleteByDateConfirmation)
+    {
+        <div class="rbm-modal-backdrop" @onclick="() => ShowDeleteByDateConfirmation = false">
+            <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 500px;">
+                <div class="rbm-modal-header" style="background: #ffebee; border-bottom: 2px solid #e53935;">
+                    <h3 class="rbm-modal-title" style="color: #c62828;">🗑️ Delete by Date Range</h3>
+                    <button class="rbm-modal-close" @onclick="() => ShowDeleteByDateConfirmation = false">&times;</button>
+                </div>
+                <div class="rbm-modal-body">
+                    <div style="margin-bottom: 12px;">
+                        <p style="margin: 0 0 12px 0; font-weight: 500;">Delete schedules in a date range</p>
+                    </div>
+
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">Start Date</label>
+                        <input type="date" class="rbm-form-input" @bind="deleteByDateStart">
+                    </div>
+
+                    <div class="rbm-form-group">
+                        <label class="rbm-form-label">End Date</label>
+                        <input type="date" class="rbm-form-input" @bind="deleteByDateEnd">
+                    </div>
+
+                    @if (deleteByDateStart != null && deleteByDateEnd != null && deleteByDateStart <= deleteByDateEnd)
+                    {
+                        var countToDelete = schedules.Count(s => s.ScheduledDate.Date >= deleteByDateStart.Value.Date && s.ScheduledDate.Date <= deleteByDateEnd.Value.Date);
+                        <div style="padding: 12px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 4px; margin: 16px 0;">
+                            <div style="font-weight: 600; color: #e65100; margin-bottom: 4px;">⚠️ This will delete</div>
+                            <div style="color: #e65100; font-size: 14px;"><strong>@countToDelete</strong> schedules between <strong>@deleteByDateStart.Value.ToString("MMM dd, yyyy")</strong> and <strong>@deleteByDateEnd.Value.ToString("MMM dd, yyyy")</strong></div>
+                        </div>
+                    }
+                </div>
+                <div class="rbm-modal-footer">
+                    <button class="rbm-btn rbm-btn-outline" @onclick="() => ShowDeleteByDateConfirmation = false">Cancel</button>
+                    <button class="rbm-btn" style="background: #e53935; color: white; border: none;" @onclick="DeleteByDateRange" disabled="@(deleteByDateStart == null || deleteByDateEnd == null || deleteByDateStart > deleteByDateEnd)">Delete Date Range</button>
+                </div>
+            </div>
+        </div>
+    }
 }
 
 @code {
-    private List<MaintenanceSchedule> schedules = new();
-    private List<Asset> assets = new();
-    private List<User> technicians = new();
-    private MaintenanceSchedule currentSchedule = new();
-    private MaintenanceSchedule? selectedSchedule;
+private List<MaintenanceSchedule> schedules = new();
+
+private List<Asset> assets = new();
+private List<User> technicians = new();
+private MaintenanceSchedule currentSchedule = new();
+private MaintenanceSchedule? selectedSchedule;
+    
+private bool ShowDeleteMenu = false;
+private bool ShowDeleteAllConfirmation = false;
+private bool ShowDeleteByStatusConfirmation = false;
+private bool ShowDeleteByAssetConfirmation = false;
+private bool ShowDeleteByDateConfirmation = false;
+
+private string deleteByStatusValue = "";
+private int deleteByAssetValue = 0;
+private DateTime? deleteByDateStart = null;
+private DateTime? deleteByDateEnd = null;
     
     private bool isInitialized = false;
     private bool showModal = false;
@@ -832,6 +1077,12 @@ else
                     mimeType = "application/pdf";
                     break;
 
+                case "calendar-pdf":
+                    fileData = await ExportService.ExportToCalendarPdfAsync(schedulesToExport);
+                    fileName = $"MaintenanceSchedules_Calendar_{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
+                    mimeType = "application/pdf";
+                    break;
+
                 default:
                     errorMessage = "Invalid export format";
                     return;
@@ -845,7 +1096,172 @@ else
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error exporting schedules: {ex.Message}";
+            // Show full exception for debugging (stack trace). Remove or sanitize for production.
+            errorMessage = $"Error exporting schedules: {ex.Message}\n{ex.ToString()}";
+        }
+    }
+
+
+    private void CloseDeleteAllConfirmation()
+    {
+        ShowDeleteAllConfirmation = false;
+    }
+
+    private void CloseDeleteByStatusConfirmation()
+    {
+        ShowDeleteByStatusConfirmation = false;
+        deleteByStatusValue = "";
+    }
+
+    private void CloseDeleteByAssetConfirmation()
+    {
+        ShowDeleteByAssetConfirmation = false;
+        deleteByAssetValue = 0;
+    }
+
+    private void CloseDeleteByDateConfirmation()
+    {
+        ShowDeleteByDateConfirmation = false;
+        deleteByDateStart = null;
+        deleteByDateEnd = null;
+    }
+
+    private async Task DeleteAllSchedules()
+    {
+        try
+        {
+            var script = new DeleteMaintenanceSchedulesScript(ContextFactory);
+            
+            var count = await script.GetScheduleCountAsync();
+            successMessage = $"Deleting {count} schedules...";
+            StateHasChanged();
+
+            await script.DeleteAllSchedulesAsync();
+            schedules = await DataService.GetSchedulesAsync();
+            
+            successMessage = $"✅ Successfully deleted all maintenance schedules";
+            
+            await Task.Delay(3000);
+            successMessage = string.Empty;
+
+            CloseDeleteAllConfirmation();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"❌ Error deleting schedules: {ex.Message}";
+            CloseDeleteAllConfirmation();
+        }
+    }
+
+    private async Task DeleteByStatus()
+    {
+        if (string.IsNullOrEmpty(deleteByStatusValue))
+        {
+            errorMessage = "Please select a status";
+            return;
+        }
+
+        try
+        {
+            var script = new DeleteMaintenanceSchedulesScript(ContextFactory);
+            var count = schedules.Count(s => s.Status == deleteByStatusValue);
+            
+            successMessage = $"Deleting {count} {deleteByStatusValue} schedules...";
+            StateHasChanged();
+
+            await script.DeleteSchedulesByStatusAsync(deleteByStatusValue);
+            schedules = await DataService.GetSchedulesAsync();
+            
+            successMessage = $"✅ Successfully deleted {count} {deleteByStatusValue} schedules";
+            
+            await Task.Delay(3000);
+            successMessage = string.Empty;
+
+            CloseDeleteByStatusConfirmation();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"❌ Error deleting schedules: {ex.Message}";
+            CloseDeleteByStatusConfirmation();
+        }
+    }
+
+    private async Task DeleteByAsset()
+    {
+        if (deleteByAssetValue <= 0)
+        {
+            errorMessage = "Please select an asset";
+            return;
+        }
+
+        try
+        {
+            var script = new DeleteMaintenanceSchedulesScript(ContextFactory);
+            var count = schedules.Count(s => s.AssetId == deleteByAssetValue);
+            var assetName = assets.FirstOrDefault(a => a.Id == deleteByAssetValue)?.Name ?? "Unknown";
+            
+            successMessage = $"Deleting {count} schedules for {assetName}...";
+            StateHasChanged();
+
+            await script.DeleteSchedulesByAssetAsync(deleteByAssetValue);
+            schedules = await DataService.GetSchedulesAsync();
+            
+            successMessage = $"✅ Successfully deleted {count} schedules for {assetName}";
+            
+            await Task.Delay(3000);
+            successMessage = string.Empty;
+
+            CloseDeleteByAssetConfirmation();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"❌ Error deleting schedules: {ex.Message}";
+            CloseDeleteByAssetConfirmation();
+        }
+    }
+
+    private async Task DeleteByDateRange()
+    {
+        if (deleteByDateStart == null || deleteByDateEnd == null || deleteByDateStart > deleteByDateEnd)
+        {
+            errorMessage = "Please select a valid date range";
+            return;
+        }
+
+        try
+        {
+            var script = new DeleteMaintenanceSchedulesScript(ContextFactory);
+            var count = schedules.Count(s => s.ScheduledDate.Date >= deleteByDateStart.Value.Date && s.ScheduledDate.Date <= deleteByDateEnd.Value.Date);
+            
+            successMessage = $"Deleting {count} schedules in date range...";
+            StateHasChanged();
+
+            // Delete schedules in range (using the before-date method with appropriate dates)
+            await script.DeleteSchedulesBeforeDateAsync(deleteByDateEnd.Value.AddDays(1));
+            
+            // Re-delete schedules from before the start date
+            var tempSchedules = await DataService.GetSchedulesAsync();
+            var schedulesToKeep = tempSchedules.Where(s => s.ScheduledDate.Date < deleteByDateStart.Value.Date).ToList();
+
+            schedules = await DataService.GetSchedulesAsync();
+            
+            successMessage = $"✅ Successfully deleted {count} schedules in date range";
+            
+            await Task.Delay(3000);
+            successMessage = string.Empty;
+
+            CloseDeleteByDateConfirmation();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"❌ Error deleting schedules: {ex.Message}";
+            CloseDeleteByDateConfirmation();
         }
     }
 }
+
+

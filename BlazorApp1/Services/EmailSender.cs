@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Identity;
 using System.Net;
-using System.Net.Mail;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 using BlazorApp1.Data;
 
 namespace BlazorApp1.Services;
@@ -9,11 +11,13 @@ public class EmailSender : IEmailSender<ApplicationUser>
 {
     private readonly ILogger<EmailSender> _logger;
     private readonly IConfiguration _configuration;
+    private readonly IHttpClientFactory _httpClientFactory;
 
-    public EmailSender(ILogger<EmailSender> logger, IConfiguration configuration)
+    public EmailSender(ILogger<EmailSender> logger, IConfiguration configuration, IHttpClientFactory httpClientFactory)
     {
         _logger = logger;
         _configuration = configuration;
+        _httpClientFactory = httpClientFactory;
     }
 
     public async Task SendConfirmationLinkAsync(ApplicationUser user, string email, string confirmationLink)
@@ -43,7 +47,7 @@ public class EmailSender : IEmailSender<ApplicationUser>
                     </p>
                 </div>
                 <div style='background: #eceff1; padding: 20px; text-align: center; color: #607d8b; font-size: 13px;'>
-                    <p>© 2024 RBM CMMS. All rights reserved.</p>
+                    <p>ï¿½ 2024 RBM CMMS. All rights reserved.</p>
                 </div>
             </div>";
 
@@ -80,7 +84,7 @@ public class EmailSender : IEmailSender<ApplicationUser>
                     </p>
                 </div>
                 <div style='background: #eceff1; padding: 20px; text-align: center; color: #607d8b; font-size: 13px;'>
-                    <p>© 2024 RBM CMMS. All rights reserved.</p>
+                    <p>ï¿½ 2024 RBM CMMS. All rights reserved.</p>
                 </div>
             </div>";
 
@@ -115,7 +119,7 @@ public class EmailSender : IEmailSender<ApplicationUser>
                     </p>
                 </div>
                 <div style='background: #eceff1; padding: 20px; text-align: center; color: #607d8b; font-size: 13px;'>
-                    <p>© 2024 RBM CMMS. All rights reserved.</p>
+                    <p>ï¿½ 2024 RBM CMMS. All rights reserved.</p>
                 </div>
             </div>";
 
@@ -125,47 +129,68 @@ public class EmailSender : IEmailSender<ApplicationUser>
     private async Task SendEmailAsync(string email, string subject, string htmlMessage)
     {
         // Get email configuration from appsettings.json
-        var smtpServer = _configuration["Email:SmtpServer"];
-        var smtpPort = int.Parse(_configuration["Email:SmtpPort"] ?? "587");
-        var smtpUsername = _configuration["Email:SmtpUsername"];
-        var smtpPassword = _configuration["Email:SmtpPassword"];
+        var provider = _configuration["Email:Provider"] ?? "Resend";
+        var apiKey = _configuration["Email:ResendApiKey"];
         var fromEmail = _configuration["Email:FromEmail"] ?? "noreply@rbmcmms.com";
         var fromName = _configuration["Email:FromName"] ?? "RBM CMMS";
 
-        // For development, just log the email
-        if (string.IsNullOrEmpty(smtpServer))
+        // For development without API key, just log the email
+        if (string.IsNullOrEmpty(apiKey))
         {
             _logger.LogInformation(
-                "Email would be sent to {Email} with subject '{Subject}'. Configure Email settings in appsettings.json to enable real email sending.",
+                "Email would be sent to {Email} with subject '{Subject}'. Configure Email:ResendApiKey in appsettings.json to enable real email sending.",
                 email, subject);
-            _logger.LogInformation("Email body: {Body}", htmlMessage);
+            _logger.LogDebug("Email body: {Body}", htmlMessage);
             return;
         }
 
         try
         {
-            using var client = new SmtpClient(smtpServer, smtpPort)
+            var client = _httpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+            client.Timeout = TimeSpan.FromSeconds(30);
+
+            var payload = new
             {
-                Credentials = new NetworkCredential(smtpUsername, smtpPassword),
-                EnableSsl = true
+                from = string.IsNullOrEmpty(fromName) ? fromEmail : $"{fromName} <{fromEmail}>",
+                to = new[] { email },
+                subject = subject,
+                html = htmlMessage
             };
 
-            var mailMessage = new MailMessage
+            var json = JsonSerializer.Serialize(payload);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            _logger.LogInformation("Attempting to send email to {Email} via Resend API", email);
+            var response = await client.PostAsync("https://api.resend.com/emails", content);
+
+            if (response.IsSuccessStatusCode)
             {
-                From = new MailAddress(fromEmail, fromName),
-                Subject = subject,
-                Body = htmlMessage,
-                IsBodyHtml = true
-            };
-
-            mailMessage.To.Add(email);
-
-            await client.SendMailAsync(mailMessage);
-            _logger.LogInformation("Email sent successfully to {Email}", email);
+                var responseBody = await response.Content.ReadAsStringAsync();
+                _logger.LogInformation("Email sent successfully to {Email}. Response: {Response}", email, responseBody);
+            }
+            else
+            {
+                var errorBody = await response.Content.ReadAsStringAsync();
+                _logger.LogError("Resend API error sending email to {Email}. Status: {Status}, Response: {Response}", 
+                    email, response.StatusCode, errorBody);
+                
+                if (!_configuration.GetValue<bool>("Email:SkipOnError", true))
+                {
+                    throw new InvalidOperationException($"Failed to send email: {response.StatusCode} - {errorBody}");
+                }
+                _logger.LogWarning("Email sending failed but SkipOnError is enabled. User can still use the application.");
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send email to {Email}", email);
+            // If SkipOnError is true, log but don't throw - allows registration to continue
+            if (_configuration.GetValue<bool>("Email:SkipOnError", true))
+            {
+                _logger.LogWarning("Email sending skipped due to error. User can still use the application.");
+                return;
+            }
             throw;
         }
     }

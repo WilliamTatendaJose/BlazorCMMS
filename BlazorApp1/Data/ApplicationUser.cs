@@ -15,7 +15,7 @@ public class ApplicationUser : IdentityUser
     public string? Department { get; set; }
     
     [MaxLength(20)]
-    public string? PhoneNumber { get; set; }
+    public new string? PhoneNumber { get; set; }
     
     public bool IsActive { get; set; } = true;
     

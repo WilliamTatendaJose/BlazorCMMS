@@ -21,7 +21,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<MaintenanceSchedule> MaintenanceSchedules { get; set; }
     public DbSet<ConditionReading> ConditionReadings { get; set; }
     public DbSet<FailureMode> FailureModes { get; set; }
-    public DbSet<User> Users { get; set; }
+    public new DbSet<User> Users { get; set; }
     public DbSet<SparePart> SpareParts { get; set; }
     public DbSet<SparePartTransaction> SparePartTransactions { get; set; }
     public DbSet<Document> Documents { get; set; }

@@ -1,0 +1,255 @@
+@using BlazorApp1.Models
+@using BlazorApp1.Services
+@inject RecurringMaintenanceScheduler RecurringScheduler
+
+<div class="rbm-modal-backdrop" @onclick="OnBackdropClick">
+    <div class="rbm-modal" @onclick:stopPropagation="true" style="max-width: 700px; max-height: 90vh; overflow-y: auto;">
+        <div class="rbm-modal-header">
+            <h3 class="rbm-modal-title">
+                📅 Recurring Schedule: @Schedule?.AssetName
+            </h3>
+            <button class="rbm-modal-close" @onclick="Close">&times;</button>
+        </div>
+
+        @if (Schedule != null && ScheduleInfo != null)
+        {
+            <div class="rbm-modal-body">
+                <!-- Schedule Overview -->
+                <div style="background: linear-gradient(135deg, @ScheduleInfo.TaskTypeColor 0%, @ScheduleInfo.TaskTypeColor 30%, transparent 100%); 
+                            padding: 20px; border-radius: 8px; margin-bottom: 20px; color: white;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px;">
+                        <div>
+                            <div style="opacity: 0.8; font-size: 12px; margin-bottom: 4px;">TASK TYPE</div>
+                            <div style="font-size: 18px; font-weight: 700;">@Schedule.Type</div>
+                        </div>
+                        <div>
+                            <div style="opacity: 0.8; font-size: 12px; margin-bottom: 4px;">FREQUENCY</div>
+                            <div style="font-size: 18px; font-weight: 700;">@ScheduleInfo.Frequency</div>
+                        </div>
+                        <div>
+                            <div style="opacity: 0.8; font-size: 12px; margin-bottom: 4px;">DAYS UNTIL NEXT</div>
+                            <div style="font-size: 18px; font-weight: 700;">
+                                @if (ScheduleInfo.IsOverdue)
+                                {
+                                    <span style="color: #ff6b6b;">OVERDUE</span>
+                                }
+                                else
+                                {
+                                    <span>@ScheduleInfo.DaysUntilNext days</span>
+                                }
+                            </div>
+                        </div>
+                        <div>
+                            <div style="opacity: 0.8; font-size: 12px; margin-bottom: 4px;">DURATION</div>
+                            <div style="font-size: 18px; font-weight: 700;">@ScheduleInfo.EstimatedDuration.ToString("F1") hrs</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Schedule Details -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+                    <div class="rbm-form-group" style="margin: 0;">
+                        <label class="rbm-form-label">Asset</label>
+                        <div style="padding: 10px; background: #f5f5f5; border-radius: 6px;">@Schedule.AssetName</div>
+                    </div>
+                    <div class="rbm-form-group" style="margin: 0;">
+                        <label class="rbm-form-label">Technician</label>
+                        <div style="padding: 10px; background: #f5f5f5; border-radius: 6px;">@Schedule.AssignedTechnician</div>
+                    </div>
+                    <div class="rbm-form-group" style="margin: 0;">
+                        <label class="rbm-form-label">Last Scheduled</label>
+                        <div style="padding: 10px; background: #f5f5f5; border-radius: 6px;">
+                            @Schedule.ScheduledDate.ToString("MMM dd, yyyy HH:mm")
+                        </div>
+                    </div>
+                    <div class="rbm-form-group" style="margin: 0;">
+                        <label class="rbm-form-label">Next Scheduled</label>
+                        <div style="padding: 10px; background: #f5f5f5; border-radius: 6px;">
+                            @ScheduleInfo.NextScheduledDate.ToString("MMM dd, yyyy HH:mm")
+                            @if (IsWeekend(ScheduleInfo.NextScheduledDate))
+                            {
+                                <span style="display: block; font-size: 11px; color: #f57c00; margin-top: 4px;">⚠️ Weekend - Will be adjusted to weekday</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Description -->
+                @if (!string.IsNullOrEmpty(Schedule.Description))
+                {
+                    <div class="rbm-form-group" style="margin-bottom: 20px;">
+                        <label class="rbm-form-label">Description</label>
+                        <div style="padding: 12px; background: #f5f5f5; border-radius: 6px; line-height: 1.6;">
+                            @Schedule.Description
+                        </div>
+                    </div>
+                }
+
+                <!-- Frequency Breakdown -->
+                <div style="background: #f0f7ff; padding: 16px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #1976d2;">
+                    <div style="font-weight: 600; margin-bottom: 8px; color: #1565c0;">🔄 Recurrence Information</div>
+                    <div style="font-size: 14px; color: #333; line-height: 1.6;">
+                        <div>• Frequency: <strong>Every @ScheduleInfo.FrequencyDays days</strong></div>
+                        <div>• Type: <strong>@Schedule.Type</strong></div>
+                        <div>• Status: <strong>@Schedule.Status</strong></div>
+                        @if (!string.IsNullOrEmpty(Schedule.CreatedBy))
+                        {
+                            <div>• Created by: <strong>@Schedule.CreatedBy</strong></div>
+                        }
+                    </div>
+                </div>
+
+                <!-- Future Occurrences -->
+                <div style="margin-bottom: 20px;">
+                    <div style="font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                        <span>📋 Next 10 Occurrences</span>
+                        <span style="margin-left: auto; font-size: 12px; color: var(--rbm-text-light); font-weight: 400;">
+                            All dates adjusted to weekdays (Mon-Fri)
+                        </span>
+                    </div>
+
+                    @if (FutureOccurrences != null && FutureOccurrences.Count > 0)
+                    {
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
+                            @foreach (var occurrence in FutureOccurrences)
+                            {
+                                <div style="padding: 12px; background: #f9f9f9; border-left: 4px solid @ScheduleInfo.TaskTypeColor; border-radius: 6px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                        <div style="font-weight: 600; font-size: 13px;">
+                                            Occurrence @occurrence.OccurrenceNumber
+                                        </div>
+                                        <span style="background: @GetStatusBackground(occurrence.Status); color: @GetStatusColor(occurrence.Status); padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600;">
+                                            @occurrence.Status
+                                        </span>
+                                    </div>
+                                    <div style="font-size: 14px; font-weight: 500; color: #333;">
+                                        @occurrence.ScheduledDate.ToString("dddd, MMM dd, yyyy")
+                                    </div>
+                                    <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                                        @if (occurrence.DaysFromNow < 0)
+                                        {
+                                            <span>@Math.Abs(occurrence.DaysFromNow) days ago</span>
+                                        }
+                                        else if (occurrence.DaysFromNow == 0)
+                                        {
+                                            <span style="color: #f57c00; font-weight: 600;">Today!</span>
+                                        }
+                                        else if (occurrence.DaysFromNow == 1)
+                                        {
+                                            <span style="color: #2196f3; font-weight: 600;">Tomorrow</span>
+                                        }
+                                        else
+                                        {
+                                            <span>@occurrence.DaysFromNow days from now</span>
+                                        }
+                                    </div>
+                                    @if (IsWeekend(occurrence.ScheduledDate))
+                                    {
+                                        <div style="margin-top: 6px; padding: 6px; background: #fff3cd; border-radius: 4px; font-size: 11px; color: #856404;">
+                                            ⚠️ Falls on @occurrence.ScheduledDate.DayOfWeek
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="padding: 20px; text-align: center; color: var(--rbm-text-light);">
+                            Loading occurrences...
+                        </div>
+                    }
+                </div>
+
+                <!-- Color Legend -->
+                <div style="background: #fafafa; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                    <div style="font-weight: 600; margin-bottom: 12px;">Task Type Color</div>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="width: 40px; height: 40px; border-radius: 8px; background: @ScheduleInfo.TaskTypeColor;"></div>
+                        <div>
+                            <div style="font-weight: 600;">@ScheduleInfo.TaskTypeColorName</div>
+                            <div style="font-size: 12px; color: #666;">@ScheduleInfo.TaskType</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="rbm-modal-footer">
+                <button class="rbm-btn rbm-btn-outline" @onclick="Close">Close</button>
+                @if (OnEdit.HasValue)
+                {
+                    <button class="rbm-btn rbm-btn-primary" @onclick="async () => { await OnEdit.Value.InvokeAsync(Schedule); await Close(); }">Edit Schedule</button>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="rbm-modal-body" style="text-align: center; padding: 40px;">
+                <div style="color: var(--rbm-text-light);">Loading schedule details...</div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public MaintenanceSchedule? Schedule { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    [Parameter]
+    public EventCallback<MaintenanceSchedule>? OnEdit { get; set; }
+
+    [Inject]
+    private RecurringMaintenanceScheduler? SchedulerService { get; set; }
+
+    private SchedulingInfo? ScheduleInfo { get; set; }
+    private List<ScheduleOccurrence> FutureOccurrences { get; set; } = new();
+
+    protected override void OnParametersSet()
+    {
+        if (Schedule != null && SchedulerService != null)
+        {
+            ScheduleInfo = SchedulerService.GetSchedulingInfo(Schedule);
+            FutureOccurrences = SchedulerService.GetFutureOccurrences(Schedule, 10);
+        }
+    }
+
+    private void OnBackdropClick()
+    {
+        Close();
+    }
+
+    private async Task Close()
+    {
+        await OnClose.InvokeAsync();
+    }
+
+    private bool IsWeekend(DateTime date)
+    {
+        return date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday;
+    }
+
+    private string GetStatusBackground(string status)
+    {
+        return status switch
+        {
+            "Scheduled" => "#e3f2fd",
+            "Overdue" => "#ffebee",
+            "Completed" => "#e8f5e9",
+            _ => "#f5f5f5"
+        };
+    }
+
+    private string GetStatusColor(string status)
+    {
+        return status switch
+        {
+            "Scheduled" => "#1565c0",
+            "Overdue" => "#c62828",
+            "Completed" => "#2e7d32",
+            _ => "#666"
+        };
+    }
+}

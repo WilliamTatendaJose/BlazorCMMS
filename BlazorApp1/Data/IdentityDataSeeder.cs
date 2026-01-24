@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using BlazorApp1.Data;
 using BlazorApp1.Models;
+using System.Security.Claims;
+using BlazorApp1.Services;
 
 namespace BlazorApp1.Data;
 
@@ -27,12 +29,38 @@ public static class IdentityDataSeeder
         RoleManager<IdentityRole> roleManager,
         ApplicationDbContext context)
     {
-        // Seed all roles
+        // Seed all roles and attach a basic role-level claim for each role
         foreach (var role in AllRoles)
         {
             if (!await roleManager.RoleExistsAsync(role))
             {
-                await roleManager.CreateAsync(new IdentityRole(role));
+                var createRoleResult = await roleManager.CreateAsync(new IdentityRole(role));
+                if (createRoleResult.Succeeded)
+                {
+                    // Add a role-level claim to help with permission checks if needed
+                    var createdRole = await roleManager.FindByNameAsync(role);
+                    if (createdRole != null)
+                    {
+                        var level = RolePermissionService.GetRoleLevel(role);
+                        // Add or ensure the claim exists
+                        var claim = new Claim("RoleLevel", level.ToString());
+                        await roleManager.AddClaimAsync(createdRole, claim);
+                    }
+                }
+            }
+            else
+            {
+                // Ensure role has RoleLevel claim (in case it was created in a previous run without claims)
+                var existingRole = await roleManager.FindByNameAsync(role);
+                if (existingRole != null)
+                {
+                    var claims = await roleManager.GetClaimsAsync(existingRole);
+                    if (!claims.Any(c => c.Type == "RoleLevel"))
+                    {
+                        var level = RolePermissionService.GetRoleLevel(role);
+                        await roleManager.AddClaimAsync(existingRole, new Claim("RoleLevel", level.ToString()));
+                    }
+                }
             }
         }
 
@@ -156,7 +184,24 @@ public static class IdentityDataSeeder
             if (result.Succeeded)
             {
                 await userManager.AddToRoleAsync(identityUser, role);
-                
+
+                // Add common claims to the created user so roles/claims appear in AspNetUserClaims
+                var userClaims = new List<Claim>
+                {
+                    new Claim(ClaimTypes.Name, identityUser.FullName ?? identityUser.Email ?? ""),
+                    new Claim(ClaimTypes.Email, identityUser.Email ?? ""),
+                    new Claim("FullName", identityUser.FullName ?? ""),
+                    new Claim(ClaimTypes.MobilePhone, phone ?? "")
+                };
+
+                // Only add claims that don't already exist
+                var existingClaims = await userManager.GetClaimsAsync(identityUser);
+                var claimsToAdd = userClaims.Where(uc => !existingClaims.Any(ec => ec.Type == uc.Type && ec.Value == uc.Value)).ToList();
+                if (claimsToAdd.Count > 0)
+                {
+                    await userManager.AddClaimsAsync(identityUser, claimsToAdd);
+                }
+
                 // Sync to legacy Users table
                 await SyncToLegacyUsersTable(context, identityUser, role, phone);
             }
@@ -165,6 +210,22 @@ public static class IdentityDataSeeder
         {
             // User exists in Identity - ensure they're synced to legacy table
             await SyncToLegacyUsersTable(context, existingUser, role, phone);
+
+            // Ensure existing Identity user has basic claims persisted
+            var existingClaims = await userManager.GetClaimsAsync(existingUser);
+            var required = new List<Claim>
+            {
+                new Claim(ClaimTypes.Name, existingUser.FullName ?? existingUser.Email ?? ""),
+                new Claim(ClaimTypes.Email, existingUser.Email ?? ""),
+                new Claim("FullName", existingUser.FullName ?? ""),
+                new Claim(ClaimTypes.MobilePhone, phone ?? "")
+            };
+
+            var toAdd = required.Where(rc => !existingClaims.Any(ec => ec.Type == rc.Type && ec.Value == rc.Value)).ToList();
+            if (toAdd.Count > 0)
+            {
+                await userManager.AddClaimsAsync(existingUser, toAdd);
+            }
         }
     }
 
@@ -175,7 +236,7 @@ public static class IdentityDataSeeder
         ApplicationDbContext context,
         ApplicationUser identityUser,
         string role,
-        string phone)
+        string? phone)
     {
         // Check if already exists in legacy table
         var legacyUser = await context.Users
@@ -190,7 +251,7 @@ public static class IdentityDataSeeder
                 Email = identityUser.Email ?? "",
                 Role = role,
                 Department = identityUser.Department ?? "",
-                Phone = phone,
+                Phone = phone ?? "",
                 IsActive = identityUser.IsActive,
                 CreatedDate = identityUser.CreatedDate,
                 AspNetUserId = identityUser.Id,
@@ -205,6 +266,7 @@ public static class IdentityDataSeeder
             legacyUser.Email = identityUser.Email ?? "";
             legacyUser.Role = role;
             legacyUser.Department = identityUser.Department ?? "";
+            legacyUser.Phone = phone ?? "";
             legacyUser.IsActive = identityUser.IsActive;
             legacyUser.AspNetUserId = identityUser.Id;
             legacyUser.TenantId = identityUser.PrimaryTenantId;

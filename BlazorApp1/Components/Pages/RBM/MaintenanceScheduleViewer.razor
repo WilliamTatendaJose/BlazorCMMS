@@ -1,0 +1,440 @@
+@page "/rbm/maintenance-schedule-viewer"
+@rendermode InteractiveServer
+@layout RBMLayout
+@using Microsoft.AspNetCore.Authorization
+@using BlazorApp1.Models
+@attribute [Authorize]
+@inject DataService DataService
+@inject CurrentUserService CurrentUser
+@inject RecurringMaintenanceScheduler RecurringScheduler
+
+<PageTitle>Maintenance Schedule Viewer | RBM CMMS</PageTitle>
+
+    <style>
+        .schedule-card {
+            transition: all 0.3s ease;
+        }
+
+        .schedule-card:hover {
+            transform: translateX(4px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .task-type-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .schedule-date {
+            font-size: 14px;
+            font-weight: 600;
+            margin: 8px 0;
+        }
+
+        .weekend-badge {
+            display: inline-block;
+            background: #fff3cd;
+            color: #856404;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            margin-left: 8px;
+            font-weight: 600;
+        }
+
+        .color-legend {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px;
+            background: #f5f5f5;
+            border-radius: 6px;
+        }
+
+        .legend-color {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+        }
+
+        .occurrence-timeline {
+            position: relative;
+            padding: 20px 0;
+            margin: 16px 0;
+        }
+
+        .occurrence-item {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 16px;
+            position: relative;
+            padding: 12px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+
+        .occurrence-item::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: -16px;
+            width: 2px;
+            height: 16px;
+            background: #ddd;
+        }
+
+        .occurrence-item:first-of-type::before {
+            display: none;
+        }
+
+        .occurrence-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            color: white;
+            font-weight: 600;
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+
+        .schedule-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 16px;
+        }
+
+        .status-chip {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .status-scheduled {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+
+        .status-overdue {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .status-completed {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+    </style>
+
+@if (!isInitialized)
+{
+    <div style="display: flex; align-items: center; justify-content: center; min-height: 400px;">
+        <div style="text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
+            <div style="font-size: 16px; color: var(--rbm-text-light);">Loading maintenance schedules...</div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="rbm-page-header">
+        <h1 class="rbm-page-title">Maintenance Schedule Viewer</h1>
+        <p class="rbm-page-subtitle">View schedules with color-coded task types and automatic weekend adjustments</p>
+    </div>
+
+    <!-- Color Legend -->
+    <div class="rbm-card" style="margin-bottom: 24px;">
+        <div class="rbm-card-header">
+            <h3 class="rbm-card-title">Task Type Colors</h3>
+        </div>
+        <div style="padding: 20px;">
+            <div class="color-legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #4CAF50;"></div>
+                    <div>🟢 Preventive Maintenance</div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #FF9800;"></div>
+                    <div>🟠 Corrective Maintenance</div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #2196F3;"></div>
+                    <div>🔵 Predictive Maintenance</div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #9C27B0;"></div>
+                    <div>🟣 Inspection</div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #F44336;"></div>
+                    <div>🔴 Emergency</div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #00BCD4;"></div>
+                    <div>🔵 Routine Maintenance</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Schedules Grid -->
+    <div class="rbm-card" style="margin-bottom: 24px;">
+        <div class="rbm-card-header">
+            <h3 class="rbm-card-title">Active Schedules</h3>
+            <span style="margin-left: auto; color: var(--rbm-text-light); font-size: 14px;">
+                Total: @schedules.Count(s => s.Status == "Scheduled") Scheduled
+            </span>
+        </div>
+        <div style="padding: 20px;">
+            @if (schedules.Count == 0)
+            {
+                <div style="text-align: center; padding: 40px; color: var(--rbm-text-light);">
+                    No schedules found
+                </div>
+            }
+            else
+            {
+                <div class="schedule-grid">
+                    @foreach (var schedule in schedules.OrderBy(s => s.ScheduledDate))
+                    {
+                        var info = RecurringScheduler.GetSchedulingInfo(schedule);
+                        <div class="rbm-card schedule-card" style="border-left: 5px solid @info.TaskTypeColor; background: linear-gradient(135deg, rgba(0,0,0,0.02) 0%, transparent 100%);">
+                            <div style="padding: 16px;">
+                                <!-- Header with Type and Date -->
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                                    <div class="task-type-badge" style="background-color: @info.TaskTypeColor;">
+                                        @info.TaskType
+                                    </div>
+                                    <span class="status-chip @GetStatusClass(schedule.Status)">@schedule.Status</span>
+                                </div>
+
+                                <!-- Asset Name -->
+                                <div style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">
+                                    @schedule.AssetName
+                                </div>
+
+                                <!-- Scheduled Date with Weekend Indicator -->
+                                <div class="schedule-date">
+                                    📅 @schedule.ScheduledDate.ToString("dddd, MMMM dd, yyyy HH:mm")
+                                    @if (IsWeekend(schedule.ScheduledDate))
+                                    {
+                                        <span class="weekend-badge">⚠️ Adjusted to Weekday</span>
+                                    }
+                                </div>
+
+                                <!-- Technician and Duration -->
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; font-size: 13px;">
+                                    <div>
+                                        <div style="color: var(--rbm-text-light); margin-bottom: 2px;">Technician</div>
+                                        <div style="font-weight: 500;">@schedule.AssignedTechnician</div>
+                                    </div>
+                                    <div>
+                                        <div style="color: var(--rbm-text-light); margin-bottom: 2px;">Duration</div>
+                                        <div style="font-weight: 500;">@schedule.EstimatedDuration.ToString("F1") hrs</div>
+                                    </div>
+                                </div>
+
+                                <!-- Frequency Info (if recurring) -->
+                                @if (!string.IsNullOrEmpty(schedule.Frequency))
+                                {
+                                    <div style="padding: 10px; background: #f0f7ff; border-radius: 6px; margin: 12px 0; font-size: 13px;">
+                                        <div style="color: #1976d2; font-weight: 600;">
+                                            🔄 Recurring: @schedule.Frequency
+                                        </div>
+                                        @if (info.DaysUntilNext > 0)
+                                        {
+                                            <div style="color: #666; margin-top: 4px; font-size: 12px;">
+                                                Next occurrence in @info.DaysUntilNext days
+                                            </div>
+                                        }
+                                    </div>
+                                }
+
+                                <!-- Description -->
+                                @if (!string.IsNullOrEmpty(schedule.Description))
+                                {
+                                    <div style="padding: 10px; background: #fafafa; border-radius: 6px; margin: 12px 0; font-size: 12px; line-height: 1.5;">
+                                        @schedule.Description
+                                    </div>
+                                }
+
+                                <!-- View Future Occurrences Button -->
+                                @if (!string.IsNullOrEmpty(schedule.Frequency))
+                                {
+                                    <button class="rbm-btn rbm-btn-outline rbm-btn-sm" 
+                                            @onclick="() => ToggleOccurrences(schedule.Id)" 
+                                            style="width: 100%; margin-top: 12px;">
+                                        @if (expandedScheduleId == schedule.Id)
+                                        {
+                                            <span>▼ Hide Next 5 Occurrences</span>
+                                        }
+                                        else
+                                        {
+                                            <span>▶ View Next 5 Occurrences</span>
+                                        }
+                                    </button>
+                                }
+                            </div>
+
+                            <!-- Future Occurrences Timeline -->
+                            @if (expandedScheduleId == schedule.Id && !string.IsNullOrEmpty(schedule.Frequency))
+                            {
+                                var occurrences = RecurringScheduler.GetFutureOccurrences(schedule, 5);
+                                if (occurrences.Count > 0)
+                                {
+                                    <div style="border-top: 1px solid #eee; padding: 16px; background: #fafafa; border-radius: 0 0 8px 8px;">
+                                        <div style="font-weight: 600; margin-bottom: 12px; font-size: 13px;">📋 Upcoming Occurrences</div>
+                                        <div class="occurrence-timeline">
+                                            @foreach (var occurrence in occurrences.OrderBy(o => o.ScheduledDate))
+                                            {
+                                                <div class="occurrence-item" style="border-left: 4px solid @info.TaskTypeColor;">
+                                                    <div class="occurrence-indicator" style="background: @info.TaskTypeColor;">
+                                                        @occurrence.OccurrenceNumber
+                                                    </div>
+                                                    <div style="flex: 1;">
+                                                        <div style="font-weight: 500;">
+                                                            @occurrence.ScheduledDate.ToString("dddd, MMM dd, yyyy")
+                                                        </div>
+                                                        <div style="font-size: 12px; color: #666; margin-top: 2px;">
+                                                            @occurrence.DaysFromNow days from now
+                                                            @if (IsWeekend(occurrence.ScheduledDate))
+                                                            {
+                                                                <span style="margin-left: 8px; color: #f57c00;">⚠️ Weekend</span>
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                    <div style="text-align: right;">
+                                                        <span class="status-chip @GetStatusClass(occurrence.Status)">
+                                                            @occurrence.Status
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Schedule Statistics -->
+    <div class="rbm-grid rbm-grid-4" style="margin-bottom: 24px;">
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-value">@schedules.Count(s => s.Status == "Scheduled")</div>
+            <div class="rbm-stat-label">Scheduled</div>
+            <div class="rbm-stat-detail">Upcoming tasks</div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-value">@schedules.Count(s => s.Status == "In Progress")</div>
+            <div class="rbm-stat-label">In Progress</div>
+            <div class="rbm-stat-detail">Currently running</div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-value">@schedules.Count(s => string.IsNullOrEmpty(s.Frequency))</div>
+            <div class="rbm-stat-label">One-Time</div>
+            <div class="rbm-stat-detail">Non-recurring</div>
+        </div>
+        <div class="rbm-stat-card">
+            <div class="rbm-stat-value">@schedules.Count(s => !string.IsNullOrEmpty(s.Frequency))</div>
+            <div class="rbm-stat-label">Recurring</div>
+            <div class="rbm-stat-detail">Automated schedules</div>
+        </div>
+    </div>
+
+    <!-- Task Type Distribution -->
+    <div class="rbm-card">
+        <div class="rbm-card-header">
+            <h3 class="rbm-card-title">Task Type Distribution</h3>
+        </div>
+        <div style="padding: 20px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
+                @{
+                    var types = schedules.GroupBy(s => s.Type).OrderByDescending(g => g.Count());
+                }
+                @foreach (var typeGroup in types)
+                {
+                    var color = RecurringScheduler.GetTaskTypeColor(typeGroup.Key);
+                    var count = typeGroup.Count();
+                    var percentage = (count * 100) / schedules.Count;
+
+                    <div style="padding: 12px; background: #f9f9f9; border-radius: 8px;">
+                        <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                            <div style="width: 12px; height: 12px; border-radius: 2px; background: @color; margin-right: 8px;"></div>
+                            <span style="font-weight: 600;">@typeGroup.Key</span>
+                            <span style="margin-left: auto; color: var(--rbm-text-light); font-size: 14px;">@count</span>
+                        </div>
+                        <div style="width: 100%; height: 6px; background: #eee; border-radius: 3px; overflow: hidden;">
+                            <div style="width: @percentage%; height: 100%; background: @color; transition: width 0.3s ease;"></div>
+                        </div>
+                        <div style="text-align: right; font-size: 12px; color: var(--rbm-text-light); margin-top: 4px;">
+                            @percentage%
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<MaintenanceSchedule> schedules = new();
+    private int? expandedScheduleId = null;
+    private bool isInitialized = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            schedules = await DataService.GetSchedulesAsync();
+            isInitialized = true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading schedules: {ex.Message}");
+            isInitialized = true;
+        }
+    }
+
+    private void ToggleOccurrences(int scheduleId)
+    {
+        expandedScheduleId = expandedScheduleId == scheduleId ? null : scheduleId;
+    }
+
+    private bool IsWeekend(DateTime date)
+    {
+        return date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday;
+    }
+
+    private string GetStatusClass(string status)
+    {
+        return status switch
+        {
+            "Scheduled" => "status-scheduled",
+            "Overdue" => "status-overdue",
+            "Completed" => "status-completed",
+            "In Progress" => "status-scheduled",
+            _ => "status-scheduled"
+        };
+    }
+}

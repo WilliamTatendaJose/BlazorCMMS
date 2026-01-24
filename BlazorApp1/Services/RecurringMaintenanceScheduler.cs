@@ -56,7 +56,72 @@ public class RecurringMaintenanceScheduler
     }
 
     /// <summary>
+    /// Adjusts a date to a weekday if it falls on a weekend
+    /// Saturday → Friday (previous day)
+    /// Sunday → Monday (next day)
+    /// </summary>
+    public DateTime AdjustToWeekday(DateTime date)
+    {
+        return date.DayOfWeek switch
+        {
+            DayOfWeek.Saturday => date.AddDays(-1), // Move to Friday
+            DayOfWeek.Sunday => date.AddDays(1),    // Move to Monday
+            _ => date                                 // Keep weekday as is
+        };
+    }
+
+    /// <summary>
+    /// Gets the color code for a maintenance task type
+    /// Used for visual separation in UI
+    /// </summary>
+    public string GetTaskTypeColor(string taskType)
+    {
+        return taskType?.ToLower() switch
+        {
+            "preventive" => "#4CAF50",      // Green
+            "preventativemaintenance" => "#4CAF50", // Green
+            "corrective" => "#FF9800",      // Orange
+            "correctivemaintenance" => "#FF9800",   // Orange
+            "predictive" => "#2196F3",      // Blue
+            "predictivemaintenance" => "#2196F3",   // Blue
+            "inspection" => "#9C27B0",      // Purple
+            "emergency" => "#F44336",       // Red
+            "emergencymaintenance" => "#F44336",    // Red
+            "routine" => "#00BCD4",         // Cyan
+            "scheduled" => "#4CAF50",       // Green
+            "unscheduled" => "#FF5722",     // Deep Orange
+            "breakdown" => "#F44336",       // Red
+            _ => "#607D8B"                  // Blue Grey (default)
+        };
+    }
+
+    /// <summary>
+    /// Gets a user-friendly label for a task type color
+    /// </summary>
+    public string GetTaskTypeColorName(string taskType)
+    {
+        return taskType?.ToLower() switch
+        {
+            "preventive" => "Green (Preventive)",
+            "preventativemaintenance" => "Green (Preventive)",
+            "corrective" => "Orange (Corrective)",
+            "correctivemaintenance" => "Orange (Corrective)",
+            "predictive" => "Blue (Predictive)",
+            "predictivemaintenance" => "Blue (Predictive)",
+            "inspection" => "Purple (Inspection)",
+            "emergency" => "Red (Emergency)",
+            "emergencymaintenance" => "Red (Emergency)",
+            "routine" => "Cyan (Routine)",
+            "scheduled" => "Green (Scheduled)",
+            "unscheduled" => "Deep Orange (Unscheduled)",
+            "breakdown" => "Red (Breakdown)",
+            _ => "Grey (Other)"
+        };
+    }
+
+    /// <summary>
     /// Generates future schedules for a repeating maintenance task
+    /// Automatically adjusts weekend dates to weekdays (Saturday→Friday, Sunday→Monday)
     /// </summary>
     /// <param name="baseSchedule">The original schedule to use as a template</param>
     /// <param name="numberOfOccurrences">How many future schedules to generate</param>
@@ -78,6 +143,9 @@ public class RecurringMaintenanceScheduler
         for (int i = 1; i <= numberOfOccurrences; i++)
         {
             var nextDate = currentDate.AddDays(frequencyDays * i);
+            
+            // Adjust to weekday if it falls on weekend
+            nextDate = AdjustToWeekday(nextDate);
 
             // Skip if in the past
             if (nextDate < DateTime.Now)
@@ -101,7 +169,7 @@ public class RecurringMaintenanceScheduler
                     : $"Recurring {baseSchedule.Frequency.ToLower()} maintenance",
                 EstimatedDuration = baseSchedule.EstimatedDuration,
                 Frequency = baseSchedule.Frequency,
-                NextScheduledDate = nextDate.AddDays(frequencyDays),
+                NextScheduledDate = AdjustToWeekday(nextDate.AddDays(frequencyDays)),
                 CreatedDate = DateTime.Now,
                 CreatedBy = baseSchedule.CreatedBy,
                 TenantId = baseSchedule.TenantId
@@ -166,6 +234,7 @@ public class RecurringMaintenanceScheduler
 
     /// <summary>
     /// Processes all overdue recurring schedules and generates next occurrences
+    /// Automatically adjusts weekend dates to weekdays
     /// Should be called by a background job/timer
     /// </summary>
     /// <returns>Number of new schedules created</returns>
@@ -186,15 +255,19 @@ public class RecurringMaintenanceScheduler
             if (schedule.NextScheduledDate.Value <= DateTime.Now)
             {
                 var frequencyDays = GetFrequencyDays(schedule.Frequency);
+                var nextScheduledDate = schedule.NextScheduledDate.Value.AddDays(frequencyDays);
+                
+                // Adjust to weekday if it falls on weekend
+                nextScheduledDate = AdjustToWeekday(nextScheduledDate);
                 
                 // Create new schedule for the next occurrence
                 var newSchedule = new MaintenanceSchedule
                 {
                     AssetId = schedule.AssetId,
                     AssetName = schedule.AssetName,
-                    ScheduledDate = schedule.NextScheduledDate.Value,
+                    ScheduledDate = nextScheduledDate,
                     EndDate = schedule.EndDate.HasValue
-                        ? schedule.NextScheduledDate.Value.Add(schedule.EndDate.Value - schedule.ScheduledDate)
+                        ? nextScheduledDate.Add(schedule.EndDate.Value - schedule.ScheduledDate)
                         : null,
                     Type = schedule.Type,
                     AssignedTechnician = schedule.AssignedTechnician,
@@ -202,7 +275,7 @@ public class RecurringMaintenanceScheduler
                     Description = schedule.Description,
                     EstimatedDuration = schedule.EstimatedDuration,
                     Frequency = schedule.Frequency,
-                    NextScheduledDate = schedule.NextScheduledDate.Value.AddDays(frequencyDays),
+                    NextScheduledDate = AdjustToWeekday(nextScheduledDate.AddDays(frequencyDays)),
                     CreatedDate = DateTime.Now,
                     CreatedBy = schedule.CreatedBy,
                     TenantId = schedule.TenantId
@@ -212,7 +285,7 @@ public class RecurringMaintenanceScheduler
                 totalCreated++;
 
                 // Update the parent schedule's next scheduled date
-                schedule.NextScheduledDate = schedule.NextScheduledDate.Value.AddDays(frequencyDays);
+                schedule.NextScheduledDate = AdjustToWeekday(schedule.NextScheduledDate.Value.AddDays(frequencyDays));
                 context.MaintenanceSchedules.Update(schedule);
             }
         }
@@ -255,7 +328,10 @@ public class RecurringMaintenanceScheduler
             DaysUntilNext = (int)(nextDate - DateTime.Now).TotalDays,
             IsOverdue = nextDate <= DateTime.Now,
             EstimatedDuration = schedule.EstimatedDuration,
-            TechnicianName = schedule.AssignedTechnician
+            TechnicianName = schedule.AssignedTechnician,
+            TaskType = schedule.Type,
+            TaskTypeColor = GetTaskTypeColor(schedule.Type),
+            TaskTypeColorName = GetTaskTypeColorName(schedule.Type)
         };
     }
 
@@ -269,10 +345,15 @@ public class RecurringMaintenanceScheduler
         var occurrences = new List<ScheduleOccurrence>();
         var frequencyDays = GetFrequencyDays(schedule.Frequency);
         var currentDate = schedule.NextScheduledDate ?? schedule.ScheduledDate;
+        var taskTypeColor = GetTaskTypeColor(schedule.Type);
+        var taskTypeColorName = GetTaskTypeColorName(schedule.Type);
 
         for (int i = 1; i <= numberOfOccurrences; i++)
         {
             var nextDate = currentDate.AddDays(frequencyDays * i);
+            
+            // Adjust to weekday if falls on weekend
+            nextDate = AdjustToWeekday(nextDate);
 
             if (nextDate >= DateTime.Now)
             {
@@ -281,7 +362,10 @@ public class RecurringMaintenanceScheduler
                     OccurrenceNumber = i,
                     ScheduledDate = nextDate,
                     DaysFromNow = (int)(nextDate - DateTime.Now).TotalDays,
-                    Status = nextDate <= DateTime.Now ? "Overdue" : "Scheduled"
+                    Status = nextDate <= DateTime.Now ? "Overdue" : "Scheduled",
+                    TaskType = schedule.Type,
+                    TaskTypeColor = taskTypeColor,
+                    TaskTypeColorName = taskTypeColorName
                 });
             }
         }
@@ -367,6 +451,9 @@ public class SchedulingInfo
     public bool IsOverdue { get; set; }
     public double EstimatedDuration { get; set; }
     public string TechnicianName { get; set; } = string.Empty;
+    public string TaskType { get; set; } = string.Empty;
+    public string TaskTypeColor { get; set; } = "#607D8B"; // Hex color code
+    public string TaskTypeColorName { get; set; } = "Grey (Other)"; // User-friendly name
 }
 
 /// <summary>
@@ -378,4 +465,7 @@ public class ScheduleOccurrence
     public DateTime ScheduledDate { get; set; }
     public int DaysFromNow { get; set; }
     public string Status { get; set; } = string.Empty; // "Scheduled", "Overdue", "Completed"
+    public string TaskType { get; set; } = string.Empty;
+    public string TaskTypeColor { get; set; } = "#607D8B"; // Hex color code
+    public string TaskTypeColorName { get; set; } = "Grey (Other)"; // User-friendly name
 }
