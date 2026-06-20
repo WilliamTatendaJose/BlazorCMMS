@@ -1,0 +1,56 @@
+# Ignore patterns for Railway builds
+# This speeds up builds by excluding unnecessary files
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!RAILWAY_DEPLOYMENT.md
+!RAILWAY_QUICK_START.md
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# Build outputs (will be rebuilt)
+**/bin/
+**/obj/
+
+# User-specific files
+**/*.user
+**/*.suo
+
+# Docker
+docker-compose*.yml
+docker-compose*.override.yml
+.dockerignore
+
+# Scripts (but keep docker-entrypoint.sh)
+*.ps1
+!docker-entrypoint.sh
+
+# SQL
+*.sql
+
+# Tests (if you have test projects, add them)
+**/*.Tests/
+**/*.Test/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Azure
+.azure/
+
+# Node modules (if any)
+**/node_modules/
+
+# Misc
+**/.DS_Store
+**/Thumbs.db

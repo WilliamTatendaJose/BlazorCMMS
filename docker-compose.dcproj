@@ -9,10 +9,18 @@
     <DockerServiceName>blazorapp1</DockerServiceName>
   </PropertyGroup>
   <ItemGroup>
+    <None Include=".railwayignore" />
     <None Include="docker-compose.override.yml">
       <DependentUpon>docker-compose.yml</DependentUpon>
     </None>
     <None Include="docker-compose.yml" />
     <None Include=".dockerignore" />
+    <None Include="docker-entrypoint.sh" />
+    <None Include="Dockerfile" />
+    <None Include="GIT_COMMIT_HELPER.md" />
+    <None Include="railway.toml" />
+    <None Include="RAILWAY_DEPLOYMENT.md" />
+    <None Include="RAILWAY_FIX_SUMMARY.md" />
+    <None Include="RAILWAY_QUICK_START.md" />
   </ItemGroup>
 </Project>
