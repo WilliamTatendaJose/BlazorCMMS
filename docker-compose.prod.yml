@@ -1,0 +1,37 @@
+services:
+  blazorapp1:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_HTTP_PORTS=8080
+      - ASPNETCORE_HTTPS_PORTS=8081
+      # Database Connection - Use environment variables
+      - ConnectionStrings__DefaultConnection=${CONNECTION_STRING}
+      # Email Settings
+      - Email__Provider=Resend
+      - Email__ResendApiKey=${EMAIL_RESEND_API_KEY}
+      - Email__FromEmail=${EMAIL_FROM_EMAIL:-noreply@rbmcmms.com}
+      - Email__FromName=${EMAIL_FROM_NAME:-RBM CMMS}
+      # WhatsApp Settings
+      - WhatsApp__Enabled=${WHATSAPP_ENABLED:-false}
+      - WhatsApp__UseLLM=${WHATSAPP_USE_LLM:-false}
+      - WhatsApp__Meta__AccessToken=${WHATSAPP_ACCESS_TOKEN}
+      - WhatsApp__Meta__PhoneNumberId=${WHATSAPP_PHONE_NUMBER_ID}
+      - WhatsApp__Meta__BusinessAccountId=${WHATSAPP_BUSINESS_ACCOUNT_ID}
+      - WhatsApp__Meta__AppSecret=${WHATSAPP_APP_SECRET}
+      - WhatsApp__Meta__WebhookVerifyToken=${WHATSAPP_WEBHOOK_VERIFY_TOKEN}
+      - WhatsApp__Meta__ApiVersion=v18.0
+      # WhatsApp LLM Settings
+      - WhatsApp__LLM__Provider=${WHATSAPP_LLM_PROVIDER:-Groq}
+      - WhatsApp__LLM__GroqApiKey=${WHATSAPP_LLM_GROQ_API_KEY}
+      - WhatsApp__LLM__OpenAIApiKey=${WHATSAPP_LLM_OPENAI_API_KEY}
+      - WhatsApp__LLM__GeminiApiKey=${WHATSAPP_LLM_GEMINI_API_KEY}
+    ports:
+      - "80:8080"
+      - "443:8081"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

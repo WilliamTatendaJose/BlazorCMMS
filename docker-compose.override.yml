@@ -3,10 +3,18 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_HTTP_PORTS=8080
-      - ASPNETCORE_HTTPS_PORTS=8081
+      - ASPNETCORE_URLS=http://+:8080
+      # Database Connection
+      - ConnectionStrings__DefaultConnection=Server=host.docker.internal;Database=BlazorCMMS_Docker;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=True;
+      # Email Settings (optional - leave empty for development)
+      - Email__ResendApiKey=
+      - Email__FromEmail=dev@rbmcmms.local
+      - Email__FromName=RBM CMMS Dev
+      # WhatsApp Settings (optional)
+      - WhatsApp__Enabled=false
+      - WhatsApp__UseLLM=false
     ports:
-      - "8080"
-      - "8081"
+      - "8080:8080"
     volumes:
       - ${APPDATA}/Microsoft/UserSecrets:/home/app/.microsoft/usersecrets:ro
       - ${APPDATA}/Microsoft/UserSecrets:/root/.microsoft/usersecrets:ro

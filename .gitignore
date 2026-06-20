@@ -367,4 +367,10 @@ MigrationBackup/
 .ionide/
 
 # Fody - auto-generated XML schema
+
+# Docker environment files - DO NOT COMMIT!
+.env
+**/.env
+.env.local
+**/.env.local
 FodyWeavers.xsd
